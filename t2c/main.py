@@ -5,7 +5,7 @@ import time
 import anthropic
 from t2c import extractor, heuristics, store, termux
 MESSAGING_APPS = {"com.samsung.android.messaging", "com.google.android.apps.messaging"}
-POLL_SECONDS = 15
+POLL_SECONDS = 5
 DB_PATH = os.environ.get("T2C_DB", os.path.expanduser("~/.t2c.db"))
 
 # Return only the notifications that come from the messaging apps and have text
@@ -51,8 +51,8 @@ def describe(client, note):
     # Ask Claude, but report problems instead of crashing
     try:
         event = extractor.extract_event(client, note)
-    except (anthropic.AuthenticationError, anthropic.PermissionDeniedError):  # bad key or no access
-        return "date found, API key rejected"
+    except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as error:  # bad key or no access
+        return f"date found, API key rejected ({error.status_code}): {error.message}"
     except anthropic.RateLimitError:  # too many requests
         return "date found, rate limited"
     except anthropic.APIStatusError as error:  # any other API error, like no credit left

@@ -42,7 +42,8 @@ def test_describe_no_event():
 # A rejected API key is reported instead of crashing
 def test_describe_bad_key():
     error = anthropic.AuthenticationError("bad key", response=httpx2.Response(401, request=REQUEST), body=None)
-    assert main.describe(fake_client(FakeMessages(error=error)), GOOGLE) == "date found, API key rejected"
+    result = main.describe(fake_client(FakeMessages(error=error)), GOOGLE)
+    assert result == "date found, API key rejected (401): bad key"
 
 # No internet is reported instead of crashing
 def test_describe_no_connection():
