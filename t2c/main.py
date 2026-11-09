@@ -2,7 +2,7 @@
 import os
 import subprocess
 import time
-from t2c import store, termux
+from t2c import heuristics, store, termux
 MESSAGING_APPS = {"com.samsung.android.messaging", "com.google.android.apps.messaging"}
 POLL_SECONDS = 15
 DB_PATH = os.environ.get("T2C_DB", os.path.expanduser("~/.t2c.db"))
@@ -40,7 +40,10 @@ def run():
         try:
             # Print each new message
             for note in check_once(connection):
-                print(f"[{note.get('packageName')}] {note.get('title')}: {note.get('content')}", flush=True)
+                # Run the pre-filter on the text
+                found = "date found" if heuristics.has_date_hint(note.get("content")) else "no date"
+                line = f"[{note.get('packageName')}] {note.get('title')}: {note.get('content')} ({found})"
+                print(line, flush=True)
         except (OSError, subprocess.SubprocessError, ValueError) as error:  # command missing, failed or bad JSON
             print(f"Could not read notifications: {error}", flush=True)
         time.sleep(POLL_SECONDS)
