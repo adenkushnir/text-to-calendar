@@ -41,7 +41,7 @@ def run():
             # Print each new message
             for note in check_once(connection):
                 print(f"[{note.get('packageName')}] {note.get('title')}: {note.get('content')}", flush=True)
-        except (subprocess.SubprocessError, ValueError) as error:  # command failed or bad JSON
+        except (OSError, subprocess.SubprocessError, ValueError) as error:  # command missing, failed or bad JSON
             print(f"Could not read notifications: {error}", flush=True)
         time.sleep(POLL_SECONDS)
 
