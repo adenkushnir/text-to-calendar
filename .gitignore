@@ -1,0 +1,20 @@
+# Secrets: the API key lives in ~/.t2c_env on the phone, never in the repo
+.t2c_env
+.env
+*.key
+# Local data: the sqlite database holds message text, so it never gets committed
+*.db
+*.sqlite
+*.log
+# Test dumps of real notifications (personal data)
+samples/
+dumps/
+# Python build and cache files
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+# Editor files
+.vscode/
+.idea/
