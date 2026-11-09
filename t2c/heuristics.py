@@ -11,6 +11,7 @@ PATTERNS = [
     r"\b\d{1,2}\s?o['’]?clock\b",  # times like 7 o'clock
     r"\bat \d{1,2}\b",  # times like at 7
     r"\b\d{1,2}/\d{1,2}(/\d{2,4})?\b",  # dates like 12/3 or 12/3/26
+    r"\b\d{1,2}[.-]\d{1,2}[.-]\d{2,4}\b",  # dates like 1-6-2026 or 1.6.2026
     r"\b\d{4}-\d{2}-\d{2}\b",  # dates like 2026-12-03
     r"\b\d{1,2}(st|nd|rd|th)\b",  # dates like the 3rd
 ]
