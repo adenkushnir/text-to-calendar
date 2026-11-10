@@ -6,7 +6,7 @@ A Python script runs on the phone in [Termux](https://termux.dev). It watches Sa
 
 ## How it works
 
-1. Every 5 seconds, it reads the phone's notifications with `termux-notification-list` and keeps new texts from the messaging apps.
+1. Every 5 seconds, it reads the phone's notifications with `termux-notification-list` and keeps new texts from the messaging apps. After 10 minutes with no new texts it checks every 30 seconds instead, to save battery, and goes back to every 5 seconds as soon as a text arrives.
 2. It skips any text without a date-like word, so most texts never leave the phone.
 3. It sends the rest to the Claude API, which returns a structured event: title, start, end, all-day, location and repeat rule.
 4. It shows a notification with **Add** and **Ignore** buttons.
@@ -105,7 +105,7 @@ From then on, Termux:Boot runs it whenever the phone starts. Because it's a link
 
 There's nothing to do day to day. Two notifications stay in the notification bar:
 
-- **text-to-calendar is running**, with the time of its last check. If that time stops updating, the app has stopped.
+- **text-to-calendar is running**, with the time of its last check and how often it is checking (every 5 s or every 30 s). If that time stops updating, the app has stopped.
 - Termux's own notification ("wake lock held"). It keeps Termux alive; don't tap **Exit** on it.
 
 | Command (in Termux) | What it does |
@@ -131,6 +131,26 @@ If the app crashes, it restarts itself after 30 seconds. The log is in `~/t2c.lo
 | New API key, or the account ran out of credit | Edit `~/.t2c_env` (or add credit), then run `restart.sh`. |
 | Termux reinstalled, or a new phone | Do the whole setup again. |
 
+## Battery settings
+
+Checking notifications often is what uses most of the battery. These settings go in `~/.t2c_env`, one `export` line each, and take effect after `restart.sh`:
+
+| Setting | Default | What it does |
+|---|---|---|
+| `T2C_POLL_SECONDS` | `5` | How often it checks while texts are coming in. Higher saves battery, but texts sent close together are more likely to be missed. |
+| `T2C_SLOW_POLL_SECONDS` | `30` | How often it checks once it has been quiet. A text that arrives then gets its prompt up to this many seconds later. |
+| `T2C_IDLE_MINUTES` | `10` | How long without a new text before it switches to the slow checks. |
+
+For example, to check every 10 seconds normally and every minute when quiet:
+
+```bash
+echo "export T2C_POLL_SECONDS=10" >> ~/.t2c_env
+echo "export T2C_SLOW_POLL_SECONDS=60" >> ~/.t2c_env
+sh ~/text-to-calendar/boot/restart.sh
+```
+
+The log shows each switch (`now checking every 30 s`). To see how much battery the app uses, open Settings → Battery and check **Termux** and **Termux:API**.
+
 ## Changing the model
 
 The app uses `claude-opus-5-5` by default. The default is set near the top of [`t2c/extractor.py`](t2c/extractor.py):
@@ -152,7 +172,7 @@ sh ~/text-to-calendar/boot/restart.sh
 
 - Texts you **send**, and texts that arrive while their chat is open, don't post a notification, so the app never sees them.
 - A text with two plans ("dinner at 7, then a movie at 10") gives one event.
-- If someone sends several texts within 5 seconds, only the newest may be read.
+- If someone sends several texts between two checks (5 seconds, or 30 seconds when quiet), only the newest may be read.
 - Numeric dates are read as month/day (1/6 = January 6).
 
 ## Development
