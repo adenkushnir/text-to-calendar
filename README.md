@@ -18,7 +18,7 @@ Work in progress. See the build steps below.
 
 - [x] Notification reader
 - [x] Date pre-filter
-- [ ] Claude extraction
+- [x] Claude extraction
 - [ ] Add to calendar
 - [ ] Start on boot
 
