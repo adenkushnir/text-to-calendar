@@ -1,5 +1,5 @@
 # Tests for turning an event into calendar times, a summary and the calendar intent
-from datetime import datetime
+from datetime import datetime, timezone
 from t2c import events
 DINNER = {"title": "Dinner at Joe's", "start": "2026-11-13T19:00", "end": "", "all_day": False, "location": "Joe's"}
 DENTIST = {"title": "Dentist", "start": "2026-11-10T15:30", "end": "2026-11-10T16:30", "all_day": False, "location": ""}
@@ -86,3 +86,38 @@ def test_has_started_repeating_or_unreadable():
     weekly = dict(DINNER, repeat="FREQ=WEEKLY;BYDAY=FR")
     assert events.has_started(weekly, events.to_millis(DINNER["start"]) + 100 * 24 * HOUR) is False
     assert events.has_started(dict(DINNER, start="someday"), 0) is False
+
+# A zone named in the text is converted to the phone's time, with the original shown in brackets
+def test_zone_in_text():
+    call = {"title": "Call", "start": "2026-11-10T15:00", "end": "", "all_day": False, "location": "",
+            "timezone": "America/Los_Angeles", "phone_timezone": "America/New_York"}
+    begin, end = events.event_times(call)
+    assert begin == int(datetime(2026, 11, 10, 23, 0, tzinfo=timezone.utc).timestamp() * 1000)
+    assert events.summary(call) == "Call · Tue Nov 10, 6:00 PM (3:00 PM PST)"
+    args = events.insert_intent_args(call)
+    assert args[args.index("eventTimezone") + 1] == "America/Los_Angeles"
+
+# When travelling, a plain time means the phone's current zone, with no brackets
+def test_travelling_uses_phone_zone():
+    dinner = dict(DINNER, timezone="", phone_timezone="Europe/London")
+    begin, end = events.event_times(dinner)
+    assert begin == int(datetime(2026, 11, 13, 19, 0, tzinfo=timezone.utc).timestamp() * 1000)
+    assert events.summary(dinner) == "Dinner at Joe's · Fri Nov 13, 7:00 PM · Joe's"
+
+# A flight landing in another zone shows in the phone's time, even when the date changes
+def test_flight_arrival_zone():
+    flight = {"title": "Pick up Mom", "start": "2026-12-18T06:40", "end": "", "all_day": False, "location": "LAX",
+              "timezone": "America/Los_Angeles", "phone_timezone": "America/New_York"}
+    assert events.summary(flight) == "Pick up Mom · Fri Dec 18, 9:40 AM (6:40 AM PST) · LAX"
+    late = dict(flight, start="2026-12-18T22:30")
+    assert events.summary(late).startswith("Pick up Mom · Sat Dec 19, 1:30 AM (10:30 PM PST)")
+
+# Unknown zone names fall back to the phone's zone, and all-day events ignore the text's zone
+def test_zone_fallbacks():
+    assert events.zone_info("Mars/Base") is None
+    assert events.zone_info("") is None
+    odd = {"start": "2026-11-13T19:00", "timezone": "Mars/Base", "phone_timezone": "America/New_York"}
+    assert str(events.event_zone(odd)) == "America/New_York"
+    party = dict(PARTY, timezone="Asia/Tokyo", phone_timezone="America/New_York")
+    assert str(events.event_zone(party)) == "America/New_York"
+    assert "eventTimezone" not in events.insert_intent_args(party)
