@@ -81,3 +81,9 @@ def test_handle_survives_notify_failure(monkeypatch, capsys):
     monkeypatch.setattr(termux, "notify", failing_notify)
     main.handle(fake_client(FakeMessages(response=reply(EVENT))), store.open_store(":memory:"), GOOGLE)
     assert "could not show notification: no termux" in capsys.readouterr().out
+
+# A repeating event shows its rule in the log line
+def test_describe_repeating_event():
+    standup = dict(EVENT, title="Standup", start="2026-11-16T09:00", location="", repeat="FREQ=WEEKLY;BYDAY=MO")
+    event, result = main.describe(fake_client(FakeMessages(response=reply(standup))), GOOGLE)
+    assert result == "event: Standup | 2026-11-16T09:00 to ? | no location | repeat FREQ=WEEKLY;BYDAY=MO"

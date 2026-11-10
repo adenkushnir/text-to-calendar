@@ -50,3 +50,24 @@ def test_summary():
     assert events.summary(DINNER) == "Dinner at Joe's · Fri Nov 13, 7:00 PM · Joe's"
     assert events.summary(DENTIST) == "Dentist · Tue Nov 10, 3:30 PM"
     assert events.summary(PARTY) == "Party · Sat Nov 14"
+
+# A valid repeat rule is passed to the calendar and shown in the summary
+def test_repeat_rule_in_intent_and_summary():
+    standup = {"title": "Standup", "start": "2026-11-16T09:00", "end": "", "all_day": False, "location": "",
+               "repeat": "FREQ=WEEKLY;BYDAY=MO"}
+    args = events.insert_intent_args(standup)
+    assert args[args.index("rrule") + 1] == "FREQ=WEEKLY;BYDAY=MO"
+    assert events.summary(standup) == "Standup · Mon Nov 16, 9:00 AM · repeats weekly"
+
+# Repeat rules are cleaned up, and anything that isn't a rule is dropped
+def test_repeat_rule_cleanup():
+    assert events.repeat_rule({"repeat": "rrule:freq=monthly;bymonthday=1"}) == "FREQ=MONTHLY;BYMONTHDAY=1"
+    assert events.repeat_rule({"repeat": "every monday"}) == ""
+    assert events.repeat_rule({"repeat": ""}) == ""
+    assert "rrule" not in events.insert_intent_args(DINNER)
+
+# Repeat labels read naturally
+def test_repeat_labels():
+    assert events.repeat_label("FREQ=DAILY") == "repeats daily"
+    assert events.repeat_label("FREQ=MONTHLY;BYMONTHDAY=1") == "repeats monthly"
+    assert events.repeat_label("FREQ=WEEKLY;INTERVAL=2;BYDAY=FR") == "repeats every 2 weeks"

@@ -11,6 +11,9 @@ Rules:
 - Give start and end in the sender's local time as YYYY-MM-DDTHH:MM.
 - If there is no time, give the date as YYYY-MM-DD and set all_day to true.
 - Leave end empty if no end time is given.
+- If the event repeats ("every monday", "weekly", "on the 1st of each month"), set repeat to an RFC 5545 rule
+  without the RRULE: prefix, like FREQ=WEEKLY;BYDAY=MO, and set start to the first time it happens.
+  Otherwise leave repeat empty.
 - Keep the title short, like "Dinner with Sam".
 - Use an empty string for anything unknown.
 - Set has_event to false for past events, vague ideas like "we should hang out sometime", and dates that are not plans.
@@ -24,8 +27,9 @@ EVENT_SCHEMA = {
         "end": {"type": "string"},
         "all_day": {"type": "boolean"},
         "location": {"type": "string"},
+        "repeat": {"type": "string"},
     },
-    "required": ["has_event", "title", "start", "end", "all_day", "location"],
+    "required": ["has_event", "title", "start", "end", "all_day", "location", "repeat"],
     "additionalProperties": False,
 }
 

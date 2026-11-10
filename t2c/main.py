@@ -68,7 +68,8 @@ def describe(client, note):
     if event is None:
         return None, "date found, no event"
     details = f"{event['title']} | {event['start']} to {event['end'] or '?'} | {event['location'] or 'no location'}"
-    return event, f"event: {details}"
+    repeat = f" | repeat {event['repeat']}" if event.get("repeat") else ""  # only shown for repeating events
+    return event, f"event: {details}{repeat}"
 
 # Build the shell command a notification button runs, with full paths so it works from any folder
 def action_command(name, pending_id):
