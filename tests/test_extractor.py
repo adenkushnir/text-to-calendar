@@ -63,3 +63,10 @@ def test_no_text_block():
 def test_build_prompt_with_phone_zone():
     assert "Received: 2026-11-09 16:34:22 (Monday, phone time zone America/New_York)" in \
         extractor.build_prompt(NOTE, "America/New_York")
+
+# The prompt explains how to turn a birthday into a yearly all-day event, and to ignore birthday wishes
+def test_birthday_rules():
+    assert "\"<Name>'s birthday\"" in extractor.SYSTEM_PROMPT
+    assert "repeat FREQ=YEARLY" in extractor.SYSTEM_PROMPT
+    assert "Use the From name for the sender's own birthday" in extractor.SYSTEM_PROMPT
+    assert "Ignore birthday wishes" in extractor.SYSTEM_PROMPT
