@@ -116,7 +116,9 @@ There's nothing to do day to day. Two notifications stay in the notification bar
 | `tail -f ~/t2c.log` | Watch the log live (stop watching with Volume Down + C) |
 | `pgrep -f t2c.main` | Prints a number if it's running |
 
-If the app crashes, it restarts itself after 30 seconds. If a text with a date arrives while there's no internet, or while Claude is busy or having problems, the text is saved and tried again every minute for up to 24 hours, and the prompt appears once it goes through. The log is in `~/t2c.log`, and starts over in a new file once it passes 1 MB. It contains your message texts, so it stays on the phone and is never committed.
+If the app crashes, it restarts itself after 30 seconds. If a text with a date arrives while there's no internet, or while Claude is busy or having problems, the text is saved and tried again every minute for up to 24 hours, and the prompt appears once it goes through. The log is in `~/t2c.log`, and starts over in a new file once it passes 1 MB. It stays on the phone and is never committed.
+
+The log records which app and sender each text came from and what happened to it, including any event Claude found (title, time, location). It does **not** record the text itself. To include message texts while testing, add `export T2C_LOG_TEXT=1` to `~/.t2c_env` and restart. Delete that line again afterwards.
 
 ## When it has to be started again
 
@@ -192,4 +194,4 @@ python -m t2c.simulate "dinner fri 7pm at joes"
 python -m t2c.simulate "lunch tomorrow at noon" "Sam"
 ```
 
-It goes through the same date check, Claude call, retry queue and **Add to calendar?** prompt as a real text, but doesn't read the phone's notifications. The second argument is the sender's name. The default is "Test sender".
+It goes through the same date check, Claude call, retry queue and **Add to calendar?** prompt as a real text, but doesn't read the phone's notifications. The second argument is the sender's name. The default is "Test sender". To see the text in its output too, run it with `T2C_LOG_TEXT=1` in front, like `T2C_LOG_TEXT=1 python -m t2c.simulate "..."`.

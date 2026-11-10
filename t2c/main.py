@@ -25,6 +25,7 @@ def read_setting(name, default):
 POLL_SECONDS = read_setting("T2C_POLL_SECONDS", 5)
 SLOW_POLL_SECONDS = read_setting("T2C_SLOW_POLL_SECONDS", 30)
 IDLE_SECONDS = read_setting("T2C_IDLE_MINUTES", 10) * 60
+LOG_TEXT = os.environ.get("T2C_LOG_TEXT") == "1"
 RETRY_SECONDS = 60
 CLEAN_UP_SECONDS = 24 * 60 * 60
 GIVE_UP_SECONDS = 24 * 60 * 60
@@ -107,6 +108,11 @@ def suggest(connection, event):
     buttons = [("Add", add), ("Ignore", action_command("ignore", pending_id))]
     termux.notify(termux.notification_id(pending_id), "Add to calendar?", text, tap_action=add, buttons=buttons)
 
+# Describe a message for the log: app and sender, plus the text only when T2C_LOG_TEXT=1
+def message_label(note):
+    label = f"[{note.get('packageName')}] {note.get('title')}"
+    return f"{label}: {note.get('content')}" if LOG_TEXT else label  # keep texts out of the log by default
+
 # Show the notification for a found event, but keep running if the date can't be read or Termux fails
 def offer(connection, event):
     # Stop here when there is nothing to offer
@@ -122,7 +128,7 @@ def offer(connection, event):
 # Describe a new message, print the result, and offer the event, or save the message to try again later
 def handle(client, connection, note):
     event, result, retry = describe(client, note)
-    line = f"{datetime.now():%Y-%m-%d %H:%M:%S} [{note.get('packageName')}] {note.get('title')}: {note.get('content')}"
+    line = f"{datetime.now():%Y-%m-%d %H:%M:%S} {message_label(note)}"
     print(f"{line}\n    -> {result}", flush=True)
 
     # Save messages that failed for a reason that may clear up, like no internet
@@ -145,7 +151,7 @@ def retry_waiting(client, connection, now):
             continue
         store.delete_retry(connection, retry_id)
         outcome = f"gave up ({result})" if retry else result  # still failing after GIVE_UP_SECONDS
-        line = f"{datetime.now():%Y-%m-%d %H:%M:%S} retried [{note.get('title')}]: {note.get('content')}"
+        line = f"{datetime.now():%Y-%m-%d %H:%M:%S} retried {message_label(note)}"
         print(f"{line}\n    -> {outcome}", flush=True)
         offer(connection, event)
 

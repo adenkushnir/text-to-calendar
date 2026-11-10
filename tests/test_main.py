@@ -174,3 +174,18 @@ def test_clean_up_removes_old_notifications(monkeypatch, capsys):
     main.clean_up(store.open_store(":memory:"))
     assert removed == ["t2c-3", "t2c-4"]
     assert "removed 2 old suggestion(s)" in capsys.readouterr().out
+
+# The log shows app and sender only, and adds the message text when T2C_LOG_TEXT=1
+def test_message_label(monkeypatch):
+    monkeypatch.setattr(main, "LOG_TEXT", False)
+    assert main.message_label(GOOGLE) == "[com.google.android.apps.messaging] Sam"
+    monkeypatch.setattr(main, "LOG_TEXT", True)
+    assert main.message_label(GOOGLE) == "[com.google.android.apps.messaging] Sam: dinner fri 7pm"
+
+# A handled message is logged without its text by default
+def test_handle_keeps_text_out_of_log(monkeypatch, capsys):
+    monkeypatch.setattr(main, "LOG_TEXT", False)
+    main.handle(None, store.open_store(":memory:"), GOOGLE)
+    output = capsys.readouterr().out
+    assert "dinner fri 7pm" not in output
+    assert "date found, no API key" in output
