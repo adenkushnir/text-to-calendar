@@ -71,3 +71,18 @@ def test_repeat_labels():
     assert events.repeat_label("FREQ=DAILY") == "repeats daily"
     assert events.repeat_label("FREQ=MONTHLY;BYMONTHDAY=1") == "repeats monthly"
     assert events.repeat_label("FREQ=WEEKLY;INTERVAL=2;BYDAY=FR") == "repeats every 2 weeks"
+
+# One-off events in the past count as started, future ones don't, and an all-day event counts for its whole day
+def test_has_started():
+    dinner_start = events.to_millis(DINNER["start"])
+    assert events.has_started(DINNER, dinner_start - 1) is False
+    assert events.has_started(DINNER, dinner_start) is True
+    party_start = events.to_millis(PARTY["start"])
+    assert events.has_started(PARTY, party_start + 12 * HOUR) is False
+    assert events.has_started(PARTY, party_start + 24 * HOUR) is True
+
+# Repeating events and unreadable starts are never treated as started
+def test_has_started_repeating_or_unreadable():
+    weekly = dict(DINNER, repeat="FREQ=WEEKLY;BYDAY=FR")
+    assert events.has_started(weekly, events.to_millis(DINNER["start"]) + 100 * 24 * HOUR) is False
+    assert events.has_started(dict(DINNER, start="someday"), 0) is False

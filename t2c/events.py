@@ -2,6 +2,7 @@
 import re
 from datetime import datetime, timedelta
 REPEAT_RULE = re.compile(r"FREQ=(DAILY|WEEKLY|MONTHLY|YEARLY)(;[A-Z]+=[A-Z0-9,+-]+)*")
+DAY_MILLIS = 24 * 60 * 60 * 1000
 REPEAT_UNITS = {"DAILY": "day", "WEEKLY": "week", "MONTHLY": "month", "YEARLY": "year"}
 CALENDAR_INSERT = ["am", "start", "--user", "0", "-a", "android.intent.action.INSERT",
                    "-d", "content://com.android.calendar/events"]
@@ -36,6 +37,19 @@ def repeat_label(rule):
     if interval != "1":
         return f"repeats every {interval} {unit}s"
     return "repeats daily" if unit == "day" else f"repeats {unit}ly"  # daily, weekly, monthly, yearly
+
+# Return True if a one-off event has already started (an all-day event counts from midnight, so today still counts)
+def has_started(event, now_millis):
+    # Repeating events still have future dates, so they are never too late
+    if repeat_rule(event):
+        return False
+
+    # Compare the start with now, treating a start that can't be read as not started
+    try:
+        begin = to_millis(event["start"])
+    except (KeyError, ValueError):  # missing or unreadable start
+        return False
+    return begin + DAY_MILLIS <= now_millis if event.get("all_day") else begin <= now_millis  # all-day lasts the day
 
 # Build the am command that opens Google Calendar's new-event screen with the event filled in
 def insert_intent_args(event):
