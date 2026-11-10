@@ -66,3 +66,13 @@ def test_clean_up():
     assert store.get_pending(connection, old_id) is None
     assert store.get_pending(connection, new_id) == {"title": "New"}
     assert store.mark_seen(connection, NOTE) is True
+
+# Failure counts go up one at a time, and a success resets them and returns the old count
+def test_failure_counts():
+    connection = store.open_store(":memory:")
+    assert store.failure_count(connection, "api") == 0
+    assert store.record_failure(connection, "api") == 1
+    assert store.record_failure(connection, "api") == 2
+    assert store.record_success(connection, "api") == 2
+    assert store.failure_count(connection, "api") == 0
+    assert store.record_success(connection, "api") == 0
