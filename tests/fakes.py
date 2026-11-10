@@ -27,5 +27,5 @@ def fake_client(messages):
 def reply(event, stop_reason="end_turn"):
     return SimpleNamespace(stop_reason=stop_reason, content=[SimpleNamespace(type="text", text=json.dumps(event))])
 EVENT = {"has_event": True, "title": "Dinner with Sam", "start": "2026-11-13T19:00", "end": "", "all_day": False,
-         "location": "Joe's"}
-NO_EVENT = {"has_event": False, "title": "", "start": "", "end": "", "all_day": False, "location": ""}
+         "location": "Joe's", "repeat": ""}
+NO_EVENT = {"has_event": False, "title": "", "start": "", "end": "", "all_day": False, "location": "", "repeat": ""}
