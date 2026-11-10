@@ -124,6 +124,21 @@ If the app crashes, it restarts itself after 30 seconds. If a text with a date a
 
 The log records which app and sender each text came from and what happened to it, including any event Claude found (title, time, location). It does **not** record the text itself. To include message texts while testing, add `export T2C_LOG_TEXT=1` to `~/.t2c_env` and restart. Delete that line again afterwards.
 
+## Alerts
+
+The app shows a quiet notification, once per problem, when it notices something wrong. The alert goes away by itself once things work again.
+
+| Alert | When it appears | What to do |
+|---|---|---|
+| **Can't read notifications** | Reading notifications failed 3 times in a row, usually because an Android update turned off notification access | Turn notification access for Termux:API back on (see Setup step 3) |
+| **Claude API key or credit problem** | The first time the key is rejected or the account is out of credit | Check the key in `~/.t2c_env`, or add credit in the Anthropic Console |
+| **Claude API keeps failing** | 3 API errors in a row, such as rate limits or Anthropic outages | Nothing. Texts with a date are retried every minute. |
+
+What it can't tell you:
+
+- **The phone is off, or Termux was killed.** Nothing on the phone is running to notice. The sign is the **text-to-calendar is running** notification disappearing, or its "Last checked" time not updating.
+- **No internet.** This doesn't raise an alert, because texts are saved and retried automatically once the connection is back.
+
 ## When it has to be started again
 
 | Situation | What to do |

@@ -7,7 +7,7 @@ import sys
 import time
 from datetime import datetime
 import anthropic
-from t2c import events, extractor, heuristics, store, termux
+from t2c import events, extractor, health, heuristics, store, termux
 MESSAGING_APPS = {"com.samsung.android.messaging", "com.google.android.apps.messaging"}
 STATUS_SECONDS = 60
 STATUS_ID = "t2c-running"
@@ -52,6 +52,18 @@ def check_once(connection):
             new_messages.append(note)
     return new_messages
 
+# Read the new messages, and count failed reads toward the "Can't read notifications" alert
+def read_messages(connection):
+    # Return no messages when Termux can't read the notifications, instead of stopping
+    try:
+        new_messages = check_once(connection)
+    except (OSError, subprocess.SubprocessError, ValueError) as error:  # command missing, timed out or bad JSON
+        print(f"{datetime.now():%Y-%m-%d %H:%M:%S} Could not read notifications: {error}", flush=True)
+        health.failed(connection, "notifications", str(error)[:100])
+        return []
+    health.succeeded(connection, "notifications")
+    return new_messages
+
 # Make a Claude client, or None if there is no API key yet
 def make_client():
     # Without a key, dates are still found but nothing is sent to Claude
@@ -66,8 +78,21 @@ def event_details(event):
     details += f" | repeat {event['repeat']}" if event.get("repeat") else ""  # only shown for repeating events
     return details + (f" | zone {event['timezone']}" if event.get("timezone") else "")  # only when the text named one
 
+# Count an API problem toward its alert, when there is a database to count in
+def report_failure(connection, kind, detail):
+    # Tests and callers without a database skip the alerts
+    if connection is not None:
+        health.failed(connection, kind, detail)
+
+# Clear the API problem counts and alerts after Claude answered
+def report_success(connection):
+    # Tests and callers without a database skip the alerts
+    if connection is not None:
+        health.succeeded(connection, "api_key")
+        health.succeeded(connection, "api")
+
 # Work out one message: return the events to offer, the lines describing what happened, and whether to try again later
-def describe(client, note):
+def describe(client, note, connection=None):
     # Texts with no date never leave the phone
     if not heuristics.has_date_hint(note.get("content")):
         return [], ["no date"], False
@@ -76,20 +101,26 @@ def describe(client, note):
     if client is None:
         return [], ["date found, no API key"], False
 
-    # Ask Claude, with the phone's current zone so travelling works, but report problems instead of crashing
+    # Ask Claude, with the phone's current zone so travelling works, and count problems toward alerts
     phone_zone = termux.phone_timezone()
     try:
         found = extractor.extract_events(client, note, phone_zone)
     except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as error:  # bad key or no access
+        report_failure(connection, "api_key", f"{error.status_code}: {error.message}")
         return [], [f"date found, API key rejected ({error.status_code}): {error.message}"], False
     except anthropic.RateLimitError:  # too many requests, worth trying again later
+        report_failure(connection, "api", "rate limited")
         return [], ["date found, rate limited"], True
     except anthropic.APIStatusError as error:  # other API errors; server errors (5xx) are worth trying again
+        kind = "api_key" if "credit" in str(error.message).lower() else "api"  # out of credit is a key problem
+        report_failure(connection, kind, f"{error.status_code}: {error.message}")
         return [], [f"date found, API error {error.status_code}: {error.message}"], error.status_code >= 500
-    except anthropic.APIConnectionError:  # no internet, worth trying again later
+    except anthropic.APIConnectionError:  # no internet, worth trying again later; retries cover it, so no alert
         return [], ["date found, no connection"], True
     except ValueError:  # reply was not valid JSON
+        report_failure(connection, "api", "unreadable reply")
         return [], ["date found, unreadable reply"], False
+    report_success(connection)
 
     # Say so when Claude found no events
     if not found:
@@ -143,7 +174,7 @@ def log(heading, lines):
 
 # Describe a new message, print the results, and offer its events, or save the message to try again later
 def handle(client, connection, note):
-    found, lines, retry = describe(client, note)
+    found, lines, retry = describe(client, note, connection)
 
     # Save messages that failed for a reason that may clear up, like no internet
     if retry:
@@ -157,7 +188,7 @@ def handle(client, connection, note):
 def retry_waiting(client, connection, now):
     # Try each message that is due
     for retry_id, note, saved_at in store.due_retries(connection, now):
-        found, lines, retry = describe(client, note)
+        found, lines, retry = describe(client, note, connection)
 
         # Wait for the next round if it still fails and isn't too old yet
         if retry and now - saved_at < GIVE_UP_SECONDS:
@@ -230,18 +261,13 @@ def run():
             if time.time() - last_clean_up >= CLEAN_UP_SECONDS:
                 clean_up(connection)
                 last_clean_up = time.time()
+            new_messages = read_messages(connection)
 
-            # Read and handle new messages, but keep running if Termux fails
-            try:
-                new_messages = check_once(connection)
-
-                # Handle each new message
-                for note in new_messages:
-                    handle(client, connection, note)
-                last_text = time.time() if new_messages else last_text  # a new text resets the quiet timer
-                retry_waiting(client, connection, time.time())
-            except (OSError, subprocess.SubprocessError, ValueError) as error:  # command missing, failed or bad JSON
-                print(f"Could not read notifications: {error}", flush=True)
+            # Handle each new message
+            for note in new_messages:
+                handle(client, connection, note)
+            last_text = time.time() if new_messages else last_text  # a new text resets the quiet timer
+            retry_waiting(client, connection, time.time())
             new_interval = poll_interval(time.time() - last_text)
 
             # Log and show the change when switching between fast and slow checks

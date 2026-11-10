@@ -1,4 +1,5 @@
 # Tests for the main loop: filtering, de-duplicating, describing and suggesting messages
+import subprocess
 from datetime import datetime
 import anthropic
 import httpx2
@@ -240,3 +241,71 @@ def test_handle_party_and_birthday(monkeypatch):
     summaries = [args[2] for args in shown]  # the text of each prompt
     assert summaries == ["Jake's birthday party · Sat Nov 14, 8:00 PM · Jake's place",
                          "Jake's birthday · Sat Nov 14 · repeats yearly"]
+
+# Record alert notifications by their id instead of showing them
+def record_alerts(monkeypatch):
+    shown = []
+    monkeypatch.setattr(termux, "notify", lambda *args, **kwargs: shown.append(args[0]))
+    return shown
+
+# Running out of credit counts as a key problem and alerts straight away
+def test_out_of_credit_alerts(monkeypatch):
+    shown = record_alerts(monkeypatch)
+    message = "Your credit balance is too low to access the Anthropic API."
+    error = anthropic.BadRequestError(message, response=httpx2.Response(400, request=REQUEST), body=None)
+    connection = store.open_store(":memory:")
+    main.describe(fake_client(FakeMessages(error=error)), GOOGLE, connection)
+    assert shown == ["t2c-alert-api_key"]
+
+# Other API errors alert only after three in a row
+def test_api_errors_alert_after_three(monkeypatch):
+    shown = record_alerts(monkeypatch)
+    error = anthropic.InternalServerError("down", response=httpx2.Response(500, request=REQUEST), body=None)
+    connection = store.open_store(":memory:")
+    main.describe(fake_client(FakeMessages(error=error)), GOOGLE, connection)
+    main.describe(fake_client(FakeMessages(error=error)), GOOGLE, connection)
+    assert shown == []
+    main.describe(fake_client(FakeMessages(error=error)), GOOGLE, connection)
+    assert shown == ["t2c-alert-api"]
+
+# No internet never alerts, because retries cover it
+def test_no_connection_does_not_alert(monkeypatch):
+    shown = record_alerts(monkeypatch)
+    connection = store.open_store(":memory:")
+
+    # Fail with no internet well past any threshold
+    for attempt in range(5):
+        offline = fake_client(FakeMessages(error=anthropic.APIConnectionError(request=REQUEST)))
+        main.describe(offline, GOOGLE, connection)
+    assert shown == []
+
+# A good answer from Claude clears a key alert
+def test_success_clears_key_alert(monkeypatch):
+    removed = []
+    record_alerts(monkeypatch)
+    monkeypatch.setattr(termux, "remove_notification", removed.append)
+    error = anthropic.AuthenticationError("bad key", response=httpx2.Response(401, request=REQUEST), body=None)
+    connection = store.open_store(":memory:")
+    main.describe(fake_client(FakeMessages(error=error)), GOOGLE, connection)
+    main.describe(fake_client(FakeMessages(response=reply([EVENT]))), GOOGLE, connection)
+    assert removed == ["t2c-alert-api_key"]
+
+# Stand-in for termux-notification-list timing out, like when notification access is off
+def timed_out_list():
+    raise subprocess.TimeoutExpired("termux-notification-list", 30)
+
+# Three failed reads in a row alert, and the next good read clears it
+def test_notification_read_alerts(monkeypatch):
+    shown = record_alerts(monkeypatch)
+    removed = []
+    monkeypatch.setattr(termux, "remove_notification", removed.append)
+    monkeypatch.setattr(termux, "list_notifications", timed_out_list)
+    connection = store.open_store(":memory:")
+
+    # Fail to read three times
+    for attempt in range(3):
+        assert main.read_messages(connection) == []
+    assert shown == ["t2c-alert-notifications"]
+    monkeypatch.setattr(termux, "list_notifications", lambda: [GOOGLE])
+    assert main.read_messages(connection) == [GOOGLE]
+    assert removed == ["t2c-alert-notifications"]
