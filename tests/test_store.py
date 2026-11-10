@@ -17,3 +17,12 @@ def test_different_content_is_new():
 # The hash does not contain the message text itself
 def test_hash_hides_text():
     assert "dinner" not in store.message_hash(NOTE)
+
+# A waiting event can be saved, read back by id, and deleted
+def test_pending_round_trip():
+    connection = store.open_store(":memory:")
+    event = {"title": "Dinner", "start": "2026-11-13T19:00"}
+    pending_id = store.save_pending(connection, event)
+    assert store.get_pending(connection, pending_id) == event
+    store.delete_pending(connection, pending_id)
+    assert store.get_pending(connection, pending_id) is None
