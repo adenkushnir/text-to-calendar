@@ -16,8 +16,10 @@ def notification_id(pending_id):
     return f"t2c-{pending_id}"
 
 # Show a notification; tap_action and each button action are shell commands Termux runs when tapped
-def notify(notify_id, title, content, tap_action=None, buttons=()):
-    args = ["termux-notification", "--id", notify_id, "--title", title, "--content", content, "--priority", "high"]
+def notify(notify_id, title, content, tap_action=None, buttons=(), ongoing=False, alert_once=False, priority="high"):
+    args = ["termux-notification", "--id", notify_id, "--title", title, "--content", content, "--priority", priority]
+    args += ["--ongoing"] if ongoing else []  # pinned, can't be swiped away
+    args += ["--alert-once"] if alert_once else []  # no sound or pop-up when it is refreshed
 
     # Run tap_action when the notification itself is tapped
     if tap_action:

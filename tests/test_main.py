@@ -1,4 +1,5 @@
 # Tests for the main loop: filtering, de-duplicating, describing and suggesting messages
+from datetime import datetime
 import anthropic
 import httpx2
 from t2c import main, store, termux
@@ -87,3 +88,8 @@ def test_describe_repeating_event():
     standup = dict(EVENT, title="Standup", start="2026-11-16T09:00", location="", repeat="FREQ=WEEKLY;BYDAY=MO")
     event, result = main.describe(fake_client(FakeMessages(response=reply(standup))), GOOGLE)
     assert result == "event: Standup | 2026-11-16T09:00 to ? | no location | repeat FREQ=WEEKLY;BYDAY=MO"
+
+# The running notification shows the time of the last check
+def test_status_text():
+    assert main.status_text(datetime(2026, 11, 9, 21, 5)) == "Last checked 9:05 PM"
+    assert main.status_text(datetime(2026, 11, 9, 0, 30)) == "Last checked 12:30 AM"
