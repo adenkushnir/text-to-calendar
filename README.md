@@ -19,8 +19,21 @@ Work in progress. See the build steps below.
 - [x] Notification reader
 - [x] Date pre-filter
 - [x] Claude extraction
-- [ ] Add to calendar
+- [x] Add to calendar
 - [ ] Start on boot
+
+## Phone permissions
+
+Termux, Termux:API (and later Termux:Boot) must all come from the same source, such as F-Droid. These settings are needed once:
+
+| Setting | Why | How |
+|---|---|---|
+| Notification access for **Termux:API** | Read message notifications | Run `am start -a android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS` and turn on Termux:API. If Android says "Restricted setting", open Settings → Apps → Termux:API → ⋮ → **Allow restricted settings** first. |
+| Notifications for **Termux:API** | Show the **Add to calendar?** prompt | Settings → Apps → Termux:API → Notifications → on |
+| **Display over other apps** for Termux | Let the **Add** button open Google Calendar | Run `am start -a android.settings.action.MANAGE_OVERLAY_PERMISSION -d package:com.termux` and turn it on |
+| `allow-external-apps` in Termux | Let notification buttons run commands | Run `mkdir -p ~/.termux && echo "allow-external-apps = true" >> ~/.termux/termux.properties && termux-reload-settings` |
+
+Check notification access with `timeout 10 termux-notification-list; echo $?`. It should print your notifications and `0`. `124` means it hung, which usually means access isn't really granted.
 
 ## Claude API key
 
