@@ -1,13 +1,17 @@
 # Main loop: watches message notifications, asks Claude about texts with a date, and offers found events
 import os
 import shlex
+import signal
 import subprocess
 import sys
 import time
+from datetime import datetime
 import anthropic
 from t2c import events, extractor, heuristics, store, termux
 MESSAGING_APPS = {"com.samsung.android.messaging", "com.google.android.apps.messaging"}
 POLL_SECONDS = 5
+STATUS_SECONDS = 60
+STATUS_ID = "t2c-running"
 REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Return only the notifications that come from the messaging apps and have text
@@ -87,7 +91,8 @@ def suggest(connection, event):
 # Describe a new message, print the result, and offer the event if one was found
 def handle(client, connection, note):
     event, result = describe(client, note)
-    print(f"[{note.get('packageName')}] {note.get('title')}: {note.get('content')}\n    -> {result}", flush=True)
+    line = f"{datetime.now():%Y-%m-%d %H:%M:%S} [{note.get('packageName')}] {note.get('title')}: {note.get('content')}"
+    print(f"{line}\n    -> {result}", flush=True)
 
     # Stop here when there is nothing to offer
     if event is None:
@@ -99,22 +104,50 @@ def handle(client, connection, note):
     except (OSError, subprocess.SubprocessError, ValueError) as error:  # notification failed or bad date
         print(f"    -> could not show notification: {error}", flush=True)
 
+# Return the status line for the pinned notification, like: Last checked 9:41 PM
+def status_text(now):
+    return f"Last checked {now.hour % 12 or 12}:{now:%M %p}"
+
+# Show or refresh the pinned "running" notification; a stale time means the app has stopped
+def show_status():
+    # Keep running even if the notification can't be shown
+    try:
+        text = status_text(datetime.now())
+        termux.notify(STATUS_ID, "text-to-calendar is running", text, ongoing=True, alert_once=True, priority="low")
+    except (OSError, subprocess.SubprocessError) as error:  # Termux failed
+        print(f"Could not show the running notification: {error}", flush=True)
+
+# Turn a stop signal (from pkill or restart.sh) into a normal exit, so the running notification is removed
+def stop_on_signal(signal_number, frame):
+    sys.exit(0)
+
 # Poll forever and handle each new message
 def run():
     connection = store.open_store(store.DB_PATH)
     client = make_client()
-    print("text-to-calendar: watching for messages", flush=True)
+    signal.signal(signal.SIGTERM, stop_on_signal)
+    print(f"{datetime.now():%Y-%m-%d %H:%M:%S} text-to-calendar: watching for messages", flush=True)
+    last_status = 0
 
-    # Check the notifications every POLL_SECONDS
-    while True:
-        # Read and handle new messages, but keep running if Termux fails
-        try:
-            # Handle each new message
-            for note in check_once(connection):
-                handle(client, connection, note)
-        except (OSError, subprocess.SubprocessError, ValueError) as error:  # command missing, failed or bad JSON
-            print(f"Could not read notifications: {error}", flush=True)
-        time.sleep(POLL_SECONDS)
+    # Check the notifications every POLL_SECONDS, and remove the running notification however the loop ends
+    try:
+        # Keep checking until stopped
+        while True:
+            # Refresh the running notification every STATUS_SECONDS
+            if time.time() - last_status >= STATUS_SECONDS:
+                show_status()
+                last_status = time.time()
+
+            # Read and handle new messages, but keep running if Termux fails
+            try:
+                # Handle each new message
+                for note in check_once(connection):
+                    handle(client, connection, note)
+            except (OSError, subprocess.SubprocessError, ValueError) as error:  # command missing, failed or bad JSON
+                print(f"Could not read notifications: {error}", flush=True)
+            time.sleep(POLL_SECONDS)
+    finally:
+        termux.remove_notification(STATUS_ID)
 
 # Start the loop when run with python -m t2c.main
 if __name__ == "__main__":
