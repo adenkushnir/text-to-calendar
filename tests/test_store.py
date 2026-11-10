@@ -1,4 +1,5 @@
-# Tests for the seen-messages store
+# Tests for the store: seen messages, waiting suggestions, retries and clean-up
+import time
 from t2c import store
 NOTE = {"packageName": "com.google.android.apps.messaging", "title": "Sam", "content": "dinner fri 7pm", "when": "1"}
 
@@ -51,3 +52,17 @@ def test_retry_round_trip():
     assert store.due_retries(connection, 200) == []
     store.delete_retry(connection, retry_id)
     assert store.due_retries(connection, 1000) == []
+
+# Old fingerprints and old untouched suggestions are deleted, recent ones are kept
+def test_clean_up():
+    connection = store.open_store(":memory:")
+    store.mark_seen(connection, NOTE)
+    old_id = store.save_pending(connection, {"title": "Old"})
+    new_id = store.save_pending(connection, {"title": "New"})
+    week_ago = "strftime('%s', 'now') - 8 * 24 * 60 * 60"
+    connection.execute(f"UPDATE seen SET seen_at = {week_ago}")
+    connection.execute(f"UPDATE pending SET created_at = {week_ago} WHERE id = ?", (old_id,))
+    assert store.clean_up(connection, time.time()) == [old_id]
+    assert store.get_pending(connection, old_id) is None
+    assert store.get_pending(connection, new_id) == {"title": "New"}
+    assert store.mark_seen(connection, NOTE) is True

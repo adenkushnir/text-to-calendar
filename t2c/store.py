@@ -5,6 +5,7 @@ import os
 import sqlite3
 DB_PATH = os.environ.get("T2C_DB", os.path.expanduser("~/.t2c.db"))
 REPEAT_SECONDS = 60 * 60
+KEEP_SECONDS = 7 * 24 * 60 * 60
 
 # Open the database and create the tables if they are missing
 def open_store(path):
@@ -68,3 +69,13 @@ def reschedule_retry(connection, retry_id, next_try):
 def delete_retry(connection, retry_id):
     connection.execute("DELETE FROM retry WHERE id = ?", (retry_id,))
     connection.commit()
+
+# Delete message fingerprints and untouched suggestions older than KEEP_SECONDS, returning the deleted suggestion ids
+def clean_up(connection, now):
+    cutoff = now - KEEP_SECONDS
+    rows = connection.execute("SELECT id FROM pending WHERE created_at < ?", (cutoff,)).fetchall()
+    old_pending = [row[0] for row in rows]  # keep just the ids
+    connection.execute("DELETE FROM pending WHERE created_at < ?", (cutoff,))
+    connection.execute("DELETE FROM seen WHERE seen_at < ?", (cutoff,))
+    connection.commit()
+    return old_pending
