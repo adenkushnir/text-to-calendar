@@ -46,3 +46,8 @@ def test_refusal_and_max_tokens():
 # A reply with no text block gives None
 def test_no_text_block():
     assert extractor.parse_response(SimpleNamespace(stop_reason="end_turn", content=[])) is None
+
+# The phone's time zone is added to the prompt when known
+def test_build_prompt_with_phone_zone():
+    assert "Received: 2026-11-09 16:34:22 (Monday, phone time zone America/New_York)" in \
+        extractor.build_prompt(NOTE, "America/New_York")

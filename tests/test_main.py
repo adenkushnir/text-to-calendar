@@ -36,7 +36,7 @@ def test_describe_no_client():
 # A found event is described with its title, start and location
 def test_describe_event():
     event, result, retry = main.describe(fake_client(FakeMessages(response=reply(EVENT))), GOOGLE)
-    assert event == EVENT
+    assert event == dict(EVENT, phone_timezone=termux.phone_timezone())
     assert result == "event: Dinner with Sam | 2026-11-13T19:00 to ? | Joe's"
     assert retry is False
 
@@ -189,3 +189,13 @@ def test_handle_keeps_text_out_of_log(monkeypatch, capsys):
     output = capsys.readouterr().out
     assert "dinner fri 7pm" not in output
     assert "date found, no API key" in output
+
+# The phone's zone is sent to Claude and kept with the event, and a zone named in the text shows in the log
+def test_describe_with_time_zones(monkeypatch):
+    monkeypatch.setattr(termux, "phone_timezone", lambda: "America/New_York")
+    call = dict(EVENT, title="Call", start="2030-01-08T15:00", location="", timezone="America/Los_Angeles")
+    messages = FakeMessages(response=reply(call))
+    event, result, retry = main.describe(fake_client(messages), GOOGLE)
+    assert "phone time zone America/New_York" in messages.calls[0]["messages"][0]["content"]
+    assert event["phone_timezone"] == "America/New_York"
+    assert result == "event: Call | 2030-01-08T15:00 to ? | no location | zone America/Los_Angeles"

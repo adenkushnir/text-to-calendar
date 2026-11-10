@@ -70,9 +70,10 @@ def describe(client, note):
     if client is None:
         return None, "date found, no API key", False
 
-    # Ask Claude, but report problems instead of crashing
+    # Ask Claude, with the phone's current zone so travelling works, but report problems instead of crashing
+    phone_zone = termux.phone_timezone()
     try:
-        event = extractor.extract_event(client, note)
+        event = extractor.extract_event(client, note, phone_zone)
     except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as error:  # bad key or no access
         return None, f"date found, API key rejected ({error.status_code}): {error.message}", False
     except anthropic.RateLimitError:  # too many requests, worth trying again later
@@ -87,13 +88,15 @@ def describe(client, note):
     # Report whether Claude found an event
     if event is None:
         return None, "date found, no event", False
+    event["phone_timezone"] = phone_zone
     details = f"{event['title']} | {event['start']} to {event['end'] or '?'} | {event['location'] or 'no location'}"
-    repeat = f" | repeat {event['repeat']}" if event.get("repeat") else ""  # only shown for repeating events
+    extras = f" | repeat {event['repeat']}" if event.get("repeat") else ""  # only shown for repeating events
+    extras += f" | zone {event['timezone']}" if event.get("timezone") else ""  # only when the text named a zone
 
     # Don't offer events that have already started
     if events.has_started(event, time.time() * 1000):
         return None, f"already started, skipped: {details}", False
-    return event, f"event: {details}{repeat}", False
+    return event, f"event: {details}{extras}", False
 
 # Build the shell command a notification button runs, with full paths so it works from any folder
 def action_command(name, pending_id):
