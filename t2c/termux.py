@@ -42,3 +42,12 @@ def start_activity(args):
     # am sometimes prints an error but still exits with 0, so check the text too
     if result.returncode != 0 or output.startswith("Error") or "Exception" in output:
         raise RuntimeError(output or f"am exited with {result.returncode}")
+
+# Return the phone's time zone as an IANA name like America/New_York, or an empty string if it can't be read
+def phone_timezone():
+    # Ask Android for the zone, treating any failure as unknown
+    try:
+        result = subprocess.run(["getprop", "persist.sys.timezone"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):  # not on Android, or getprop failed
+        return ""
+    return result.stdout.strip()
