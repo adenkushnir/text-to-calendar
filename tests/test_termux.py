@@ -51,3 +51,9 @@ def test_start_activity_error(recorder):
     recorder.output = "Error: Activity not started, unable to resolve Intent"
     with pytest.raises(RuntimeError):
         termux.start_activity(["am", "start"])
+
+# The phone's time zone comes from getprop
+def test_phone_timezone(recorder):
+    recorder.output = "America/New_York\n"
+    assert termux.phone_timezone() == "America/New_York"
+    assert recorder.calls[0] == ["getprop", "persist.sys.timezone"]

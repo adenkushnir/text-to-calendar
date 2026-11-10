@@ -25,6 +25,10 @@ def read_setting(name, default):
 POLL_SECONDS = read_setting("T2C_POLL_SECONDS", 5)
 SLOW_POLL_SECONDS = read_setting("T2C_SLOW_POLL_SECONDS", 30)
 IDLE_SECONDS = read_setting("T2C_IDLE_MINUTES", 10) * 60
+LOG_TEXT = os.environ.get("T2C_LOG_TEXT") == "1"
+RETRY_SECONDS = 60
+CLEAN_UP_SECONDS = 24 * 60 * 60
+GIVE_UP_SECONDS = 24 * 60 * 60
 
 # Return only the notifications that come from the messaging apps and have text
 def message_notifications(notes):
@@ -32,8 +36,8 @@ def message_notifications(notes):
 
     # Check each notification
     for note in notes:
-        # Skip other apps and notifications with no text
-        if note.get("packageName") not in MESSAGING_APPS or not note.get("content"):
+        # Skip other apps, notifications with no text, and system notices with no sender
+        if note.get("packageName") not in MESSAGING_APPS or not note.get("content") or not note.get("title"):
             continue
         messages.append(note)
     return messages
@@ -56,36 +60,43 @@ def make_client():
         return None
     return anthropic.Anthropic(timeout=60)
 
-# Work out one message: return the event (or None) and a line describing what happened
+# Work out one message: return the event (or None), a line describing what happened, and whether to try again later
 def describe(client, note):
     # Texts with no date never leave the phone
     if not heuristics.has_date_hint(note.get("content")):
-        return None, "no date"
+        return None, "no date", False
 
     # Without an API key we can only say a date was found
     if client is None:
-        return None, "date found, no API key"
+        return None, "date found, no API key", False
 
-    # Ask Claude, but report problems instead of crashing
+    # Ask Claude, with the phone's current zone so travelling works, but report problems instead of crashing
+    phone_zone = termux.phone_timezone()
     try:
-        event = extractor.extract_event(client, note)
+        event = extractor.extract_event(client, note, phone_zone)
     except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as error:  # bad key or no access
-        return None, f"date found, API key rejected ({error.status_code}): {error.message}"
-    except anthropic.RateLimitError:  # too many requests
-        return None, "date found, rate limited"
-    except anthropic.APIStatusError as error:  # any other API error, like no credit left
-        return None, f"date found, API error {error.status_code}: {error.message}"
-    except anthropic.APIConnectionError:  # no internet
-        return None, "date found, no connection"
+        return None, f"date found, API key rejected ({error.status_code}): {error.message}", False
+    except anthropic.RateLimitError:  # too many requests, worth trying again later
+        return None, "date found, rate limited", True
+    except anthropic.APIStatusError as error:  # other API errors; server errors (5xx) are worth trying again
+        return None, f"date found, API error {error.status_code}: {error.message}", error.status_code >= 500
+    except anthropic.APIConnectionError:  # no internet, worth trying again later
+        return None, "date found, no connection", True
     except ValueError:  # reply was not valid JSON
-        return None, "date found, unreadable reply"
+        return None, "date found, unreadable reply", False
 
     # Report whether Claude found an event
     if event is None:
-        return None, "date found, no event"
+        return None, "date found, no event", False
+    event["phone_timezone"] = phone_zone
     details = f"{event['title']} | {event['start']} to {event['end'] or '?'} | {event['location'] or 'no location'}"
-    repeat = f" | repeat {event['repeat']}" if event.get("repeat") else ""  # only shown for repeating events
-    return event, f"event: {details}{repeat}"
+    extras = f" | repeat {event['repeat']}" if event.get("repeat") else ""  # only shown for repeating events
+    extras += f" | zone {event['timezone']}" if event.get("timezone") else ""  # only when the text named a zone
+
+    # Don't offer events that have already started
+    if events.has_started(event, time.time() * 1000):
+        return None, f"already started, skipped: {details}", False
+    return event, f"event: {details}{extras}", False
 
 # Build the shell command a notification button runs, with full paths so it works from any folder
 def action_command(name, pending_id):
@@ -100,21 +111,68 @@ def suggest(connection, event):
     buttons = [("Add", add), ("Ignore", action_command("ignore", pending_id))]
     termux.notify(termux.notification_id(pending_id), "Add to calendar?", text, tap_action=add, buttons=buttons)
 
-# Describe a new message, print the result, and offer the event if one was found
-def handle(client, connection, note):
-    event, result = describe(client, note)
-    line = f"{datetime.now():%Y-%m-%d %H:%M:%S} [{note.get('packageName')}] {note.get('title')}: {note.get('content')}"
-    print(f"{line}\n    -> {result}", flush=True)
+# Describe a message for the log: app and sender, plus the text only when T2C_LOG_TEXT=1
+def message_label(note):
+    label = f"[{note.get('packageName')}] {note.get('title')}"
+    return f"{label}: {note.get('content')}" if LOG_TEXT else label  # keep texts out of the log by default
 
+# Show the notification for a found event, but keep running if the date can't be read or Termux fails
+def offer(connection, event):
     # Stop here when there is nothing to offer
     if event is None:
         return
 
-    # Show the notification, but keep running if the date can't be read or Termux fails
+    # Show the notification
     try:
         suggest(connection, event)
     except (OSError, subprocess.SubprocessError, ValueError) as error:  # notification failed or bad date
         print(f"    -> could not show notification: {error}", flush=True)
+
+# Describe a new message, print the result, and offer the event, or save the message to try again later
+def handle(client, connection, note):
+    event, result, retry = describe(client, note)
+    line = f"{datetime.now():%Y-%m-%d %H:%M:%S} {message_label(note)}"
+    print(f"{line}\n    -> {result}", flush=True)
+
+    # Save messages that failed for a reason that may clear up, like no internet
+    if retry:
+        now = time.time()
+        store.save_retry(connection, note, now, now + RETRY_SECONDS)
+        print(f"    -> will try again every {seconds_label(RETRY_SECONDS)}", flush=True)
+        return
+    offer(connection, event)
+
+# Try the saved messages again once they are due, giving up on any first saved more than GIVE_UP_SECONDS ago
+def retry_waiting(client, connection, now):
+    # Try each message that is due
+    for retry_id, note, saved_at in store.due_retries(connection, now):
+        event, result, retry = describe(client, note)
+
+        # Wait for the next round if it still fails and isn't too old yet
+        if retry and now - saved_at < GIVE_UP_SECONDS:
+            store.reschedule_retry(connection, retry_id, now + RETRY_SECONDS)
+            continue
+        store.delete_retry(connection, retry_id)
+        outcome = f"gave up ({result})" if retry else result  # still failing after GIVE_UP_SECONDS
+        line = f"{datetime.now():%Y-%m-%d %H:%M:%S} retried {message_label(note)}"
+        print(f"{line}\n    -> {outcome}", flush=True)
+        offer(connection, event)
+
+# Delete old data once a day, and remove the notifications of old suggestions that were never tapped
+def clean_up(connection):
+    old_pending = store.clean_up(connection, time.time())
+
+    # Remove each old suggestion's notification, keeping going if Termux fails
+    for pending_id in old_pending:
+        # Remove the notification
+        try:
+            termux.remove_notification(termux.notification_id(pending_id))
+        except (OSError, subprocess.SubprocessError) as error:  # Termux failed
+            print(f"Could not remove an old notification: {error}", flush=True)
+
+    # Log only when something was removed
+    if old_pending:
+        print(f"{datetime.now():%Y-%m-%d %H:%M:%S} removed {len(old_pending)} old suggestion(s)", flush=True)
 
 # Return how long to wait before the next check: fast after a recent text, slow once it has been quiet for a while
 def poll_interval(seconds_since_text):
@@ -147,7 +205,7 @@ def run():
     client = make_client()
     signal.signal(signal.SIGTERM, stop_on_signal)
     print(f"{datetime.now():%Y-%m-%d %H:%M:%S} text-to-calendar: watching for messages", flush=True)
-    last_status, last_text, interval = 0, time.time(), POLL_SECONDS
+    last_status, last_text, last_clean_up, interval = 0, time.time(), 0, POLL_SECONDS
 
     # Check the notifications in a loop, and remove the running notification however the loop ends
     try:
@@ -158,6 +216,11 @@ def run():
                 show_status(interval)
                 last_status = time.time()
 
+            # Clean up old data at start-up and then once a day
+            if time.time() - last_clean_up >= CLEAN_UP_SECONDS:
+                clean_up(connection)
+                last_clean_up = time.time()
+
             # Read and handle new messages, but keep running if Termux fails
             try:
                 new_messages = check_once(connection)
@@ -166,6 +229,7 @@ def run():
                 for note in new_messages:
                     handle(client, connection, note)
                 last_text = time.time() if new_messages else last_text  # a new text resets the quiet timer
+                retry_waiting(client, connection, time.time())
             except (OSError, subprocess.SubprocessError, ValueError) as error:  # command missing, failed or bad JSON
                 print(f"Could not read notifications: {error}", flush=True)
             new_interval = poll_interval(time.time() - last_text)

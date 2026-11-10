@@ -1,10 +1,11 @@
-# Remembers which messages were handled and which events are waiting for Add or Ignore, in a small sqlite database
+# Remembers handled messages, events waiting for Add or Ignore, and messages to try again, in a small sqlite database
 import hashlib
 import json
 import os
 import sqlite3
 DB_PATH = os.environ.get("T2C_DB", os.path.expanduser("~/.t2c.db"))
 REPEAT_SECONDS = 60 * 60
+KEEP_SECONDS = 7 * 24 * 60 * 60
 
 # Open the database and create the tables if they are missing
 def open_store(path):
@@ -12,6 +13,8 @@ def open_store(path):
     connection.execute("CREATE TABLE IF NOT EXISTS seen (hash TEXT PRIMARY KEY, seen_at INTEGER)")
     pending_table = "pending (id INTEGER PRIMARY KEY AUTOINCREMENT, event TEXT, created_at INTEGER)"
     connection.execute(f"CREATE TABLE IF NOT EXISTS {pending_table}")
+    retry_table = "retry (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT, saved_at REAL, next_try REAL)"
+    connection.execute(f"CREATE TABLE IF NOT EXISTS {retry_table}")
     connection.commit()
     return connection
 
@@ -44,3 +47,35 @@ def get_pending(connection, pending_id):
 def delete_pending(connection, pending_id):
     connection.execute("DELETE FROM pending WHERE id = ?", (pending_id,))
     connection.commit()
+
+# Save a message to send to Claude again at next_try (times are seconds since 1970)
+def save_retry(connection, note, saved_at, next_try):
+    sql = "INSERT INTO retry (note, saved_at, next_try) VALUES (?, ?, ?)"
+    connection.execute(sql, (json.dumps(note), saved_at, next_try))
+    connection.commit()
+
+# Return (id, note, saved_at) for each saved message that is due by now, oldest first
+def due_retries(connection, now):
+    sql = "SELECT id, note, saved_at FROM retry WHERE next_try <= ? ORDER BY id"
+    rows = connection.execute(sql, (now,)).fetchall()
+    return [(retry_id, json.loads(note), saved_at) for retry_id, note, saved_at in rows]  # each note back to a dict
+
+# Set when to try a saved message next
+def reschedule_retry(connection, retry_id, next_try):
+    connection.execute("UPDATE retry SET next_try = ? WHERE id = ?", (next_try, retry_id))
+    connection.commit()
+
+# Remove a saved message once it worked or was given up on
+def delete_retry(connection, retry_id):
+    connection.execute("DELETE FROM retry WHERE id = ?", (retry_id,))
+    connection.commit()
+
+# Delete message fingerprints and untouched suggestions older than KEEP_SECONDS, returning the deleted suggestion ids
+def clean_up(connection, now):
+    cutoff = now - KEEP_SECONDS
+    rows = connection.execute("SELECT id FROM pending WHERE created_at < ?", (cutoff,)).fetchall()
+    old_pending = [row[0] for row in rows]  # keep just the ids
+    connection.execute("DELETE FROM pending WHERE created_at < ?", (cutoff,))
+    connection.execute("DELETE FROM seen WHERE seen_at < ?", (cutoff,))
+    connection.commit()
+    return old_pending

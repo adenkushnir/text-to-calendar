@@ -8,7 +8,9 @@ A Python script runs on the phone in [Termux](https://termux.dev). It watches Sa
 
 1. Every 5 seconds, it reads the phone's notifications with `termux-notification-list` and keeps new texts from the messaging apps. After 10 minutes with no new texts it checks every 30 seconds instead, to save battery, and goes back to every 5 seconds as soon as a text arrives.
 2. It skips any text without a date-like word, so most texts never leave the phone.
-3. It sends the rest to the Claude API, which returns a structured event: title, start, end, all-day, location and repeat rule.
+3. It sends the rest to the Claude API, which returns a structured event: title, start, end, all-day, location, repeat rule and time zone.
+
+   **Time zones:** times are in the phone's current time zone, so they're right while you travel. If the text names a zone ("call at 3pm PT"), or is about a flight landing somewhere else, the time is converted and the prompt shows both: `6:00 PM (3:00 PM PST)`.
 4. It shows a notification with **Add** and **Ignore** buttons.
 5. **Add** opens the prefilled event in Google Calendar. Nothing is saved until you tap **Save** there.
 
@@ -116,7 +118,9 @@ There's nothing to do day to day. Two notifications stay in the notification bar
 | `tail -f ~/t2c.log` | Watch the log live (stop watching with Volume Down + C) |
 | `pgrep -f t2c.main` | Prints a number if it's running |
 
-If the app crashes, it restarts itself after 30 seconds. The log is in `~/t2c.log`, and starts over in a new file once it passes 1 MB. It contains your message texts, so it stays on the phone and is never committed.
+If the app crashes, it restarts itself after 30 seconds. If a text with a date arrives while there's no internet, or while Claude is busy or having problems, the text is saved and tried again every minute for up to 24 hours, and the prompt appears once it goes through. The log is in `~/t2c.log`, and starts over in a new file once it passes 1 MB. It stays on the phone and is never committed.
+
+The log records which app and sender each text came from and what happened to it, including any event Claude found (title, time, location). It does **not** record the text itself. To include message texts while testing, add `export T2C_LOG_TEXT=1` to `~/.t2c_env` and restart. Delete that line again afterwards.
 
 ## When it has to be started again
 
@@ -174,6 +178,7 @@ sh ~/text-to-calendar/boot/restart.sh
 - A text with two plans ("dinner at 7, then a movie at 10") gives one event.
 - If someone sends several texts between two checks (5 seconds, or 30 seconds when quiet), only the newest may be read.
 - Numeric dates are read as month/day (1/6 = January 6).
+- A text from someone in another time zone who writes "7pm" without naming a zone is read as 7 PM in your zone.
 
 ## Development
 
@@ -183,3 +188,13 @@ python -m pytest
 ```
 
 The tests use a fake Claude client and fake Termux commands, so they run on any computer and never call the API.
+
+To try a text on the phone without anyone texting you, pretend one arrived:
+
+```bash
+cd ~/text-to-calendar && source ~/.t2c_env
+python -m t2c.simulate "dinner fri 7pm at joes"
+python -m t2c.simulate "lunch tomorrow at noon" "Sam"
+```
+
+It goes through the same date check, Claude call, retry queue and **Add to calendar?** prompt as a real text, but doesn't read the phone's notifications. The second argument is the sender's name. The default is "Test sender". To see the text in its output too, run it with `T2C_LOG_TEXT=1` in front, like `T2C_LOG_TEXT=1 python -m t2c.simulate "..."`.

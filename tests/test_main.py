@@ -9,10 +9,12 @@ SAMSUNG = {"packageName": "com.samsung.android.messaging", "title": "Mom", "cont
 GOOGLE = {"packageName": "com.google.android.apps.messaging", "title": "Sam", "content": "dinner fri 7pm", "when": "2"}
 OTHER_APP = {"packageName": "com.whatsapp", "title": "Group", "content": "party sat", "when": "3"}
 NO_TEXT = {"packageName": "com.google.android.apps.messaging", "title": "Sam", "content": "", "when": "4"}
+NO_SENDER = {"packageName": "com.google.android.apps.messaging", "title": "",
+             "content": "Messages is doing work in the background", "when": "5"}
 
-# Only notifications from the two messaging apps with text are kept
+# Only notifications from the two messaging apps with a sender and text are kept
 def test_filters_to_messaging_apps():
-    assert main.message_notifications([SAMSUNG, GOOGLE, OTHER_APP, NO_TEXT]) == [SAMSUNG, GOOGLE]
+    assert main.message_notifications([SAMSUNG, GOOGLE, OTHER_APP, NO_TEXT, NO_SENDER]) == [SAMSUNG, GOOGLE]
 
 # The same notification is only returned the first time it is seen
 def test_check_once_skips_seen(monkeypatch):
@@ -24,34 +26,35 @@ def test_check_once_skips_seen(monkeypatch):
 # Texts with no date are never sent to Claude
 def test_describe_no_date():
     messages = FakeMessages(response=reply(EVENT))
-    assert main.describe(fake_client(messages), {"content": "lol ok"}) == (None, "no date")
+    assert main.describe(fake_client(messages), {"content": "lol ok"}) == (None, "no date", False)
     assert messages.calls == []
 
 # Without an API key the date is found but nothing is sent
 def test_describe_no_client():
-    assert main.describe(None, GOOGLE) == (None, "date found, no API key")
+    assert main.describe(None, GOOGLE) == (None, "date found, no API key", False)
 
 # A found event is described with its title, start and location
 def test_describe_event():
-    event, result = main.describe(fake_client(FakeMessages(response=reply(EVENT))), GOOGLE)
-    assert event == EVENT
+    event, result, retry = main.describe(fake_client(FakeMessages(response=reply(EVENT))), GOOGLE)
+    assert event == dict(EVENT, phone_timezone=termux.phone_timezone())
     assert result == "event: Dinner with Sam | 2026-11-13T19:00 to ? | Joe's"
+    assert retry is False
 
 # A reply with no event says so
 def test_describe_no_event():
     result = main.describe(fake_client(FakeMessages(response=reply(NO_EVENT))), GOOGLE)
-    assert result == (None, "date found, no event")
+    assert result == (None, "date found, no event", False)
 
 # A rejected API key is reported instead of crashing
 def test_describe_bad_key():
     error = anthropic.AuthenticationError("bad key", response=httpx2.Response(401, request=REQUEST), body=None)
     result = main.describe(fake_client(FakeMessages(error=error)), GOOGLE)
-    assert result == (None, "date found, API key rejected (401): bad key")
+    assert result == (None, "date found, API key rejected (401): bad key", False)
 
 # No internet is reported instead of crashing
 def test_describe_no_connection():
     error = anthropic.APIConnectionError(request=REQUEST)
-    assert main.describe(fake_client(FakeMessages(error=error)), GOOGLE) == (None, "date found, no connection")
+    assert main.describe(fake_client(FakeMessages(error=error)), GOOGLE) == (None, "date found, no connection", True)
 
 # A button command runs the action module with the id, from the repo folder
 def test_action_command():
@@ -86,7 +89,7 @@ def test_handle_survives_notify_failure(monkeypatch, capsys):
 # A repeating event shows its rule in the log line
 def test_describe_repeating_event():
     standup = dict(EVENT, title="Standup", start="2026-11-16T09:00", location="", repeat="FREQ=WEEKLY;BYDAY=MO")
-    event, result = main.describe(fake_client(FakeMessages(response=reply(standup))), GOOGLE)
+    event, result, retry = main.describe(fake_client(FakeMessages(response=reply(standup))), GOOGLE)
     assert result == "event: Standup | 2026-11-16T09:00 to ? | no location | repeat FREQ=WEEKLY;BYDAY=MO"
 
 # The running notification shows the time of the last check and how often it checks
@@ -113,3 +116,86 @@ def test_read_setting(monkeypatch):
     assert main.read_setting("T2C_TEST_SETTING", 5) == 5
     monkeypatch.delenv("T2C_TEST_SETTING")
     assert main.read_setting("T2C_TEST_SETTING", 5) == 5
+
+# Server errors are worth retrying, but other API errors like a bad request are not
+def test_describe_retry_only_server_errors():
+    server_error = anthropic.InternalServerError("down", response=httpx2.Response(500, request=REQUEST), body=None)
+    assert main.describe(fake_client(FakeMessages(error=server_error)), GOOGLE)[2] is True
+    bad_request = anthropic.BadRequestError("no credit", response=httpx2.Response(400, request=REQUEST), body=None)
+    assert main.describe(fake_client(FakeMessages(error=bad_request)), GOOGLE)[2] is False
+
+# A message that fails with no internet is saved, then offered once the connection is back
+def test_retry_after_no_connection(monkeypatch):
+    shown = []
+    monkeypatch.setattr(termux, "notify", lambda *args, **kwargs: shown.append(args))
+    connection = store.open_store(":memory:")
+    offline = FakeMessages(error=anthropic.APIConnectionError(request=REQUEST))
+    main.handle(fake_client(offline), connection, GOOGLE)
+    assert shown == []
+    assert len(store.due_retries(connection, float("inf"))) == 1
+    online = fake_client(FakeMessages(response=reply(EVENT)))
+    main.retry_waiting(online, connection, float("inf"))
+    assert shown[0][1] == "Add to calendar?"
+    assert store.due_retries(connection, float("inf")) == []
+
+# A saved message is not retried before it is due, and is rescheduled while still offline
+def test_retry_waits_and_reschedules():
+    connection = store.open_store(":memory:")
+    store.save_retry(connection, GOOGLE, 1000, 1060)
+    offline = fake_client(FakeMessages(error=anthropic.APIConnectionError(request=REQUEST)))
+    main.retry_waiting(offline, connection, 1030)
+    assert offline.beta.messages.calls == []
+    main.retry_waiting(offline, connection, 1060)
+    assert len(offline.beta.messages.calls) == 1
+    assert store.due_retries(connection, 1060) == []
+    assert len(store.due_retries(connection, 1060 + main.RETRY_SECONDS)) == 1
+
+# A message still failing after GIVE_UP_SECONDS is dropped
+def test_retry_gives_up(capsys):
+    connection = store.open_store(":memory:")
+    store.save_retry(connection, GOOGLE, 0, 0)
+    offline = fake_client(FakeMessages(error=anthropic.APIConnectionError(request=REQUEST)))
+    main.retry_waiting(offline, connection, main.GIVE_UP_SECONDS + 1)
+    assert store.due_retries(connection, float("inf")) == []
+    assert "gave up (date found, no connection)" in capsys.readouterr().out
+
+# An event that already started is skipped instead of offered
+def test_describe_past_event():
+    past = dict(EVENT, start="2020-01-03T19:00")
+    event, result, retry = main.describe(fake_client(FakeMessages(response=reply(past))), GOOGLE)
+    assert event is None
+    assert result.startswith("already started, skipped: Dinner with Sam | 2020-01-03T19:00")
+
+# Cleaning up removes the notifications of old suggestions
+def test_clean_up_removes_old_notifications(monkeypatch, capsys):
+    removed = []
+    monkeypatch.setattr(termux, "remove_notification", removed.append)
+    monkeypatch.setattr(store, "clean_up", lambda connection, now: [3, 4])
+    main.clean_up(store.open_store(":memory:"))
+    assert removed == ["t2c-3", "t2c-4"]
+    assert "removed 2 old suggestion(s)" in capsys.readouterr().out
+
+# The log shows app and sender only, and adds the message text when T2C_LOG_TEXT=1
+def test_message_label(monkeypatch):
+    monkeypatch.setattr(main, "LOG_TEXT", False)
+    assert main.message_label(GOOGLE) == "[com.google.android.apps.messaging] Sam"
+    monkeypatch.setattr(main, "LOG_TEXT", True)
+    assert main.message_label(GOOGLE) == "[com.google.android.apps.messaging] Sam: dinner fri 7pm"
+
+# A handled message is logged without its text by default
+def test_handle_keeps_text_out_of_log(monkeypatch, capsys):
+    monkeypatch.setattr(main, "LOG_TEXT", False)
+    main.handle(None, store.open_store(":memory:"), GOOGLE)
+    output = capsys.readouterr().out
+    assert "dinner fri 7pm" not in output
+    assert "date found, no API key" in output
+
+# The phone's zone is sent to Claude and kept with the event, and a zone named in the text shows in the log
+def test_describe_with_time_zones(monkeypatch):
+    monkeypatch.setattr(termux, "phone_timezone", lambda: "America/New_York")
+    call = dict(EVENT, title="Call", start="2030-01-08T15:00", location="", timezone="America/Los_Angeles")
+    messages = FakeMessages(response=reply(call))
+    event, result, retry = main.describe(fake_client(messages), GOOGLE)
+    assert "phone time zone America/New_York" in messages.calls[0]["messages"][0]["content"]
+    assert event["phone_timezone"] == "America/New_York"
+    assert result == "event: Call | 2030-01-08T15:00 to ? | no location | zone America/Los_Angeles"
