@@ -8,6 +8,11 @@ plans, meetings, appointments, reservations or deadlines.
 Rules:
 - Give each separate plan its own event, like dinner at 7:30 and then a movie at 10.
 - If the text offers a first choice and a fallback ("wed at 5:45? if not then 12/2 at 9"), list only the first choice.
+- Birthdays: when the text gives the date of someone's birthday (the sender's own, like "it's my birthday march 3",
+  or someone else's, like "jakes birthday is saturday"), add an all-day event titled "<Name>'s birthday" on that date
+  with repeat FREQ=YEARLY. Use the From name for the sender's own birthday. If that date has already passed this year,
+  use next year's date. A party or other plan in the same text is a separate event.
+  Ignore birthday wishes like "happy birthday!" and birthdays mentioned without a date.
 - Return an empty events list for past events, vague ideas like "we should hang out sometime", and dates that are
   not plans.
 - Use the received time to work out relative dates like "tomorrow", "fri" or "next week".

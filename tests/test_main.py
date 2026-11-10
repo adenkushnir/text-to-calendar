@@ -228,3 +228,15 @@ def test_retry_with_two_events(monkeypatch):
     store.save_retry(connection, GOOGLE, 0, 0)
     main.retry_waiting(fake_client(FakeMessages(response=reply([EVENT, MOVIE]))), connection, 1)
     assert len(shown) == 2
+
+# A birthday party text gives two prompts: the party, and the yearly birthday
+def test_handle_party_and_birthday(monkeypatch):
+    shown = []
+    monkeypatch.setattr(termux, "notify", lambda *args, **kwargs: shown.append(args))
+    party = dict(EVENT, title="Jake's birthday party", start="2037-11-14T20:00", location="Jake's place")
+    birthday = dict(EVENT, title="Jake's birthday", start="2037-11-14", all_day=True, location="", repeat="FREQ=YEARLY")
+    jake = dict(GOOGLE, title="Mom", content="jakes birthday is saturday, party at 8 at his place")
+    main.handle(fake_client(FakeMessages(response=reply([party, birthday]))), store.open_store(":memory:"), jake)
+    summaries = [args[2] for args in shown]  # the text of each prompt
+    assert summaries == ["Jake's birthday party · Sat Nov 14, 8:00 PM · Jake's place",
+                         "Jake's birthday · Sat Nov 14 · repeats yearly"]

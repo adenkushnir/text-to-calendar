@@ -20,6 +20,9 @@ WITH_DATES = [
     "party 1/6/2026",
     "party 1-6-2026",
     "party 1.6.2026",
+    "its my birthday march 3!",
+    "my bday is the 3rd",
+    "jakes birthday is saturday, party at 8",
 ]
 WITHOUT_DATES = [
     "lol ok",
@@ -32,6 +35,7 @@ WITHOUT_DATES = [
     "my number is 555-1234",
     "call 1-800-555-1234",
     "it was 2.5 miles",
+    "happy birthday!!",
     "",
 ]
 

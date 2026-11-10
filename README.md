@@ -10,6 +10,8 @@ A Python script runs on the phone in [Termux](https://termux.dev). It watches Sa
 2. It skips any text without a date-like word, so most texts never leave the phone.
 3. It sends the rest to the Claude API, which returns each event in the text: title, start, end, all-day, location, repeat rule and time zone. A text with several plans ("dinner at 7:30, then a movie at 10") gives one event per plan. When a text offers a first choice and a fallback ("wed at 5:45? if not then 12/2"), only the first choice is used.
 
+   **Birthdays:** a text giving someone's birthday ("it's my birthday march 3", or "jakes birthday is saturday") also offers a yearly all-day event, like `Sam's birthday · Wed Mar 3 · repeats yearly`. A party in the same text gets its own prompt. Birthday wishes like "happy birthday!" are ignored.
+
    **Time zones:** times are in the phone's current time zone, so they're right while you travel. If the text names a zone ("call at 3pm PT"), or is about a flight landing somewhere else, the time is converted and the prompt shows both: `6:00 PM (3:00 PM PST)`.
 4. It shows a notification with **Add** and **Ignore** buttons for each event.
 5. **Add** opens the prefilled event in Google Calendar. Nothing is saved until you tap **Save** there.

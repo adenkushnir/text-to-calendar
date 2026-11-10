@@ -121,3 +121,13 @@ def test_zone_fallbacks():
     party = dict(PARTY, timezone="Asia/Tokyo", phone_timezone="America/New_York")
     assert str(events.event_zone(party)) == "America/New_York"
     assert "eventTimezone" not in events.insert_intent_args(party)
+
+# A birthday is a yearly all-day event: the summary says so, and the calendar gets the yearly rule
+def test_birthday_event():
+    birthday = {"title": "Sam's birthday", "start": "2027-03-03", "end": "", "all_day": True, "location": "",
+                "repeat": "FREQ=YEARLY", "timezone": "", "phone_timezone": "America/New_York"}
+    assert events.summary(birthday) == "Sam's birthday · Wed Mar 3 · repeats yearly"
+    args = events.insert_intent_args(birthday)
+    assert args[args.index("rrule") + 1] == "FREQ=YEARLY"
+    assert args[args.index("allDay") + 1] == "true"
+    assert events.has_started(birthday, events.to_millis("2030-01-01")) is False
