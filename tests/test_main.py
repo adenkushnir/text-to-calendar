@@ -9,10 +9,12 @@ SAMSUNG = {"packageName": "com.samsung.android.messaging", "title": "Mom", "cont
 GOOGLE = {"packageName": "com.google.android.apps.messaging", "title": "Sam", "content": "dinner fri 7pm", "when": "2"}
 OTHER_APP = {"packageName": "com.whatsapp", "title": "Group", "content": "party sat", "when": "3"}
 NO_TEXT = {"packageName": "com.google.android.apps.messaging", "title": "Sam", "content": "", "when": "4"}
+NO_SENDER = {"packageName": "com.google.android.apps.messaging", "title": "",
+             "content": "Messages is doing work in the background", "when": "5"}
 
-# Only notifications from the two messaging apps with text are kept
+# Only notifications from the two messaging apps with a sender and text are kept
 def test_filters_to_messaging_apps():
-    assert main.message_notifications([SAMSUNG, GOOGLE, OTHER_APP, NO_TEXT]) == [SAMSUNG, GOOGLE]
+    assert main.message_notifications([SAMSUNG, GOOGLE, OTHER_APP, NO_TEXT, NO_SENDER]) == [SAMSUNG, GOOGLE]
 
 # The same notification is only returned the first time it is seen
 def test_check_once_skips_seen(monkeypatch):
@@ -156,3 +158,10 @@ def test_retry_gives_up(capsys):
     main.retry_waiting(offline, connection, main.GIVE_UP_SECONDS + 1)
     assert store.due_retries(connection, float("inf")) == []
     assert "gave up (date found, no connection)" in capsys.readouterr().out
+
+# An event that already started is skipped instead of offered
+def test_describe_past_event():
+    past = dict(EVENT, start="2020-01-03T19:00")
+    event, result, retry = main.describe(fake_client(FakeMessages(response=reply(past))), GOOGLE)
+    assert event is None
+    assert result.startswith("already started, skipped: Dinner with Sam | 2020-01-03T19:00")

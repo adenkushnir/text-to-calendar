@@ -34,8 +34,8 @@ def message_notifications(notes):
 
     # Check each notification
     for note in notes:
-        # Skip other apps and notifications with no text
-        if note.get("packageName") not in MESSAGING_APPS or not note.get("content"):
+        # Skip other apps, notifications with no text, and system notices with no sender
+        if note.get("packageName") not in MESSAGING_APPS or not note.get("content") or not note.get("title"):
             continue
         messages.append(note)
     return messages
@@ -87,6 +87,10 @@ def describe(client, note):
         return None, "date found, no event", False
     details = f"{event['title']} | {event['start']} to {event['end'] or '?'} | {event['location'] or 'no location'}"
     repeat = f" | repeat {event['repeat']}" if event.get("repeat") else ""  # only shown for repeating events
+
+    # Don't offer events that have already started
+    if events.has_started(event, time.time() * 1000):
+        return None, f"already started, skipped: {details}", False
     return event, f"event: {details}{repeat}", False
 
 # Build the shell command a notification button runs, with full paths so it works from any folder
