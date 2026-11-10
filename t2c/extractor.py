@@ -1,7 +1,8 @@
 # Asks Claude whether a text message contains an event, and returns its details
 import json
+import os
 from datetime import datetime
-MODEL = "claude-opus-5-5"
+MODEL = os.environ.get("T2C_MODEL", "claude-opus-5-5")
 SYSTEM_PROMPT = """You read one text message and decide if it sets up a specific event with a date or time:
 a plan, meeting, appointment, reservation or deadline.
 Rules:
