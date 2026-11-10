@@ -16,6 +16,10 @@ WITH_DATES = [
     "the game is the 21st",
     "practice 6:30 P.M.",
     "TMRW at 10",
+    "party 01/06/2026",
+    "party 1/6/2026",
+    "party 1-6-2026",
+    "party 1.6.2026",
 ]
 WITHOUT_DATES = [
     "lol ok",
@@ -26,6 +30,8 @@ WITHOUT_DATES = [
     "on my way",
     "I'm at the store",
     "my number is 555-1234",
+    "call 1-800-555-1234",
+    "it was 2.5 miles",
     "",
 ]
 
