@@ -1,4 +1,4 @@
-# Remembers handled messages, events waiting for Add or Ignore, and messages to try again, in a small sqlite database
+# Remembers handled messages, waiting events, messages to retry and failure counts, in a small sqlite database
 import hashlib
 import json
 import os
@@ -15,6 +15,7 @@ def open_store(path):
     connection.execute(f"CREATE TABLE IF NOT EXISTS {pending_table}")
     retry_table = "retry (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT, saved_at REAL, next_try REAL)"
     connection.execute(f"CREATE TABLE IF NOT EXISTS {retry_table}")
+    connection.execute("CREATE TABLE IF NOT EXISTS health (kind TEXT PRIMARY KEY, failures INTEGER)")
     connection.commit()
     return connection
 
@@ -79,3 +80,25 @@ def clean_up(connection, now):
     connection.execute("DELETE FROM seen WHERE seen_at < ?", (cutoff,))
     connection.commit()
     return old_pending
+
+# Return how many times in a row a kind of problem has happened
+def failure_count(connection, kind):
+    row = connection.execute("SELECT failures FROM health WHERE kind = ?", (kind,)).fetchone()
+    return row[0] if row else 0  # never failed yet
+
+# Count one more failure of a kind of problem and return the new count
+def record_failure(connection, kind):
+    count = failure_count(connection, kind) + 1
+    connection.execute("INSERT OR REPLACE INTO health (kind, failures) VALUES (?, ?)", (kind, count))
+    connection.commit()
+    return count
+
+# Reset a kind of problem after a success and return how many failures there were before
+def record_success(connection, kind):
+    count = failure_count(connection, kind)
+
+    # Only write when there was something to reset, since this runs on every check
+    if count:
+        connection.execute("UPDATE health SET failures = 0 WHERE kind = ?", (kind,))
+        connection.commit()
+    return count
