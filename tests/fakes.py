@@ -23,10 +23,11 @@ class FakeMessages:
 def fake_client(messages):
     return SimpleNamespace(beta=SimpleNamespace(messages=messages))
 
-# Build a fake reply holding the given event as JSON text
-def reply(event, stop_reason="end_turn"):
-    return SimpleNamespace(stop_reason=stop_reason, content=[SimpleNamespace(type="text", text=json.dumps(event))])
-EVENT = {"has_event": True, "title": "Dinner with Sam", "start": "2026-11-13T19:00", "end": "", "all_day": False,
-         "location": "Joe's", "repeat": "", "timezone": ""}
-NO_EVENT = {"has_event": False, "title": "", "start": "", "end": "", "all_day": False, "location": "", "repeat": "",
-            "timezone": ""}
+# Build a fake reply holding the given list of events as JSON text
+def reply(found, stop_reason="end_turn"):
+    text = json.dumps({"events": found})
+    return SimpleNamespace(stop_reason=stop_reason, content=[SimpleNamespace(type="text", text=text)])
+EVENT = {"title": "Dinner with Sam", "start": "2037-11-13T19:00", "end": "", "all_day": False, "location": "Joe's",
+         "repeat": "", "timezone": ""}
+MOVIE = {"title": "Movie", "start": "2037-11-13T22:00", "end": "", "all_day": False, "location": "", "repeat": "",
+         "timezone": ""}
