@@ -1,12 +1,14 @@
-# Main loop: watches message notifications and asks Claude about texts that mention a date
+# Main loop: watches message notifications, asks Claude about texts with a date, and offers found events
 import os
+import shlex
 import subprocess
+import sys
 import time
 import anthropic
-from t2c import extractor, heuristics, store, termux
+from t2c import events, extractor, heuristics, store, termux
 MESSAGING_APPS = {"com.samsung.android.messaging", "com.google.android.apps.messaging"}
 POLL_SECONDS = 5
-DB_PATH = os.environ.get("T2C_DB", os.path.expanduser("~/.t2c.db"))
+REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Return only the notifications that come from the messaging apps and have text
 def message_notifications(notes):
@@ -38,38 +40,67 @@ def make_client():
         return None
     return anthropic.Anthropic(timeout=60)
 
-# Describe what happened to one message, asking Claude when the text mentions a date
+# Work out one message: return the event (or None) and a line describing what happened
 def describe(client, note):
     # Texts with no date never leave the phone
     if not heuristics.has_date_hint(note.get("content")):
-        return "no date"
+        return None, "no date"
 
     # Without an API key we can only say a date was found
     if client is None:
-        return "date found, no API key"
+        return None, "date found, no API key"
 
     # Ask Claude, but report problems instead of crashing
     try:
         event = extractor.extract_event(client, note)
     except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as error:  # bad key or no access
-        return f"date found, API key rejected ({error.status_code}): {error.message}"
+        return None, f"date found, API key rejected ({error.status_code}): {error.message}"
     except anthropic.RateLimitError:  # too many requests
-        return "date found, rate limited"
+        return None, "date found, rate limited"
     except anthropic.APIStatusError as error:  # any other API error, like no credit left
-        return f"date found, API error {error.status_code}: {error.message}"
+        return None, f"date found, API error {error.status_code}: {error.message}"
     except anthropic.APIConnectionError:  # no internet
-        return "date found, no connection"
+        return None, "date found, no connection"
     except ValueError:  # reply was not valid JSON
-        return "date found, unreadable reply"
+        return None, "date found, unreadable reply"
 
     # Report whether Claude found an event
     if event is None:
-        return "date found, no event"
-    return f"event: {event['title']} | {event['start']} to {event['end'] or '?'} | {event['location'] or 'no location'}"
+        return None, "date found, no event"
+    details = f"{event['title']} | {event['start']} to {event['end'] or '?'} | {event['location'] or 'no location'}"
+    return event, f"event: {details}"
 
-# Poll forever and print what happened to each new message
+# Build the shell command a notification button runs, with full paths so it works from any folder
+def action_command(name, pending_id):
+    python, repo, db = shlex.quote(sys.executable), shlex.quote(REPO_DIR), shlex.quote(store.DB_PATH)
+    return f"cd {repo} && T2C_DB={db} {python} -m t2c.action {name} {pending_id}"
+
+# Save the event and show an "Add to calendar?" notification with Add and Ignore buttons
+def suggest(connection, event):
+    text = events.summary(event)
+    pending_id = store.save_pending(connection, event)
+    add = action_command("add", pending_id)
+    buttons = [("Add", add), ("Ignore", action_command("ignore", pending_id))]
+    termux.notify(termux.notification_id(pending_id), "Add to calendar?", text, tap_action=add, buttons=buttons)
+
+# Describe a new message, print the result, and offer the event if one was found
+def handle(client, connection, note):
+    event, result = describe(client, note)
+    print(f"[{note.get('packageName')}] {note.get('title')}: {note.get('content')}\n    -> {result}", flush=True)
+
+    # Stop here when there is nothing to offer
+    if event is None:
+        return
+
+    # Show the notification, but keep running if the date can't be read or Termux fails
+    try:
+        suggest(connection, event)
+    except (OSError, subprocess.SubprocessError, ValueError) as error:  # notification failed or bad date
+        print(f"    -> could not show notification: {error}", flush=True)
+
+# Poll forever and handle each new message
 def run():
-    connection = store.open_store(DB_PATH)
+    connection = store.open_store(store.DB_PATH)
     client = make_client()
     print("text-to-calendar: watching for messages", flush=True)
 
@@ -77,10 +108,9 @@ def run():
     while True:
         # Read and handle new messages, but keep running if Termux fails
         try:
-            # Print each new message and its result
+            # Handle each new message
             for note in check_once(connection):
-                line = f"[{note.get('packageName')}] {note.get('title')}: {note.get('content')}"
-                print(f"{line}\n    -> {describe(client, note)}", flush=True)
+                handle(client, connection, note)
         except (OSError, subprocess.SubprocessError, ValueError) as error:  # command missing, failed or bad JSON
             print(f"Could not read notifications: {error}", flush=True)
         time.sleep(POLL_SECONDS)

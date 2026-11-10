@@ -10,3 +10,33 @@ def list_notifications():
     if result.returncode != 0 or not result.stdout.strip():
         return []
     return json.loads(result.stdout)
+
+# Return the notification id used for a waiting event
+def notification_id(pending_id):
+    return f"t2c-{pending_id}"
+
+# Show a notification; tap_action and each button action are shell commands Termux runs when tapped
+def notify(notify_id, title, content, tap_action=None, buttons=()):
+    args = ["termux-notification", "--id", notify_id, "--title", title, "--content", content, "--priority", "high"]
+
+    # Run tap_action when the notification itself is tapped
+    if tap_action:
+        args += ["--action", tap_action]
+
+    # Add each button with its label and command
+    for number, (label, action) in enumerate(buttons, start=1):
+        args += [f"--button{number}", label, f"--button{number}-action", action]
+    subprocess.run(args, check=True, capture_output=True, timeout=30)
+
+# Remove a notification by id
+def remove_notification(notify_id):
+    subprocess.run(["termux-notification-remove", notify_id], capture_output=True, timeout=30)
+
+# Start an Android activity with the given am arguments, raising an error if am reports one
+def start_activity(args):
+    result = subprocess.run(args, capture_output=True, text=True, timeout=30)
+    output = (result.stdout + result.stderr).strip()
+
+    # am sometimes prints an error but still exits with 0, so check the text too
+    if result.returncode != 0 or output.startswith("Error") or "Exception" in output:
+        raise RuntimeError(output or f"am exited with {result.returncode}")
