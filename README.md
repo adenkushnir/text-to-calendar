@@ -183,3 +183,13 @@ python -m pytest
 ```
 
 The tests use a fake Claude client and fake Termux commands, so they run on any computer and never call the API.
+
+To try a text on the phone without anyone texting you, pretend one arrived:
+
+```bash
+cd ~/text-to-calendar && source ~/.t2c_env
+python -m t2c.simulate "dinner fri 7pm at joes"
+python -m t2c.simulate "lunch tomorrow at noon" "Sam"
+```
+
+It goes through the same date check, Claude call, retry queue and **Add to calendar?** prompt as a real text, but doesn't read the phone's notifications. The second argument is the sender's name. The default is "Test sender".
