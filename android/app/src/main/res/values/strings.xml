@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Text shown by Android outside the app's own screens -->
+<resources>
+    <string name="app_name">Datebook</string>
+</resources>
