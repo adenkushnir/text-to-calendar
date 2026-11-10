@@ -39,3 +39,15 @@ def test_pending_round_trip():
     assert store.get_pending(connection, pending_id) == event
     store.delete_pending(connection, pending_id)
     assert store.get_pending(connection, pending_id) is None
+
+# Saved messages come back once due, can be rescheduled, and can be deleted
+def test_retry_round_trip():
+    connection = store.open_store(":memory:")
+    store.save_retry(connection, NOTE, 100, 160)
+    assert store.due_retries(connection, 159) == []
+    retry_id, note, saved_at = store.due_retries(connection, 160)[0]
+    assert (note, saved_at) == (NOTE, 100)
+    store.reschedule_retry(connection, retry_id, 220)
+    assert store.due_retries(connection, 200) == []
+    store.delete_retry(connection, retry_id)
+    assert store.due_retries(connection, 1000) == []
