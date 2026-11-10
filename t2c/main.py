@@ -26,6 +26,7 @@ POLL_SECONDS = read_setting("T2C_POLL_SECONDS", 5)
 SLOW_POLL_SECONDS = read_setting("T2C_SLOW_POLL_SECONDS", 30)
 IDLE_SECONDS = read_setting("T2C_IDLE_MINUTES", 10) * 60
 RETRY_SECONDS = 60
+CLEAN_UP_SECONDS = 24 * 60 * 60
 GIVE_UP_SECONDS = 24 * 60 * 60
 
 # Return only the notifications that come from the messaging apps and have text
@@ -148,6 +149,22 @@ def retry_waiting(client, connection, now):
         print(f"{line}\n    -> {outcome}", flush=True)
         offer(connection, event)
 
+# Delete old data once a day, and remove the notifications of old suggestions that were never tapped
+def clean_up(connection):
+    old_pending = store.clean_up(connection, time.time())
+
+    # Remove each old suggestion's notification, keeping going if Termux fails
+    for pending_id in old_pending:
+        # Remove the notification
+        try:
+            termux.remove_notification(termux.notification_id(pending_id))
+        except (OSError, subprocess.SubprocessError) as error:  # Termux failed
+            print(f"Could not remove an old notification: {error}", flush=True)
+
+    # Log only when something was removed
+    if old_pending:
+        print(f"{datetime.now():%Y-%m-%d %H:%M:%S} removed {len(old_pending)} old suggestion(s)", flush=True)
+
 # Return how long to wait before the next check: fast after a recent text, slow once it has been quiet for a while
 def poll_interval(seconds_since_text):
     return POLL_SECONDS if seconds_since_text < IDLE_SECONDS else SLOW_POLL_SECONDS  # quiet means slow
@@ -179,7 +196,7 @@ def run():
     client = make_client()
     signal.signal(signal.SIGTERM, stop_on_signal)
     print(f"{datetime.now():%Y-%m-%d %H:%M:%S} text-to-calendar: watching for messages", flush=True)
-    last_status, last_text, interval = 0, time.time(), POLL_SECONDS
+    last_status, last_text, last_clean_up, interval = 0, time.time(), 0, POLL_SECONDS
 
     # Check the notifications in a loop, and remove the running notification however the loop ends
     try:
@@ -189,6 +206,11 @@ def run():
             if time.time() - last_status >= STATUS_SECONDS:
                 show_status(interval)
                 last_status = time.time()
+
+            # Clean up old data at start-up and then once a day
+            if time.time() - last_clean_up >= CLEAN_UP_SECONDS:
+                clean_up(connection)
+                last_clean_up = time.time()
 
             # Read and handle new messages, but keep running if Termux fails
             try:

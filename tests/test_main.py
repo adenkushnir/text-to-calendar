@@ -165,3 +165,12 @@ def test_describe_past_event():
     event, result, retry = main.describe(fake_client(FakeMessages(response=reply(past))), GOOGLE)
     assert event is None
     assert result.startswith("already started, skipped: Dinner with Sam | 2020-01-03T19:00")
+
+# Cleaning up removes the notifications of old suggestions
+def test_clean_up_removes_old_notifications(monkeypatch, capsys):
+    removed = []
+    monkeypatch.setattr(termux, "remove_notification", removed.append)
+    monkeypatch.setattr(store, "clean_up", lambda connection, now: [3, 4])
+    main.clean_up(store.open_store(":memory:"))
+    assert removed == ["t2c-3", "t2c-4"]
+    assert "removed 2 old suggestion(s)" in capsys.readouterr().out
