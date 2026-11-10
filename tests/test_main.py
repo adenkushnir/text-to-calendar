@@ -89,7 +89,27 @@ def test_describe_repeating_event():
     event, result = main.describe(fake_client(FakeMessages(response=reply(standup))), GOOGLE)
     assert result == "event: Standup | 2026-11-16T09:00 to ? | no location | repeat FREQ=WEEKLY;BYDAY=MO"
 
-# The running notification shows the time of the last check
+# The running notification shows the time of the last check and how often it checks
 def test_status_text():
-    assert main.status_text(datetime(2026, 11, 9, 21, 5)) == "Last checked 9:05 PM"
-    assert main.status_text(datetime(2026, 11, 9, 0, 30)) == "Last checked 12:30 AM"
+    assert main.status_text(datetime(2026, 11, 9, 21, 5), 5) == "Last checked 9:05 PM · every 5 s"
+    assert main.status_text(datetime(2026, 11, 9, 0, 30), 30.0) == "Last checked 12:30 AM · every 30 s"
+
+# Checks are fast after a recent text and slow once it has been quiet for the idle time
+def test_poll_interval(monkeypatch):
+    monkeypatch.setattr(main, "POLL_SECONDS", 5)
+    monkeypatch.setattr(main, "SLOW_POLL_SECONDS", 30)
+    monkeypatch.setattr(main, "IDLE_SECONDS", 600)
+    assert main.poll_interval(0) == 5
+    assert main.poll_interval(599) == 5
+    assert main.poll_interval(600) == 30
+
+# Settings come from the environment, with the default used when missing, invalid, zero or negative
+def test_read_setting(monkeypatch):
+    monkeypatch.setenv("T2C_TEST_SETTING", "12")
+    assert main.read_setting("T2C_TEST_SETTING", 5) == 12
+    monkeypatch.setenv("T2C_TEST_SETTING", "fast")
+    assert main.read_setting("T2C_TEST_SETTING", 5) == 5
+    monkeypatch.setenv("T2C_TEST_SETTING", "0")
+    assert main.read_setting("T2C_TEST_SETTING", 5) == 5
+    monkeypatch.delenv("T2C_TEST_SETTING")
+    assert main.read_setting("T2C_TEST_SETTING", 5) == 5
