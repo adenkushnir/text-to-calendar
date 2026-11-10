@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 DB_PATH = os.environ.get("T2C_DB", os.path.expanduser("~/.t2c.db"))
+REPEAT_SECONDS = 60 * 60
 
 # Open the database and create the tables if they are missing
 def open_store(path):
@@ -14,15 +15,16 @@ def open_store(path):
     connection.commit()
     return connection
 
-# Make a fingerprint of a notification so the same message is only handled once
+# Make a fingerprint of a notification from its app, sender and text, so the same message is only handled once
 def message_hash(note):
-    key = "|".join(str(note.get(field, "")) for field in ("packageName", "title", "content", "when"))  # join each field
+    key = "|".join(str(note.get(field, "")) for field in ("packageName", "title", "content"))  # join each field
     return hashlib.sha256(key.encode("utf-8")).hexdigest()
 
-# Record a message as seen and return True if it was new
+# Record a message as seen and return True if it is new, or was last seen more than REPEAT_SECONDS ago
 def mark_seen(connection, note):
-    sql = "INSERT OR IGNORE INTO seen (hash, seen_at) VALUES (?, strftime('%s', 'now'))"
-    cursor = connection.execute(sql, (message_hash(note),))
+    sql = ("INSERT INTO seen (hash, seen_at) VALUES (?, strftime('%s', 'now')) "
+           "ON CONFLICT(hash) DO UPDATE SET seen_at = excluded.seen_at WHERE seen.seen_at < excluded.seen_at - ?")
+    cursor = connection.execute(sql, (message_hash(note), REPEAT_SECONDS))
     connection.commit()
     return cursor.rowcount == 1
 
