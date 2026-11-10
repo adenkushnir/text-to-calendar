@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<!-- Datebook clickable mockup: every screen of the planned Android app, to review the design before app code -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Datebook Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* Layout: a phone frame showing one screen at a time, with a screen list beside it (above it on phones) */
+  --teal: #00897B;
+  --teal-strong: #00695C;
+  --teal-tint: #E0F2F1;
+  --page: #E9EEED;
+  --bg: #F4F7F6;
+  --surface: #FFFFFF;
+  --text: #13201E;
+  --muted: #5A6B68;
+  --line: #D3DDDB;
+  --warn: #9A5B00;
+  --warn-tint: #FFF3E0;
+  --on-teal: #FFFFFF;
+  --radius: 4px;
+  --font: "Inter", "Roboto", "Segoe UI", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --teal: #26A69A;
+    --teal-strong: #4DB6AC;
+    --teal-tint: #12332F;
+    --page: #0A0F0E;
+    --bg: #101816;
+    --surface: #18221F;
+    --text: #E4ECEA;
+    --muted: #93A4A1;
+    --line: #2A3633;
+    --warn: #F0B35A;
+    --warn-tint: #33260F;
+    --on-teal: #06201C;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --teal: #26A69A;
+  --teal-strong: #4DB6AC;
+  --teal-tint: #12332F;
+  --page: #0A0F0E;
+  --bg: #101816;
+  --surface: #18221F;
+  --text: #E4ECEA;
+  --muted: #93A4A1;
+  --line: #2A3633;
+  --warn: #F0B35A;
+  --warn-tint: #33260F;
+  --on-teal: #06201C;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--page); color: var(--text); font-family: var(--font); font-size: 15px; line-height: 1.4; }
+button { font: inherit; color: inherit; }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.wrap {
+  display: flex;
+  gap: 32px;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 24px 16px;
+  min-height: 100%;
+}
+.panel { width: 260px; display: flex; flex-direction: column; gap: 16px; }
+.panel h1 { font-size: 20px; margin: 0; text-wrap: balance; }
+.panel p { margin: 0; color: var(--muted); font-size: 13px; }
+.nav { display: flex; flex-direction: column; gap: 4px; }
+.nav h2 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 12px 0 4px; }
+.nav button {
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.nav button:hover { background: var(--surface); }
+.nav button[aria-current="true"] {
+  background: var(--surface);
+  border-color: var(--teal);
+  color: var(--teal-strong);
+  font-weight: 600;
+}
+.theme-row { display: flex; gap: 4px; }
+.theme-row button {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.theme-row button[aria-pressed="true"] { border-color: var(--teal); color: var(--teal-strong); font-weight: 600; }
+.phone {
+  width: 380px;
+  height: 780px;
+  background: var(--bg);
+  border: 10px solid #111;
+  border-radius: 36px;
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+.status {
+  height: 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 18px;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.screen { display: none; flex: 1; flex-direction: column; overflow-y: auto; position: relative; }
+.screen.active { display: flex; }
+.bar {
+  background: var(--teal);
+  color: var(--on-teal);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  font-weight: 600;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.bar .grow { flex: 1; }
+.bar button {
+  background: transparent;
+  border: 0;
+  color: var(--on-teal);
+  cursor: pointer;
+  font-size: 18px;
+  padding: 2px 6px;
+}
+.content { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.card.accent { border-left: 4px solid var(--teal); }
+.card h3 { margin: 0; font-size: 17px; }
+.meta { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.warn {
+  background: var(--warn-tint);
+  color: var(--warn);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  font-size: 13px;
+}
+.row { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.row:last-child { border-bottom: 0; }
+.row .grow { flex: 1; min-width: 0; }
+.row .title { font-weight: 600; }
+.btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn {
+  border-radius: var(--radius);
+  padding: 8px 14px;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border: 1px solid var(--teal);
+  background: transparent;
+  color: var(--teal-strong);
+}
+.btn.primary { background: var(--teal); color: var(--on-teal); }
+.btn.small { padding: 5px 10px; font-size: 12px; }
+.btn.plain { border-color: var(--line); color: var(--muted); }
+.big { font-size: 22px; font-weight: 700; margin: 0; text-wrap: balance; }
+.progress { display: flex; gap: 4px; }
+.progress span { flex: 1; height: 4px; background: var(--line); border-radius: 2px; }
+.progress span.on { background: var(--teal); }
+.setup { padding: 24px; display: flex; flex-direction: column; gap: 16px; flex: 1; }
+.setup .art {
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius);
+  background: var(--teal-tint);
+  display: grid;
+  place-items: center;
+  font-size: 34px;
+  color: var(--teal-strong);
+  font-weight: 700;
+}
+.setup p { margin: 0; color: var(--muted); max-width: 32ch; }
+.setup .foot { margin-top: auto; display: flex; justify-content: space-between; }
+.field {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px;
+  background: var(--surface);
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  color: var(--muted);
+}
+.menu button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  text-align: left;
+}
+.menu .ico {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius);
+  background: var(--teal-tint);
+  color: var(--teal-strong);
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 700;
+}
+.menu .grow { flex: 1; }
+.menu small { display: block; color: var(--muted); font-size: 12px; }
+.switch {
+  width: 38px;
+  height: 22px;
+  border-radius: 11px;
+  background: var(--line);
+  position: relative;
+  flex-shrink: 0;
+  border: 0;
+  cursor: pointer;
+}
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--surface);
+  transition: left .15s;
+}
+.switch[aria-checked="true"] { background: var(--teal); }
+.switch[aria-checked="true"]::after { left: 19px; }
+.shade {
+  background: #2B3533;
+  flex: 1;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: #E8EEEC;
+}
+.shade .clock { font-size: 40px; font-weight: 300; }
+.note {
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.note .head { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.note .head img, .note .head svg { width: 16px; height: 16px; }
+.note h4 { margin: 0; font-size: 15px; }
+.note .quote { font-size: 13px; color: var(--muted); }
+.note .acts { display: flex; gap: 16px; padding-top: 4px; }
+.note .acts button {
+  background: transparent;
+  border: 0;
+  color: var(--teal-strong);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 4px 0;
+}
+.chat { flex: 1; background: var(--bg); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.bubble {
+  max-width: 75%;
+  padding: 8px 12px;
+  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-size: 14px;
+}
+.bubble.me { align-self: flex-end; background: var(--teal-tint); border-color: transparent; }
+.bubble mark { background: #9FD8D1; color: #08302B; padding: 0 2px; }
+.selbar {
+  align-self: center;
+  display: flex;
+  background: #2B3533;
+  color: #fff;
+  border-radius: var(--radius);
+  overflow: hidden;
+  font-size: 13px;
+}
+.selbar button { background: transparent; border: 0; color: #fff; padding: 8px 12px; cursor: pointer; }
+.selbar button.hot { background: var(--teal); font-weight: 600; }
+.dim { position: absolute; inset: 0; background: rgba(0, 0, 0, .45); display: none; }
+.sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--surface);
+  border-top: 3px solid var(--teal);
+  padding: 16px;
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+}
+.sheet .grip { width: 40px; height: 4px; background: var(--line); border-radius: 2px; align-self: center; }
+.open .dim { display: block; }
+.open .sheet { display: flex; }
+.launcher {
+  flex: 1;
+  background: linear-gradient(160deg, #1F4D47, #0F2522);
+  padding: 20px 16px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-auto-rows: 86px;
+  gap: 12px;
+  align-content: start;
+  color: #fff;
+}
+.widget {
+  grid-column: span 2;
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 14px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  cursor: pointer;
+  border: 0;
+  text-align: left;
+}
+.widget b { font-size: 15px; }
+.app { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; }
+.app i { width: 52px; height: 52px; border-radius: 14px; background: rgba(255, 255, 255, .18); display: block; }
+.app svg { width: 52px; height: 52px; }
+.toast {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 16px;
+  background: #1D2826;
+  color: #fff;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  display: none;
+  z-index: 5;
+}
+.toast.show { display: block; }
+.legend { font-size: 12px; color: var(--muted); }
+@media (max-width: 720px) {
+  .wrap { flex-direction: column; align-items: center; gap: 16px; padding: 12px 16px; }
+  .panel { width: 100%; max-width: 380px; }
+  .nav { flex-direction: row; flex-wrap: wrap; }
+  .nav h2 { width: 100%; margin: 4px 0 0; }
+  .phone { width: 100%; max-width: 380px; height: 740px; border-width: 6px; border-radius: 24px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .switch::after { transition: none; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <aside class="panel">
+    <h1>Datebook mockup</h1>
+    <p>
+      Tap through the screens on the phone, or pick one below. Buttons on the phone work too.
+      Example data: today is Tue Nov 10.
+    </p>
+    <div class="theme-row" role="group" aria-label="Theme">
+      <button type="button" data-theme-set="auto" aria-pressed="true">Phone</button>
+      <button type="button" data-theme-set="light" aria-pressed="false">Light</button>
+      <button type="button" data-theme-set="dark" aria-pressed="false">Dark</button>
+    </div>
+    <nav class="nav" aria-label="Screens">
+      <h2>First run</h2>
+      <button type="button" data-go="setup-1">Setup steps</button>
+      <h2>Every day</h2>
+      <button type="button" data-go="home">Home dashboard</button>
+      <button type="button" data-go="shade">Notifications</button>
+      <button type="button" data-go="detail">Suggestion card</button>
+      <button type="button" data-go="chat">Long-press in a chat</button>
+      <button type="button" data-go="widget">Home-screen widget</button>
+      <h2>Settings</h2>
+      <button type="button" data-go="prefs">Settings menu</button>
+      <button type="button" data-go="prefs-apps">Apps to watch</button>
+      <button type="button" data-go="prefs-claude">Claude &amp; API key</button>
+      <button type="button" data-go="prefs-smart">Smart features</button>
+      <button type="button" data-go="prefs-about">About (test tools)</button>
+    </nav>
+  </aside>
+  <div class="phone" id="phone">
+    <div class="status"><span>4:02</span><span>5G ▮▮▮ 82%</span></div>
+    <!-- Setup step 1: notification access -->
+    <section class="screen" id="setup-1">
+      <div class="setup">
+        <div class="progress">
+        <span class="on">
+        </span>
+        <span>
+        </span>
+        <span>
+        </span>
+        <span>
+        </span>
+        <span>
+        </span>
+        <span>
+        </span>
+        </div>
+        <div class="label">Step 1 of 6</div>
+        <div class="art">🔔</div>
+        <p class="big">Let Datebook read your notifications</p>
+        <p>So it can spot plans in texts as they arrive. Texts without a date never leave your phone.</p>
+        <button type="button" class="btn primary"
+            data-toast="Opens Android's notification access settings">Open settings</button>
+        <div class="foot"><span></span><button type="button" class="btn" data-go="setup-2">Next</button></div>
+      </div>
+    </section>
+    <!-- Setup step 2: show notifications -->
+    <section class="screen" id="setup-2">
+      <div class="setup">
+        <div class="progress">
+        <span class="on">
+        </span>
+        <span class="on">
+        </span>
+        <span>
+        </span>
+        <span>
+        </span>
+        <span>
+        </span>
+        <span>
+        </span>
+        </div>
+        <div class="label">Step 2 of 6</div>
+        <div class="art">✓</div>
+        <p class="big">Allow Datebook to show notifications</p>
+        <p>That's how "Add to calendar?" suggestions reach you.</p>
+        <button type="button" class="btn primary"
+            data-toast="Android asks: Allow Datebook to send notifications?">Allow</button>
+        <div class="foot">
+        <button type="button" class="btn plain" data-go="setup-1">Back</button>
+        <button type="button" class="btn" data-go="setup-3">Next</button>
+        </div>
+      </div>
+    </section>
+    <!-- Setup step 3: Claude API key -->
+    <section class="screen" id="setup-3">
+      <div class="setup">
+        <div class="progress">
+        <span class="on">
+        </span>
+        <span class="on">
+        </span>
+        <span class="on">
+        </span>
+        <span>
+        </span>
+        <span>
+        </span>
+        <span>
+        </span>
+        </div>
+        <div class="label">Step 3 of 6</div>
+        <div class="art">AI</div>
+        <p class="big">Paste your Claude API key</p>
+        <p>Create one at console.anthropic.com. It's stored encrypted on this phone and never shared.</p>
+        <div class="field">sk-ant-api03-••••••••••••••••9f2a</div>
+        <button type="button" class="btn primary" data-toast="Key checked: it works">Check key</button>
+        <div class="foot">
+        <button type="button" class="btn plain" data-go="setup-2">Back</button>
+        <button type="button" class="btn" data-go="setup-4">Next</button>
+        </div>
+      </div>
+    </section>
+    <!-- Setup step 4: battery -->
+    <section class="screen" id="setup-4">
+      <div class="setup">
+        <div class="progress">
+        <span class="on">
+        </span>
+        <span class="on">
+        </span>
+        <span class="on">
+        </span>
+        <span class="on">
+        </span>
+        <span>
+        </span>
+        <span>
+        </span>
+        </div>
+        <div class="label">Step 4 of 6</div>
+        <div class="art">⚡</div>
+        <p class="big">Keep Datebook running</p>
+        <p>
+          Set battery to Unrestricted so Samsung doesn't put Datebook to sleep.
+          It uses almost no battery: Android tells it about new texts.
+        </p>
+        <button type="button" class="btn primary"
+            data-toast="Opens Datebook's battery settings">Open battery settings</button>
+        <div class="foot">
+        <button type="button" class="btn plain" data-go="setup-3">Back</button>
+        <button type="button" class="btn" data-go="setup-5">Next</button>
+        </div>
+      </div>
+    </section>
+    <!-- Setup step 5: calendar -->
+    <section class="screen" id="setup-5">
+      <div class="setup">
+        <div class="progress">
+        <span class="on">
+        </span>
+        <span class="on">
+        </span>
+        <span class="on">
+        </span>
+        <span class="on">
+        </span>
+        <span class="on">
+        </span>
+        <span>
+        </span>
+        </div>
+        <div class="label">Step 5 of 6</div>
+        <div class="art">13</div>
+        <p class="big">Let Datebook see your calendar</p>
+        <p>For clash warnings, changed plans and your morning summary. Datebook never adds or changes events itself.</p>
+        <button type="button" class="btn primary"
+            data-toast="Android asks: Allow Datebook to access your calendar?">Allow</button>
+        <div class="foot">
+        <button type="button" class="btn plain" data-go="setup-4">Back</button>
+        <button type="button" class="btn" data-go="setup-6">Next</button>
+        </div>
+      </div>
+    </section>
+    <!-- Setup step 6: optional Maps key -->
+    <section class="screen" id="setup-6">
+      <div class="setup">
+        <div class="progress">
+        <span class="on">
+        </span>
+        <span class="on">
+        </span>
+        <span class="on">
+        </span>
+        <span class="on">
+        </span>
+        <span class="on">
+        </span>
+        <span class="on">
+        </span>
+        </div>
+        <div class="label">Step 6 of 6 · optional</div>
+        <div class="art">📍</div>
+        <p class="big">Add a Google Maps key</p>
+        <p>For full addresses, travel times and "leave by" alerts. You can skip this and add it later in Settings.</p>
+        <div class="field">Paste Maps API key…</div>
+        <div class="foot">
+        <button type="button" class="btn plain" data-go="home">Skip</button>
+        <button type="button" class="btn primary" data-go="home">Finish</button>
+        </div>
+      </div>
+    </section>
+    <!-- Home dashboard: next up, waiting, coming up -->
+    <section class="screen" id="home">
+      <div class="bar">
+      <span class="grow">Datebook</span>
+      <button type="button" aria-label="Settings" data-go="prefs">⚙</button>
+      </div>
+      <div class="content">
+        <div class="card accent">
+          <div class="label">Next up · tomorrow</div>
+          <h3>Dentist</h3>
+          <div class="meta">Wed Nov 11 · 5:45 – 6:45 PM · Bright Smiles, 40 Elm St</div>
+          <div class="meta">🚗 Leave by 5:20 PM · 18 min away</div>
+        </div>
+        <div class="label">Waiting for you (2)</div>
+        <div class="card">
+          <div class="row">
+            <div class="grow" data-go="detail" role="button" tabindex="0">
+            <div class="title">Jake's birthday party</div>
+            <div class="meta">Sat Nov 14 · 8:00 PM · Jake's place</div>
+            </div>
+            <button type="button" class="btn primary small"
+                data-toast="Opens Google Calendar with the party filled in">Add</button>
+            <button type="button" class="btn plain small" aria-label="Ignore" data-toast="Ignored">✕</button>
+          </div>
+          <div class="row">
+            <div class="grow" data-go="detail" role="button" tabindex="0">
+            <div class="title">Call with Priya</div>
+            <div class="meta">Wed Nov 11 · 6:00 PM (3:00 PM PST)</div>
+            </div>
+            <button type="button" class="btn primary small"
+                data-toast="Opens Google Calendar with the call filled in">Add</button>
+            <button type="button" class="btn plain small" aria-label="Ignore" data-toast="Ignored">✕</button>
+          </div>
+        </div>
+        <div class="label">Coming up</div>
+        <div class="card">
+          <div class="row">
+          <div class="grow">
+          <div class="title">Dinner at Joe's</div>
+          <div class="meta">Fri Nov 13 · 7:00 PM</div>
+          </div>
+          </div>
+          <div class="row">
+          <div class="grow">
+          <div class="title">Jake's birthday</div>
+          <div class="meta">Sat Nov 14 · all day · repeats yearly</div>
+          </div>
+          </div>
+          <div class="row">
+          <div class="grow">
+          <div class="title">Flight AA 1234 lands</div>
+          <div class="meta">Fri Dec 18 · 9:40 AM (6:40 AM PST) · <a href="#detail" data-go="detail">Track</a>
+          </div>
+          </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <!-- Notification shade: a suggestion, a change, the morning summary and a quiet alert -->
+    <section class="screen" id="shade">
+      <div class="shade">
+        <div class="clock">4:02</div>
+        <div class="note">
+          <div class="head">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="2" y="3" width="20" height="19" rx="2" fill="#fff" stroke="#00897B" stroke-width="2"/>
+          <rect x="2" y="3" width="20" height="6" fill="#00897B"/>
+          <path d="M7 15l3 3 7-7" fill="none" stroke="#00897B" stroke-width="2.4"/>
+          </svg>Datebook · now</div>
+          <h4>Dinner at Joe's</h4>
+          <div class="quote">From Sam: "dinner fri 7pm at joes"</div>
+          <div class="meta">🕒 Fri Nov 13 · 7:00 – 8:00 PM</div>
+          <div class="meta">📍 Joe's, 12 Main St · 12 min away</div>
+          <div class="warn">⚠ Overlaps Basketball, 6:00 – 8:00 PM</div>
+          <div class="acts">
+          <button type="button" data-toast="Opens Google Calendar with dinner filled in">Add</button>
+          <button type="button" data-go="detail">Edit</button>
+          <button type="button" data-toast="Ignored">Ignore</button>
+          </div>
+        </div>
+        <div class="note">
+          <div class="head">Datebook · 2 min ago</div>
+          <h4>Move Dinner at Joe's to 8:00 PM?</h4>
+          <div class="quote">From Sam: "actually lets do 8 instead"</div>
+          <div class="acts">
+          <button type="button" data-toast="Opens that event in Google Calendar to change it">Change</button>
+          <button type="button" data-toast="Dismissed">Ignore</button>
+          </div>
+        </div>
+        <div class="note">
+          <div class="head">Datebook · 8:00 AM</div>
+          <h4>Today: Dentist 5:45 PM</h4>
+          <div class="quote">Tomorrow: Call with Priya 6:00 PM. Friday: Dinner at Joe's 7:00 PM.</div>
+        </div>
+        <div class="note">
+          <div class="head">Datebook · quiet alert</div>
+          <h4>Claude API key or credit problem</h4>
+          <div class="quote">
+            Check your key in Settings, or add credit in the Anthropic Console. Disappears once it works again.
+          </div>
+        </div>
+      </div>
+    </section>
+    <!-- Suggestion card: read-only details with Add, Edit and Ignore -->
+    <section class="screen" id="detail">
+      <div class="bar">
+      <button type="button" aria-label="Back" data-go="home">←</button>
+      <span class="grow">Suggestion</span>
+      </div>
+      <div class="content">
+        <div class="card accent">
+          <h3>Jake's birthday party</h3>
+          <div class="meta">Sat Nov 14 · 8:00 – 9:00 PM</div>
+          <div class="meta">📍 Jake's place, 88 Oak Ave · 22 min away</div>
+          <div class="meta">Also offered: Jake's birthday, every Nov 14</div>
+          <div class="quote meta">From Mom: "jakes birthday is saturday, party at 8 at his place"</div>
+        </div>
+        <div class="btns">
+          <button type="button" class="btn primary"
+              data-toast="Opens Google Calendar with the party filled in">Add</button>
+          <button type="button" class="btn"
+              data-toast="Opens Google Calendar so you can change any field first">Edit</button>
+          <button type="button" class="btn plain" data-toast="Ignored" data-go="home">Ignore</button>
+        </div>
+        <button type="button" class="btn plain" data-toast="Opens Google Maps directions">Open in Maps</button>
+        <div class="legend">
+          Flight and package numbers in a text get a Track button that opens the airline's or carrier's page.
+        </div>
+      </div>
+    </section>
+    <!-- Long-press in a chat: the text menu, then the bottom sheet -->
+    <section class="screen" id="chat">
+      <div class="bar"><span class="grow">Sam</span><span>⋮</span></div>
+      <div class="chat">
+        <div class="bubble">you free this week?</div>
+        <div class="bubble me"><mark>dinner fri 7pm at joes</mark></div>
+        <div class="selbar">
+        <button type="button">Copy</button>
+        <button type="button">Share</button>
+        <button type="button" class="hot" id="open-sheet">Add to calendar</button>
+        </div>
+        <div class="legend">Your own sent text, selected with a long-press. Tap "Add to calendar".</div>
+      </div>
+      <div class="dim" id="close-sheet"></div>
+      <div class="sheet" role="dialog" aria-label="Add to calendar">
+        <div class="grip"></div>
+        <div class="label">Found 1 plan</div>
+        <h3 class="big">Dinner at Joe's</h3>
+        <div class="meta">Fri Nov 13 · 7:00 – 8:00 PM · Joe's, 12 Main St</div>
+        <div class="warn">⚠ Overlaps Basketball, 6:00 – 8:00 PM</div>
+        <div class="btns">
+        <button type="button" class="btn primary"
+            data-toast="Opens Google Calendar with dinner filled in">Add to calendar</button>
+        <button type="button" class="btn plain" id="cancel-sheet">Cancel</button>
+        </div>
+      </div>
+    </section>
+    <!-- Home-screen widget: next up with the waiting count -->
+    <section class="screen" id="widget">
+      <div class="launcher">
+        <button type="button" class="widget" data-go="home">
+        <span class="meta">Datebook · Next up</span>
+        <b>Dentist</b>
+        <span>Tomorrow 5:45 PM</span>
+        <span class="meta">● 2 waiting</span>
+        </button>
+        <div class="app"><i></i>Gmail</div>
+        <div class="app"><i></i>Photos</div>
+        <div class="app" data-go="home" role="button" tabindex="0">
+        <svg viewBox="0 0 52 52" aria-hidden="true">
+        <rect width="52" height="52" rx="14" fill="#FFFFFF"/>
+        <rect x="10" y="10" width="32" height="32" rx="3" fill="#FFFFFF" stroke="#00897B" stroke-width="3"/>
+        <rect x="10" y="10" width="32" height="9" fill="#00897B"/>
+        <path d="M18 30l5 5 11-11" fill="none" stroke="#00897B" stroke-width="3.6"/>
+        </svg>Datebook</div>
+        <div class="app"><i></i>Messages</div>
+        <div class="app"><i></i>Camera</div>
+        <div class="app"><i></i>Maps</div>
+      </div>
+    </section>
+    <!-- Settings menu: categories -->
+    <section class="screen" id="prefs">
+      <div class="bar">
+      <button type="button" aria-label="Back" data-go="home">←</button>
+      <span class="grow">Settings</span>
+      </div>
+      <div class="menu">
+        <button type="button" data-go="prefs-apps">
+        <span class="ico">▣</span>
+        <span class="grow">Apps to watch<small>Messages, Google Messages</small>
+        </span>›</button>
+        <button type="button" data-go="prefs-claude">
+        <span class="ico">AI</span>
+        <span class="grow">Claude &amp; API key<small>Opus 5.5 · key ends 9f2a</small>
+        </span>›</button>
+        <button type="button" data-go="prefs-smart">
+        <span class="ico">✦</span>
+        <span class="grow">Smart features<small>Clashes, changes, birthdays, places</small>
+        </span>›</button>
+        <button type="button" data-toast="Morning summary time, alerts">
+        <span class="ico">🔔</span>
+        <span class="grow">Notifications &amp; alerts<small>Summary at 8:00 AM</small>
+        </span>›</button>
+        <button type="button" data-toast="Read open chats and texts you send (accessibility). Off.">
+        <span class="ico">⟳</span>
+        <span class="grow">Automatic mode<small>Off</small>
+        </span>›</button>
+        <button type="button" data-toast="History kept 1 year. Message texts are never stored.">
+        <span class="ico">🔒</span>
+        <span class="grow">Privacy &amp; history<small>Kept 1 year</small>
+        </span>›</button>
+        <button type="button" data-go="prefs-about">
+        <span class="ico">i</span>
+        <span class="grow">About Datebook<small>Version 1.0.0</small>
+        </span>›</button>
+      </div>
+    </section>
+    <!-- Settings: apps to watch -->
+    <section class="screen" id="prefs-apps">
+      <div class="bar">
+      <button type="button" aria-label="Back" data-go="prefs">←</button>
+      <span class="grow">Apps to watch</span>
+      </div>
+      <div class="content"><div class="card">
+        <div class="row">
+        <span class="grow">Messages (Samsung)</span>
+        <button type="button" class="switch" role="switch" aria-checked="true" aria-label="Messages">
+        </button>
+        </div>
+        <div class="row">
+        <span class="grow">Google Messages</span>
+        <button type="button" class="switch" role="switch" aria-checked="true" aria-label="Google Messages">
+        </button>
+        </div>
+        <div class="row">
+        <span class="grow">WhatsApp</span>
+        <button type="button" class="switch" role="switch" aria-checked="false" aria-label="WhatsApp">
+        </button>
+        </div>
+        <div class="row">
+        <span class="grow">Instagram</span>
+        <button type="button" class="switch" role="switch" aria-checked="false" aria-label="Instagram">
+        </button>
+        </div>
+        <div class="row">
+        <span class="grow">Discord</span>
+        <button type="button" class="switch" role="switch" aria-checked="false" aria-label="Discord">
+        </button>
+        </div>
+        <div class="row">
+        <span class="grow">Gmail</span>
+        <button type="button" class="switch" role="switch" aria-checked="false" aria-label="Gmail">
+        </button>
+        </div>
+      </div></div>
+    </section>
+    <!-- Settings: Claude and API key -->
+    <section class="screen" id="prefs-claude">
+      <div class="bar">
+      <button type="button" aria-label="Back" data-go="prefs">←</button>
+      <span class="grow">Claude &amp; API key</span>
+      </div>
+      <div class="content">
+        <div class="label">API key</div>
+        <div class="field">sk-ant-api03-••••••••••••••••9f2a</div>
+        <div class="btns">
+        <button type="button" class="btn" data-toast="Key checked: it works">Check key</button>
+        <button type="button" class="btn plain" data-toast="Paste a new key">Replace</button>
+        </div>
+        <div class="label">Model</div>
+        <div class="card">
+          <div class="row">
+          <span class="grow">
+          <b>Opus 5.5</b>
+          <br>
+          <span class="meta">Best at casual texts · about $3–8 a month</span>
+          </span>
+          <span>●</span>
+          </div>
+          <div class="row">
+          <span class="grow">
+          <b>Haiku 5.5</b>
+          <br>
+          <span class="meta">Much cheaper · well under $1 a month</span>
+          </span>
+          <span>○</span>
+          </div>
+        </div>
+      </div>
+    </section>
+    <!-- Settings: smart features -->
+    <section class="screen" id="prefs-smart">
+      <div class="bar">
+      <button type="button" aria-label="Back" data-go="prefs">←</button>
+      <span class="grow">Smart features</span>
+      </div>
+      <div class="content"><div class="card">
+        <div class="row">
+        <span class="grow">Clash warnings<br>
+        <span class="meta">Warn if a plan overlaps your calendar</span>
+        </span>
+        <button type="button" class="switch" role="switch" aria-checked="true" aria-label="Clash warnings">
+        </button>
+        </div>
+        <div class="row">
+        <span class="grow">Changes &amp; cancels<br>
+        <span class="meta">"lets do 8 instead", "cant make it"</span>
+        </span>
+        <button type="button" class="switch" role="switch" aria-checked="true" aria-label="Changes and cancels">
+        </button>
+        </div>
+        <div class="row">
+        <span class="grow">Birthdays<br>
+        <span class="meta">Yearly events, including your "happy birthday"</span>
+        </span>
+        <button type="button" class="switch" role="switch" aria-checked="true" aria-label="Birthdays">
+        </button>
+        </div>
+        <div class="row">
+        <span class="grow">Places &amp; leave-by alerts<br>
+        <span class="meta">Needs a Google Maps key</span>
+        </span>
+        <button type="button" class="switch" role="switch" aria-checked="true" aria-label="Places">
+        </button>
+        </div>
+        <div class="row">
+        <span class="grow">Morning summary<br>
+        <span class="meta">8:00 AM, only on days with events</span>
+        </span>
+        <button type="button" class="switch" role="switch" aria-checked="true" aria-label="Morning summary">
+        </button>
+        </div>
+        <div class="row">
+        <span class="grow">Offline backup<br>
+        <span class="meta">Finds simple plans with no internet</span>
+        </span>
+        <button type="button" class="switch" role="switch" aria-checked="true" aria-label="Offline backup">
+        </button>
+        </div>
+      </div></div>
+    </section>
+    <!-- Settings: about, with the test tool for pretending a text arrived -->
+    <section class="screen" id="prefs-about">
+      <div class="bar">
+      <button type="button" aria-label="Back" data-go="prefs">←</button>
+      <span class="grow">About Datebook</span>
+      </div>
+      <div class="content">
+        <div class="card"><b>Datebook 1.0.0</b><span class="meta">github.com/adenkushnir/text-to-calendar</span></div>
+        <div class="label">Test tools (debug builds only)</div>
+        <div class="card">
+          <b>Pretend a text arrived</b>
+          <div class="field">dinner fri 7pm at joes</div>
+          <div class="field">From: Test sender</div>
+          <button type="button" class="btn primary" data-go="shade">Send through Datebook</button>
+        </div>
+      </div>
+    </section>
+    <div class="toast" id="toast" role="status"></div>
+  </div>
+</div>
+<script>
+const screens = Array.from(document.querySelectorAll(".screen"));
+const navButtons = Array.from(document.querySelectorAll(".nav button"));
+const toast = document.getElementById("toast");
+let toastTimer = null;
+
+// Show one screen by name, update the list and the address bar
+function show(name) {
+  const target = document.getElementById(name) || document.getElementById("home");
+  closeSheet();
+
+  // Hide every screen except the chosen one
+  for (const screen of screens) {
+    screen.classList.toggle("active", screen === target);
+  }
+
+  // Mark the matching item in the screen list (setup steps all count as "Setup steps")
+  for (const button of navButtons) {
+    const match = button.dataset.go === target.id || (button.dataset.go === "setup-1" && target.id.startsWith("setup"));
+    button.setAttribute("aria-current", match ? "true" : "false");
+  }
+  target.scrollTop = 0;
+
+  // Keep the address bar in step so a screen can be linked to
+  if (location.hash !== "#" + target.id) {
+    history.replaceState(null, "", "#" + target.id);
+  }
+}
+
+// Show a short message at the bottom of the phone for actions a mockup can't really do
+function say(text) {
+  toast.textContent = text;
+  toast.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove("show"), 2400);
+}
+
+// Open the bottom sheet over the chat
+function openSheet() {
+  document.getElementById("chat").classList.add("open");
+}
+
+// Close the bottom sheet
+function closeSheet() {
+  document.getElementById("chat").classList.remove("open");
+}
+
+// Set the theme: follow the device, or force light or dark
+function setTheme(choice) {
+  // Remove the forced theme when following the device
+  if (choice === "auto") {
+    document.documentElement.removeAttribute("data-theme");
+  } else {
+    document.documentElement.setAttribute("data-theme", choice);
+  }
+
+  // Mark the chosen theme button
+  for (const button of document.querySelectorAll("[data-theme-set]")) {
+    button.setAttribute("aria-pressed", button.dataset.themeSet === choice ? "true" : "false");
+  }
+}
+
+// Handle every click: screen links, messages, switches, theme buttons and the bottom sheet
+document.addEventListener("click", (event) => {
+  const clickable = "[data-go], [data-toast], .switch, [data-theme-set], #open-sheet, #close-sheet, #cancel-sheet";
+  const element = event.target.closest(clickable);
+
+  // Ignore clicks on things that do nothing
+  if (!element) {
+    return;
+  }
+  event.preventDefault();
+
+  // Flip a settings switch
+  if (element.classList.contains("switch")) {
+    element.setAttribute("aria-checked", element.getAttribute("aria-checked") === "true" ? "false" : "true");
+    return;
+  }
+
+  // Change the theme
+  if (element.dataset.themeSet) {
+    setTheme(element.dataset.themeSet);
+    return;
+  }
+
+  // Open or close the bottom sheet
+  if (element.id === "open-sheet") {
+    openSheet();
+    return;
+  } else if (element.id === "close-sheet" || element.id === "cancel-sheet") {
+    closeSheet();
+    return;
+  }
+
+  // Show the action's message, if it has one
+  if (element.dataset.toast) {
+    say(element.dataset.toast);
+  }
+
+  // Move to the action's screen, if it has one
+  if (element.dataset.go) {
+    show(element.dataset.go);
+  }
+});
+
+// Let keyboard users open rows that act as buttons
+document.addEventListener("keydown", (event) => {
+  // Treat Enter and Space on a focused row like a click
+  if ((event.key === "Enter" || event.key === " ") && event.target.matches("[role='button']")) {
+    event.preventDefault();
+    event.target.click();
+  }
+});
+window.addEventListener("hashchange", () => show(location.hash.slice(1)));
+show(location.hash.slice(1) || "setup-1");
+</script>
+</body>
+</html>
