@@ -116,7 +116,7 @@ There's nothing to do day to day. Two notifications stay in the notification bar
 | `tail -f ~/t2c.log` | Watch the log live (stop watching with Volume Down + C) |
 | `pgrep -f t2c.main` | Prints a number if it's running |
 
-If the app crashes, it restarts itself after 30 seconds. The log is in `~/t2c.log`, and starts over in a new file once it passes 1 MB. It contains your message texts, so it stays on the phone and is never committed.
+If the app crashes, it restarts itself after 30 seconds. If a text with a date arrives while there's no internet, or while Claude is busy or having problems, the text is saved and tried again every minute for up to 24 hours, and the prompt appears once it goes through. The log is in `~/t2c.log`, and starts over in a new file once it passes 1 MB. It contains your message texts, so it stays on the phone and is never committed.
 
 ## When it has to be started again
 
