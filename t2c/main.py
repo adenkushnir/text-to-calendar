@@ -60,43 +60,53 @@ def make_client():
         return None
     return anthropic.Anthropic(timeout=60)
 
-# Work out one message: return the event (or None), a line describing what happened, and whether to try again later
+# Describe one event for the log, like: Dinner | 2026-11-13T19:00 to ? | Joe's | zone America/Los_Angeles
+def event_details(event):
+    details = f"{event['title']} | {event['start']} to {event['end'] or '?'} | {event['location'] or 'no location'}"
+    details += f" | repeat {event['repeat']}" if event.get("repeat") else ""  # only shown for repeating events
+    return details + (f" | zone {event['timezone']}" if event.get("timezone") else "")  # only when the text named one
+
+# Work out one message: return the events to offer, the lines describing what happened, and whether to try again later
 def describe(client, note):
     # Texts with no date never leave the phone
     if not heuristics.has_date_hint(note.get("content")):
-        return None, "no date", False
+        return [], ["no date"], False
 
     # Without an API key we can only say a date was found
     if client is None:
-        return None, "date found, no API key", False
+        return [], ["date found, no API key"], False
 
     # Ask Claude, with the phone's current zone so travelling works, but report problems instead of crashing
     phone_zone = termux.phone_timezone()
     try:
-        event = extractor.extract_event(client, note, phone_zone)
+        found = extractor.extract_events(client, note, phone_zone)
     except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as error:  # bad key or no access
-        return None, f"date found, API key rejected ({error.status_code}): {error.message}", False
+        return [], [f"date found, API key rejected ({error.status_code}): {error.message}"], False
     except anthropic.RateLimitError:  # too many requests, worth trying again later
-        return None, "date found, rate limited", True
+        return [], ["date found, rate limited"], True
     except anthropic.APIStatusError as error:  # other API errors; server errors (5xx) are worth trying again
-        return None, f"date found, API error {error.status_code}: {error.message}", error.status_code >= 500
+        return [], [f"date found, API error {error.status_code}: {error.message}"], error.status_code >= 500
     except anthropic.APIConnectionError:  # no internet, worth trying again later
-        return None, "date found, no connection", True
+        return [], ["date found, no connection"], True
     except ValueError:  # reply was not valid JSON
-        return None, "date found, unreadable reply", False
+        return [], ["date found, unreadable reply"], False
 
-    # Report whether Claude found an event
-    if event is None:
-        return None, "date found, no event", False
-    event["phone_timezone"] = phone_zone
-    details = f"{event['title']} | {event['start']} to {event['end'] or '?'} | {event['location'] or 'no location'}"
-    extras = f" | repeat {event['repeat']}" if event.get("repeat") else ""  # only shown for repeating events
-    extras += f" | zone {event['timezone']}" if event.get("timezone") else ""  # only when the text named a zone
+    # Say so when Claude found no events
+    if not found:
+        return [], ["date found, no event"], False
+    to_offer, lines = [], []
 
-    # Don't offer events that have already started
-    if events.has_started(event, time.time() * 1000):
-        return None, f"already started, skipped: {details}", False
-    return event, f"event: {details}{extras}", False
+    # Keep each event that hasn't started yet, and describe every one
+    for event in found:
+        event["phone_timezone"] = phone_zone
+
+        # Don't offer events that have already started
+        if events.has_started(event, time.time() * 1000):
+            lines.append(f"already started, skipped: {event_details(event)}")
+            continue
+        to_offer.append(event)
+        lines.append(f"event: {event_details(event)}")
+    return to_offer, lines, False
 
 # Build the shell command a notification button runs, with full paths so it works from any folder
 def action_command(name, pending_id):
@@ -116,47 +126,47 @@ def message_label(note):
     label = f"[{note.get('packageName')}] {note.get('title')}"
     return f"{label}: {note.get('content')}" if LOG_TEXT else label  # keep texts out of the log by default
 
-# Show the notification for a found event, but keep running if the date can't be read or Termux fails
-def offer(connection, event):
-    # Stop here when there is nothing to offer
-    if event is None:
-        return
+# Show a notification for each found event, but keep running if a date can't be read or Termux fails
+def offer(connection, found):
+    # Offer each event on its own
+    for event in found:
+        # Show the notification
+        try:
+            suggest(connection, event)
+        except (OSError, subprocess.SubprocessError, ValueError) as error:  # notification failed or bad date
+            print(f"    -> could not show notification: {error}", flush=True)
 
-    # Show the notification
-    try:
-        suggest(connection, event)
-    except (OSError, subprocess.SubprocessError, ValueError) as error:  # notification failed or bad date
-        print(f"    -> could not show notification: {error}", flush=True)
+# Print a log entry: a heading line, then one indented line per result
+def log(heading, lines):
+    results = "".join(f"\n    -> {line}" for line in lines)  # one line per result
+    print(f"{datetime.now():%Y-%m-%d %H:%M:%S} {heading}{results}", flush=True)
 
-# Describe a new message, print the result, and offer the event, or save the message to try again later
+# Describe a new message, print the results, and offer its events, or save the message to try again later
 def handle(client, connection, note):
-    event, result, retry = describe(client, note)
-    line = f"{datetime.now():%Y-%m-%d %H:%M:%S} {message_label(note)}"
-    print(f"{line}\n    -> {result}", flush=True)
+    found, lines, retry = describe(client, note)
 
     # Save messages that failed for a reason that may clear up, like no internet
     if retry:
         now = time.time()
         store.save_retry(connection, note, now, now + RETRY_SECONDS)
-        print(f"    -> will try again every {seconds_label(RETRY_SECONDS)}", flush=True)
-        return
-    offer(connection, event)
+        lines = lines + [f"will try again every {seconds_label(RETRY_SECONDS)}"]
+    log(message_label(note), lines)
+    offer(connection, found)
 
 # Try the saved messages again once they are due, giving up on any first saved more than GIVE_UP_SECONDS ago
 def retry_waiting(client, connection, now):
     # Try each message that is due
     for retry_id, note, saved_at in store.due_retries(connection, now):
-        event, result, retry = describe(client, note)
+        found, lines, retry = describe(client, note)
 
         # Wait for the next round if it still fails and isn't too old yet
         if retry and now - saved_at < GIVE_UP_SECONDS:
             store.reschedule_retry(connection, retry_id, now + RETRY_SECONDS)
             continue
         store.delete_retry(connection, retry_id)
-        outcome = f"gave up ({result})" if retry else result  # still failing after GIVE_UP_SECONDS
-        line = f"{datetime.now():%Y-%m-%d %H:%M:%S} retried {message_label(note)}"
-        print(f"{line}\n    -> {outcome}", flush=True)
-        offer(connection, event)
+        lines = [f"gave up ({line})" for line in lines] if retry else lines  # still failing after GIVE_UP_SECONDS
+        log(f"retried {message_label(note)}", lines)
+        offer(connection, found)
 
 # Delete old data once a day, and remove the notifications of old suggestions that were never tapped
 def clean_up(connection):

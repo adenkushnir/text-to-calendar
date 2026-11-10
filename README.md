@@ -8,10 +8,10 @@ A Python script runs on the phone in [Termux](https://termux.dev). It watches Sa
 
 1. Every 5 seconds, it reads the phone's notifications with `termux-notification-list` and keeps new texts from the messaging apps. After 10 minutes with no new texts it checks every 30 seconds instead, to save battery, and goes back to every 5 seconds as soon as a text arrives.
 2. It skips any text without a date-like word, so most texts never leave the phone.
-3. It sends the rest to the Claude API, which returns a structured event: title, start, end, all-day, location, repeat rule and time zone.
+3. It sends the rest to the Claude API, which returns each event in the text: title, start, end, all-day, location, repeat rule and time zone. A text with several plans ("dinner at 7:30, then a movie at 10") gives one event per plan. When a text offers a first choice and a fallback ("wed at 5:45? if not then 12/2"), only the first choice is used.
 
    **Time zones:** times are in the phone's current time zone, so they're right while you travel. If the text names a zone ("call at 3pm PT"), or is about a flight landing somewhere else, the time is converted and the prompt shows both: `6:00 PM (3:00 PM PST)`.
-4. It shows a notification with **Add** and **Ignore** buttons.
+4. It shows a notification with **Add** and **Ignore** buttons for each event.
 5. **Add** opens the prefilled event in Google Calendar. Nothing is saved until you tap **Save** there.
 
 ## Status
@@ -175,7 +175,6 @@ sh ~/text-to-calendar/boot/restart.sh
 ## Known limits
 
 - Texts you **send**, and texts that arrive while their chat is open, don't post a notification, so the app never sees them.
-- A text with two plans ("dinner at 7, then a movie at 10") gives one event.
 - If someone sends several texts between two checks (5 seconds, or 30 seconds when quiet), only the newest may be read.
 - Numeric dates are read as month/day (1/6 = January 6).
 - A text from someone in another time zone who writes "7pm" without naming a zone is read as 7 PM in your zone.

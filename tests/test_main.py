@@ -3,7 +3,7 @@ from datetime import datetime
 import anthropic
 import httpx2
 from t2c import main, store, termux
-from tests.fakes import EVENT, NO_EVENT, FakeMessages, fake_client, reply
+from tests.fakes import EVENT, MOVIE, FakeMessages, fake_client, reply
 REQUEST = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
 SAMSUNG = {"packageName": "com.samsung.android.messaging", "title": "Mom", "content": "lunch tomorrow?", "when": "1"}
 GOOGLE = {"packageName": "com.google.android.apps.messaging", "title": "Sam", "content": "dinner fri 7pm", "when": "2"}
@@ -25,36 +25,36 @@ def test_check_once_skips_seen(monkeypatch):
 
 # Texts with no date are never sent to Claude
 def test_describe_no_date():
-    messages = FakeMessages(response=reply(EVENT))
-    assert main.describe(fake_client(messages), {"content": "lol ok"}) == (None, "no date", False)
+    messages = FakeMessages(response=reply([EVENT]))
+    assert main.describe(fake_client(messages), {"content": "lol ok"}) == ([], ["no date"], False)
     assert messages.calls == []
 
 # Without an API key the date is found but nothing is sent
 def test_describe_no_client():
-    assert main.describe(None, GOOGLE) == (None, "date found, no API key", False)
+    assert main.describe(None, GOOGLE) == ([], ["date found, no API key"], False)
 
 # A found event is described with its title, start and location
 def test_describe_event():
-    event, result, retry = main.describe(fake_client(FakeMessages(response=reply(EVENT))), GOOGLE)
-    assert event == dict(EVENT, phone_timezone=termux.phone_timezone())
-    assert result == "event: Dinner with Sam | 2026-11-13T19:00 to ? | Joe's"
+    found, lines, retry = main.describe(fake_client(FakeMessages(response=reply([EVENT]))), GOOGLE)
+    assert found == [dict(EVENT, phone_timezone=termux.phone_timezone())]
+    assert lines == ["event: Dinner with Sam | 2037-11-13T19:00 to ? | Joe's"]
     assert retry is False
 
 # A reply with no event says so
 def test_describe_no_event():
-    result = main.describe(fake_client(FakeMessages(response=reply(NO_EVENT))), GOOGLE)
-    assert result == (None, "date found, no event", False)
+    result = main.describe(fake_client(FakeMessages(response=reply([]))), GOOGLE)
+    assert result == ([], ["date found, no event"], False)
 
 # A rejected API key is reported instead of crashing
 def test_describe_bad_key():
     error = anthropic.AuthenticationError("bad key", response=httpx2.Response(401, request=REQUEST), body=None)
     result = main.describe(fake_client(FakeMessages(error=error)), GOOGLE)
-    assert result == (None, "date found, API key rejected (401): bad key", False)
+    assert result == ([], ["date found, API key rejected (401): bad key"], False)
 
 # No internet is reported instead of crashing
 def test_describe_no_connection():
     error = anthropic.APIConnectionError(request=REQUEST)
-    assert main.describe(fake_client(FakeMessages(error=error)), GOOGLE) == (None, "date found, no connection", True)
+    assert main.describe(fake_client(FakeMessages(error=error)), GOOGLE) == ([], ["date found, no connection"], True)
 
 # A button command runs the action module with the id, from the repo folder
 def test_action_command():
@@ -83,14 +83,14 @@ def failing_notify(*args, **kwargs):
 # A failing notification is printed instead of stopping the loop
 def test_handle_survives_notify_failure(monkeypatch, capsys):
     monkeypatch.setattr(termux, "notify", failing_notify)
-    main.handle(fake_client(FakeMessages(response=reply(EVENT))), store.open_store(":memory:"), GOOGLE)
+    main.handle(fake_client(FakeMessages(response=reply([EVENT]))), store.open_store(":memory:"), GOOGLE)
     assert "could not show notification: no termux" in capsys.readouterr().out
 
 # A repeating event shows its rule in the log line
 def test_describe_repeating_event():
-    standup = dict(EVENT, title="Standup", start="2026-11-16T09:00", location="", repeat="FREQ=WEEKLY;BYDAY=MO")
-    event, result, retry = main.describe(fake_client(FakeMessages(response=reply(standup))), GOOGLE)
-    assert result == "event: Standup | 2026-11-16T09:00 to ? | no location | repeat FREQ=WEEKLY;BYDAY=MO"
+    standup = dict(EVENT, title="Standup", start="2037-11-16T09:00", location="", repeat="FREQ=WEEKLY;BYDAY=MO")
+    found, lines, retry = main.describe(fake_client(FakeMessages(response=reply([standup]))), GOOGLE)
+    assert lines == ["event: Standup | 2037-11-16T09:00 to ? | no location | repeat FREQ=WEEKLY;BYDAY=MO"]
 
 # The running notification shows the time of the last check and how often it checks
 def test_status_text():
@@ -133,7 +133,7 @@ def test_retry_after_no_connection(monkeypatch):
     main.handle(fake_client(offline), connection, GOOGLE)
     assert shown == []
     assert len(store.due_retries(connection, float("inf"))) == 1
-    online = fake_client(FakeMessages(response=reply(EVENT)))
+    online = fake_client(FakeMessages(response=reply([EVENT])))
     main.retry_waiting(online, connection, float("inf"))
     assert shown[0][1] == "Add to calendar?"
     assert store.due_retries(connection, float("inf")) == []
@@ -162,9 +162,9 @@ def test_retry_gives_up(capsys):
 # An event that already started is skipped instead of offered
 def test_describe_past_event():
     past = dict(EVENT, start="2020-01-03T19:00")
-    event, result, retry = main.describe(fake_client(FakeMessages(response=reply(past))), GOOGLE)
-    assert event is None
-    assert result.startswith("already started, skipped: Dinner with Sam | 2020-01-03T19:00")
+    found, lines, retry = main.describe(fake_client(FakeMessages(response=reply([past]))), GOOGLE)
+    assert found == []
+    assert lines[0].startswith("already started, skipped: Dinner with Sam | 2020-01-03T19:00")
 
 # Cleaning up removes the notifications of old suggestions
 def test_clean_up_removes_old_notifications(monkeypatch, capsys):
@@ -193,9 +193,38 @@ def test_handle_keeps_text_out_of_log(monkeypatch, capsys):
 # The phone's zone is sent to Claude and kept with the event, and a zone named in the text shows in the log
 def test_describe_with_time_zones(monkeypatch):
     monkeypatch.setattr(termux, "phone_timezone", lambda: "America/New_York")
-    call = dict(EVENT, title="Call", start="2030-01-08T15:00", location="", timezone="America/Los_Angeles")
-    messages = FakeMessages(response=reply(call))
-    event, result, retry = main.describe(fake_client(messages), GOOGLE)
+    call = dict(EVENT, title="Call", start="2037-01-08T15:00", location="", timezone="America/Los_Angeles")
+    messages = FakeMessages(response=reply([call]))
+    found, lines, retry = main.describe(fake_client(messages), GOOGLE)
     assert "phone time zone America/New_York" in messages.calls[0]["messages"][0]["content"]
-    assert event["phone_timezone"] == "America/New_York"
-    assert result == "event: Call | 2030-01-08T15:00 to ? | no location | zone America/Los_Angeles"
+    assert found[0]["phone_timezone"] == "America/New_York"
+    assert lines == ["event: Call | 2037-01-08T15:00 to ? | no location | zone America/Los_Angeles"]
+
+# A text with two plans gives two log lines and two prompts
+def test_handle_two_events(monkeypatch, capsys):
+    shown = []
+    monkeypatch.setattr(termux, "notify", lambda *args, **kwargs: shown.append(args))
+    main.handle(fake_client(FakeMessages(response=reply([EVENT, MOVIE]))), store.open_store(":memory:"), GOOGLE)
+    summaries = [args[2] for args in shown]  # the text of each prompt
+    assert summaries == ["Dinner with Sam · Fri Nov 13, 7:00 PM · Joe's", "Movie · Fri Nov 13, 10:00 PM"]
+    output = capsys.readouterr().out
+    assert "-> event: Dinner with Sam" in output
+    assert "-> event: Movie" in output
+
+# When one plan already started and the other hasn't, only the future one gets a prompt
+def test_handle_past_and_future(monkeypatch, capsys):
+    shown = []
+    monkeypatch.setattr(termux, "notify", lambda *args, **kwargs: shown.append(args))
+    past = dict(EVENT, start="2020-01-03T19:00")
+    main.handle(fake_client(FakeMessages(response=reply([past, MOVIE]))), store.open_store(":memory:"), GOOGLE)
+    assert [args[2] for args in shown] == ["Movie · Fri Nov 13, 10:00 PM"]
+    assert "already started, skipped: Dinner with Sam" in capsys.readouterr().out
+
+# A retried text with two plans gives two prompts once it goes through
+def test_retry_with_two_events(monkeypatch):
+    shown = []
+    monkeypatch.setattr(termux, "notify", lambda *args, **kwargs: shown.append(args))
+    connection = store.open_store(":memory:")
+    store.save_retry(connection, GOOGLE, 0, 0)
+    main.retry_waiting(fake_client(FakeMessages(response=reply([EVENT, MOVIE]))), connection, 1)
+    assert len(shown) == 2
