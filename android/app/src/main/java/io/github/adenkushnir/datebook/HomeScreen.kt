@@ -1,4 +1,5 @@
-// The home dashboard from the mockup: a teal top bar with Settings, then Next up, Waiting for you and Coming up
+// The home dashboard from the mockup: a teal top bar with Settings, banners for anything off, then Next up, Waiting
+// for you and Coming up
 package io.github.adenkushnir.datebook
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -46,6 +47,7 @@ fun HomeScreen(
     onAdd: (Long) -> Unit = {},
     onIgnore: (Long) -> Unit = {},
     onSettings: () -> Unit = {},
+    fixes: List<Pair<String, () -> Unit>> = emptyList(),
     testTools: (@Composable () -> Unit)? = null,
 ) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -54,6 +56,10 @@ fun HomeScreen(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            // Show a banner for each required setting that is off, with a button to fix it
+            for ((problem, fix) in fixes) {
+                FixBanner(problem, fix)
+            }
             NextUpCard(ahead.firstOrNull(), nowMillis, onOpen)
             SectionLabel("Waiting for you (${waiting.size})")
             DatebookCard {
@@ -96,6 +102,21 @@ fun HomeScreen(
                 }
             }
             testTools?.invoke()
+        }
+    }
+}
+
+// A teal banner saying what's off, with a button that opens the right setting
+@Composable
+private fun FixBanner(problem: String, fix: () -> Unit) {
+    val shape = MaterialTheme.shapes.small
+    Surface(color = MaterialTheme.colorScheme.primary, shape = shape, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(start = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(problem, color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f))
+            TextButton(onClick = fix) {
+                Text("FIX", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
