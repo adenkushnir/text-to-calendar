@@ -2,6 +2,7 @@
 package io.github.adenkushnir.datebook
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,10 +19,13 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -33,7 +37,13 @@ import io.github.adenkushnir.datebook.ui.theme.DatebookTheme
 
 // Show the whole home dashboard: waiting suggestions from the database, and test tools in debug builds
 @Composable
-fun HomeScreen(waiting: List<Suggestion> = emptyList(), testTools: (@Composable () -> Unit)? = null) {
+fun HomeScreen(
+    waiting: List<Suggestion> = emptyList(),
+    onOpen: (Long) -> Unit = {},
+    onAdd: (Long) -> Unit = {},
+    onIgnore: (Long) -> Unit = {},
+    testTools: (@Composable () -> Unit)? = null,
+) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         TopBar()
         Column(
@@ -52,10 +62,20 @@ fun HomeScreen(waiting: List<Suggestion> = emptyList(), testTools: (@Composable 
                     Muted("No suggestions yet. They appear here when a text mentions a plan.")
                 }
 
-                // Show each waiting suggestion as its title and when it is
+                // Show each waiting suggestion with Add and ✕; tapping the text opens its card
                 for (suggestion in waiting) {
-                    Text(suggestion.title, fontWeight = FontWeight.SemiBold)
-                    Muted(summary(suggestion.toEvent()).removePrefix("${suggestion.title} · "))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f).clickable { onOpen(suggestion.id) }) {
+                            Text(suggestion.title, fontWeight = FontWeight.SemiBold)
+                            Muted(summary(suggestion.toEvent()).removePrefix("${suggestion.title} · "))
+                        }
+                        Button(onClick = { onAdd(suggestion.id) }) {
+                            Text("ADD")
+                        }
+                        TextButton(onClick = { onIgnore(suggestion.id) }) {
+                            Text("✕")
+                        }
+                    }
                 }
             }
             SectionLabel("Coming up")
