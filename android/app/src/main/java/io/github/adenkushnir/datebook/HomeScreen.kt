@@ -1,4 +1,4 @@
-// The home dashboard from the mockup: a teal top bar, then Next up, Waiting for you and Coming up
+// The home dashboard from the mockup: a teal top bar with Settings, then Next up, Waiting for you and Coming up
 package io.github.adenkushnir.datebook
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -33,28 +33,28 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.pipeline.summary
+import io.github.adenkushnir.datebook.prompts.fromLine
 import io.github.adenkushnir.datebook.ui.theme.DatebookTheme
 
-// Show the whole home dashboard: waiting suggestions from the database, and test tools in debug builds
+// Show the whole home dashboard: the next added plan, suggestions waiting for you, and what else is coming up
 @Composable
 fun HomeScreen(
     waiting: List<Suggestion> = emptyList(),
+    ahead: List<Suggestion> = emptyList(),
+    nowMillis: Long = System.currentTimeMillis(),
     onOpen: (Long) -> Unit = {},
     onAdd: (Long) -> Unit = {},
     onIgnore: (Long) -> Unit = {},
+    onSettings: () -> Unit = {},
     testTools: (@Composable () -> Unit)? = null,
 ) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        TopBar()
+        TopBar("Datebook", onSettings = onSettings)
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            DatebookCard(accent = true) {
-                SectionLabel("Next up")
-                Text("Nothing coming up yet", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
-                Muted("Your next plan from Datebook will show here, with a countdown.")
-            }
+            NextUpCard(ahead.firstOrNull(), nowMillis, onOpen)
             SectionLabel("Waiting for you (${waiting.size})")
             DatebookCard {
                 // Show an empty message until there are suggestions
@@ -67,7 +67,7 @@ fun HomeScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f).clickable { onOpen(suggestion.id) }) {
                             Text(suggestion.title, fontWeight = FontWeight.SemiBold)
-                            Muted(summary(suggestion.toEvent()).removePrefix("${suggestion.title} · "))
+                            Muted(whenAndWhere(suggestion))
                         }
                         Button(onClick = { onAdd(suggestion.id) }) {
                             Text("ADD")
@@ -80,19 +80,77 @@ fun HomeScreen(
             }
             SectionLabel("Coming up")
             DatebookCard {
-                Muted("Plans you add will be listed here.")
+                val later = ahead.drop(1)  // the first one is already in Next up
+
+                // Show an empty message until more plans are added
+                if (later.isEmpty()) {
+                    Muted("Other plans you add will be listed here.")
+                }
+
+                // Show each later plan; tapping one opens its card
+                for (suggestion in later) {
+                    Column(Modifier.fillMaxWidth().clickable { onOpen(suggestion.id) }) {
+                        Text(suggestion.title, fontWeight = FontWeight.SemiBold)
+                        Muted(whenAndWhere(suggestion))
+                    }
+                }
             }
             testTools?.invoke()
         }
     }
 }
 
-// The teal bar across the top, reaching up behind the status bar
+// The highlighted card for the next plan you added, with a countdown, or a message when there is none
 @Composable
-private fun TopBar() {
-    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.primary).statusBarsPadding().padding(16.dp)) {
+private fun NextUpCard(next: Suggestion?, nowMillis: Long, onOpen: (Long) -> Unit) {
+    DatebookCard(accent = true) {
+        // Show a message until a plan has been added
+        if (next == null) {
+            SectionLabel("Next up")
+            Text("Nothing coming up yet", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+            Muted("When you add a plan, the next one shows here with a countdown.")
+            return@DatebookCard
+        }
+        val spacing = Arrangement.spacedBy(6.dp)
+        Column(Modifier.fillMaxWidth().clickable { onOpen(next.id) }, verticalArrangement = spacing) {
+            SectionLabel("Next up · ${countdownFor(next, nowMillis)}")
+            Text(next.title, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+            Muted(whenAndWhere(next))
+            Muted("From ${fromLine(next)}")
+        }
+    }
+}
+
+// When and where a suggestion is, like "Fri Nov 13, 7:00 PM · Joe's"
+fun whenAndWhere(suggestion: Suggestion): String {
+    return summary(suggestion.toEvent()).removePrefix("${suggestion.title} · ")
+}
+
+// The teal bar across the top, reaching up behind the status bar, with an optional back button and Settings button
+@Composable
+fun TopBar(title: String, onBack: (() -> Unit)? = null, onSettings: (() -> Unit)? = null) {
+    Row(
+        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.primary).statusBarsPadding().height(64.dp)
+            .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         val color = MaterialTheme.colorScheme.onPrimary
-        Text("Datebook", color = color, fontWeight = FontWeight.SemiBold, fontSize = 20.sp)
+
+        // A back arrow on screens below Home
+        if (onBack != null) {
+            TextButton(onClick = onBack) {
+                Text("←", color = color, fontSize = 20.sp)
+            }
+        }
+        Text(title, color = color, fontWeight = FontWeight.SemiBold, fontSize = 20.sp,
+            modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
+
+        // The Settings button on Home
+        if (onSettings != null) {
+            TextButton(onClick = onSettings) {
+                Text("⚙", color = color, fontSize = 20.sp)
+            }
+        }
     }
 }
 
