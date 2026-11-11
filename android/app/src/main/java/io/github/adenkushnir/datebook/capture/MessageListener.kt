@@ -30,16 +30,18 @@ class MessageListener : NotificationListenerService() {
             return
         }
 
-        // Debug builds log only which watched app posted, to check its notifications reach Datebook (no text or sender)
+        val raw = rawNotification(notification)
+
+        // Debug builds log which watched app posted and the notification's layout, never its text or names
         if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
-            Log.d(TAG, "[${notification.packageName}] notification received")
+            val layout = "${raw.messages.size} conversation messages, group: ${raw.isGroup}"
+            Log.d(TAG, "[${notification.packageName}] notification received ($layout)")
         }
 
         // Group summaries ("3 new messages") repeat messages that have their own notifications
         if ((notification.notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
             return
         }
-        val raw = rawNotification(notification)
         scope.launch {
             handleNotification(applicationContext, raw)
         }
