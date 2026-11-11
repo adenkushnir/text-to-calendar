@@ -41,8 +41,7 @@ class PromptsTest {
         assertEquals(end, intent.getLongExtra(CalendarContract.EXTRA_EVENT_END_TIME, 0))
         assertFalse(intent.getBooleanExtra(CalendarContract.EXTRA_EVENT_ALL_DAY, true))
         assertEquals("Joe's", intent.getStringExtra(CalendarContract.Events.EVENT_LOCATION))
-        assertEquals("From Sam (Messages (Samsung)), found by Datebook",
-            intent.getStringExtra(CalendarContract.Events.DESCRIPTION))
+        assertEquals("Sam (Messages)", intent.getStringExtra(CalendarContract.Events.DESCRIPTION))
         assertEquals(newYork, intent.getStringExtra(CalendarContract.Events.EVENT_TIMEZONE))
     }
 
@@ -50,8 +49,7 @@ class PromptsTest {
     @Test
     fun groupEventDetails() {
         val intent = calendarInsertIntent(practice)
-        assertEquals("From Jake in Soccer Team (GroupMe), found by Datebook",
-            intent.getStringExtra(CalendarContract.Events.DESCRIPTION))
+        assertEquals("Jake · Soccer Team (GroupMe)", intent.getStringExtra(CalendarContract.Events.DESCRIPTION))
         assertEquals("FREQ=WEEKLY;BYDAY=SA", intent.getStringExtra(CalendarContract.Events.RRULE))
         assertFalse(intent.hasExtra(CalendarContract.Events.EVENT_LOCATION))
     }
@@ -65,7 +63,7 @@ class PromptsTest {
         assertFalse(intent.hasExtra(CalendarContract.Events.EVENT_TIMEZONE))
     }
 
-    // The prompt shows the title, who it's from with the quote, when and where, and Add, Edit and Ignore
+    // The prompt shows the title, who it's from with the quote, when and where, and Add and Ignore
     @Test
     fun promptTextAndButtons() {
         val context = ApplicationProvider.getApplicationContext<Application>()
@@ -78,7 +76,7 @@ class PromptsTest {
         val details = posted.extras.getCharSequence(NotificationCompat.EXTRA_BIG_TEXT).toString()
         assertTrue(details.startsWith("From Jake in Soccer Team: \"practice sat 9am\""))
         assertTrue(details.contains("Sat Nov 14, 9:00 AM"))
-        assertEquals(listOf("Add", "Edit", "Ignore"), posted.actions.map { it.title.toString() })
+        assertEquals(listOf("Add", "Ignore"), posted.actions.map { it.title.toString() })
         notifier.cancel(8)
         assertEquals(null, shadowOf(manager).getNotification(8))
     }

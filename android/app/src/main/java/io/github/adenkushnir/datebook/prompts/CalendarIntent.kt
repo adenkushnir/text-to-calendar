@@ -15,11 +15,12 @@ fun fromLine(suggestion: Suggestion): String {
     else suggestion.sender  // one-to-one
 }
 
-// The event's notes in the calendar, like "From Jake in Soccer Team (GroupMe), found by Datebook"
+// The event's notes in the calendar, like "Jake · Soccer Team (GroupMe)" or "Sam (Messages)"
 fun calendarNotes(suggestion: Suggestion): String {
-    val app = WATCHABLE_APPS.firstOrNull { it.packageName == suggestion.app }?.label  // the app's name, if known
+    val app = WATCHABLE_APPS.firstOrNull { it.packageName == suggestion.app }?.shortName  // the app's name, if known
+    val group = if (suggestion.conversation.isNotBlank()) " · ${suggestion.conversation}" else ""  // group chats only
     val via = if (app != null) " ($app)" else ""
-    return "From ${fromLine(suggestion)}$via, found by Datebook"
+    return "${suggestion.sender}$group$via"
 }
 
 // The intent for Google Calendar's new-event screen: title, start and end, all-day, place, repeat, zone and notes

@@ -1,5 +1,5 @@
-// Shows the "Add to calendar?" notification for each suggestion: the detailed card from the mockup, with Add,
-// Edit and Ignore; the quoted text is only shown here, never saved
+// Shows the "Add to calendar?" notification for each suggestion: the detailed card from the mockup, with Add and
+// Ignore (tapping it opens Datebook's suggestion card); the quoted text is only shown here, never saved
 package io.github.adenkushnir.datebook.prompts
 import android.Manifest
 import android.app.NotificationChannel
@@ -51,7 +51,6 @@ class SuggestionNotifier(private val context: Context) {
             .setAutoCancel(true)
             .setContentIntent(openCard(suggestion.id))
             .addAction(0, "Add", addAction(suggestion.id))
-            .addAction(0, "Edit", openCard(suggestion.id))
             .addAction(0, "Ignore", ignoreAction(suggestion.id))
             .build()
         NotificationManagerCompat.from(context).notify(id, notification)
@@ -62,7 +61,7 @@ class SuggestionNotifier(private val context: Context) {
         NotificationManagerCompat.from(context).cancel(suggestionId.toInt())
     }
 
-    // Tapping the prompt or Edit opens Datebook's suggestion card
+    // Tapping the prompt opens Datebook's suggestion card
     private fun openCard(suggestionId: Long): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).putExtra(EXTRA_SUGGESTION_ID, suggestionId)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
