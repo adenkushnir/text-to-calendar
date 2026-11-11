@@ -65,6 +65,18 @@ interface DatebookDao {
     @Query("DELETE FROM seen WHERE seenAt < :cutoff")
     suspend fun deleteSeenBefore(cutoff: Long)
 
+    // Return every suggestion with a status
+    @Query("SELECT * FROM suggestions WHERE status = :status")
+    suspend fun suggestionsWithStatus(status: String): List<Suggestion>
+
+    // Delete every suggestion with a status
+    @Query("DELETE FROM suggestions WHERE status = :status")
+    suspend fun deleteWithStatus(status: String)
+
+    // Delete one suggestion
+    @Query("DELETE FROM suggestions WHERE id = :id")
+    suspend fun deleteSuggestion(id: Long)
+
     // Delete suggestions created before the cutoff
     @Query("DELETE FROM suggestions WHERE createdAt < :cutoff")
     suspend fun deleteSuggestionsBefore(cutoff: Long)

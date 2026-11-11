@@ -71,7 +71,13 @@ fun buildPrompt(incoming: IncomingText, phoneZone: String): String {
     return "Received: $received ($weekday$zone)\nFrom: $from\n<message>\n${incoming.text}\n</message>"
 }
 
-// Build the request: the chosen model at low effort, the events format, and server-side refusal fallbacks
+// Return true if the model supports server-side refusal fallbacks (Haiku models don't)
+fun supportsFallbacks(model: String): Boolean {
+    return !model.contains("haiku")
+}
+
+// Build the request: the chosen model at low effort, the events format, and server-side refusal fallbacks when the
+// model supports them
 fun buildRequest(incoming: IncomingText, phoneZone: String, model: String = DEFAULT_MODEL): MessageCreateParams {
     val schema = BetaJsonOutputFormat.Schema.builder()
 
@@ -81,15 +87,18 @@ fun buildRequest(incoming: IncomingText, phoneZone: String, model: String = DEFA
     }
     val format = BetaJsonOutputFormat.builder().schema(schema.build()).build()
     val output = BetaOutputConfig.builder().effort(BetaOutputConfig.Effort.LOW).format(format).build()
-    return MessageCreateParams.builder()
+    val request = MessageCreateParams.builder()
         .model(model)
         .maxTokens(16000L)
-        .addBeta(FALLBACK_BETA)
-        .fallbacksDefault()
         .outputConfig(output)
         .system(SYSTEM_PROMPT)
         .addUserMessage(buildPrompt(incoming, phoneZone))
-        .build()
+
+    // Ask for a fallback model on refusals, where the chosen model supports it
+    if (supportsFallbacks(model)) {
+        request.addBeta(FALLBACK_BETA).fallbacksDefault()
+    }
+    return request.build()
 }
 
 // Ask Claude about one text and return the events it found, or an empty list (SDK errors are passed on to the caller)

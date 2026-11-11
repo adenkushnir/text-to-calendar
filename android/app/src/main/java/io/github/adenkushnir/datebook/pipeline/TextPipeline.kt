@@ -154,6 +154,20 @@ class TextPipeline(
         return results
     }
 
+    // Clear history: delete ignored suggestions and added plans that are already over, keeping anything still waiting
+    // or coming up (Next up and Coming up); returns how many were deleted
+    suspend fun clearHistory(): Int {
+        val ignored = dao.suggestionsWithStatus(Suggestion.STATUS_IGNORED)
+        val over = dao.suggestionsWithStatus(Suggestion.STATUS_ADDED).filter { hasStarted(it.toEvent(), now()) }
+        dao.deleteWithStatus(Suggestion.STATUS_IGNORED)
+
+        // Delete each added plan that's over
+        for (suggestion in over) {
+            dao.deleteSuggestion(suggestion.id)
+        }
+        return ignored.size + over.size
+    }
+
     // Delete fingerprints older than a week and suggestions older than a year
     suspend fun cleanUp() {
         dao.deleteSeenBefore(now() - KEEP_SEEN_MILLIS)

@@ -6,6 +6,7 @@ import com.anthropic.errors.AnthropicIoException
 import io.github.adenkushnir.datebook.data.DatebookDao
 import io.github.adenkushnir.datebook.data.DatebookDatabase
 import io.github.adenkushnir.datebook.data.Suggestion
+import io.github.adenkushnir.datebook.data.suggestionOf
 import java.time.Instant
 import java.time.LocalDateTime
 import kotlinx.coroutines.flow.first
@@ -230,5 +231,21 @@ class TextPipelineTest {
     fun eachSuggestionGetsAPrompt() = runTest {
         pipeline(listOf(dinner, movie)).handle(incoming)
         assertEquals(listOf(Pair("Dinner with Sam", incoming.text), Pair("Movie", incoming.text)), prompts)
+    }
+
+    // Clear history deletes ignored suggestions and added plans that are over, and keeps waiting and coming-up ones
+    @Test
+    fun clearHistoryKeepsWhatsAhead() = runTest {
+        val ids = pipeline(listOf(dinner, movie)).handle(incoming).suggestionIds
+        dao.setStatus(ids[0], Suggestion.STATUS_ADDED)
+        dao.setStatus(ids[1], Suggestion.STATUS_IGNORED)
+        val over = dao.saveSuggestion(suggestionOf(past, incoming, clock))
+        dao.setStatus(over, Suggestion.STATUS_ADDED)
+        val waiting = pipeline(listOf(dinner)).handle(incoming.copy(text = "lunch sun at noon")).suggestionIds.single()
+        assertEquals(2, pipeline().clearHistory())
+        assertEquals(Suggestion.STATUS_ADDED, dao.suggestion(ids[0])!!.status)
+        assertEquals(null, dao.suggestion(ids[1]))
+        assertEquals(null, dao.suggestion(over))
+        assertEquals(Suggestion.STATUS_WAITING, dao.suggestion(waiting)!!.status)
     }
 }

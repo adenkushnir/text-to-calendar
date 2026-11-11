@@ -71,6 +71,15 @@ class ClaudeExtractorTest {
         assertTrue(body.contains("dinner fri 7pm at Joe's"))
     }
 
+    // Haiku gets the same request without refusal fallbacks, which it doesn't support
+    @Test
+    fun haikuWithoutFallbacks() {
+        val body = buildRequest(incoming, newYork, "claude-haiku-5-5").toString()
+        assertTrue(body.contains("claude-haiku-5-5"))
+        assertTrue(!body.contains("server-side-fallback"))
+        assertTrue(buildRequest(incoming, newYork, "claude-opus-5-5").toString().contains("server-side-fallback"))
+    }
+
     // Replies with none, one or two events come back as lists, each tagged with the phone's zone
     @Test
     fun eventLists() {
