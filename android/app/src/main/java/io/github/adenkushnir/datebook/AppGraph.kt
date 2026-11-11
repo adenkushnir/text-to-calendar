@@ -15,6 +15,7 @@ import io.github.adenkushnir.datebook.prompts.SuggestionNotifier
 class AppGraph private constructor(context: Context) {
     val dao = DatebookDatabase.get(context).dao()
     val keyStore = ApiKeyStore(context)
+    val mapsKeyStore = ApiKeyStore(context, "maps")
     val appSwitches = AppSwitches(context)
     val notifier = SuggestionNotifier(context)
     private var client: Pair<String, AnthropicClient>? = null

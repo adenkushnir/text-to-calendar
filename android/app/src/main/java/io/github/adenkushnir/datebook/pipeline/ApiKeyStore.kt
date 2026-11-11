@@ -1,4 +1,5 @@
-// Keeps the Claude API key on this phone only, encrypted with a key that never leaves Android's Keystore
+// Keeps API keys (Claude, and Google Maps from step 8) on this phone only, encrypted with a key that never leaves
+// Android's Keystore
 package io.github.adenkushnir.datebook.pipeline
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
@@ -13,27 +14,27 @@ import javax.crypto.spec.GCMParameterSpec
 private const val KEYSTORE = "AndroidKeyStore"
 private const val KEY_ALIAS = "datebook-claude-key"
 private const val PREFS_NAME = "datebook-secrets"
-private const val SAVED_KEY = "claude-key"
-private const val SAVED_IV = "claude-key-iv"
 private const val TRANSFORMATION = "AES/GCM/NoPadding"
 private const val TAG_BITS = 128
 
-// Saves, reads and deletes the Claude API key; only its encrypted form is ever written to storage
-class ApiKeyStore(context: Context) {
+// Saves, reads and deletes one API key ("claude" or "maps"); only its encrypted form is ever written to storage
+class ApiKeyStore(context: Context, name: String = "claude") {
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val savedKey = "$name-key"
+    private val savedIv = "$name-key-iv"
 
     // Encrypt the key and save it
     fun save(apiKey: String) {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, keystoreKey())
         val encrypted = cipher.doFinal(apiKey.trim().toByteArray(Charsets.UTF_8))
-        prefs.edit().putString(SAVED_KEY, encode(encrypted)).putString(SAVED_IV, encode(cipher.iv)).apply()
+        prefs.edit().putString(savedKey, encode(encrypted)).putString(savedIv, encode(cipher.iv)).apply()
     }
 
     // Return the saved key, or null if none is saved or it can no longer be decrypted
     fun load(): String? {
-        val encrypted = prefs.getString(SAVED_KEY, null)
-        val iv = prefs.getString(SAVED_IV, null)
+        val encrypted = prefs.getString(savedKey, null)
+        val iv = prefs.getString(savedIv, null)
 
         // Nothing saved yet
         if (encrypted == null || iv == null) {
@@ -52,7 +53,7 @@ class ApiKeyStore(context: Context) {
 
     // Delete the saved key
     fun clear() {
-        prefs.edit().remove(SAVED_KEY).remove(SAVED_IV).apply()
+        prefs.edit().remove(savedKey).remove(savedIv).apply()
     }
 
     // Return the Keystore key that encrypts the API key, creating it the first time
