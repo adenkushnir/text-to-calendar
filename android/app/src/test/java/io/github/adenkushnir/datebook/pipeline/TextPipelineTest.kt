@@ -233,6 +233,33 @@ class TextPipelineTest {
         assertEquals(listOf(Pair("Dinner with Sam", incoming.text), Pair("Movie", incoming.text)), prompts)
     }
 
+    // Shared things skip the date check and the seen list, and are saved as waiting without a prompt
+    @Test
+    fun shareSkipsDateCheck() = runTest {
+        val shared = incoming.copy(sender = "you", text = "dinner with sam sometime", app = SHARED_TEXT_APP)
+        val result = pipeline(listOf(dinner)).share(shared)
+        assertEquals(listOf("Dinner with Sam"), result.suggestions.map { it.title })
+        assertEquals(Suggestion.STATUS_WAITING, result.suggestions.single().status)
+        assertTrue(prompts.isEmpty())
+        assertEquals(null, dao.seenAt(fingerprint(shared)))
+        assertEquals(1, pipeline(listOf(dinner)).share(shared).suggestions.size)  // sharing again asks again
+    }
+
+    // Sharing without a key, offline or with nothing in it says why, and never queues a retry
+    @Test
+    fun shareNotes() = runTest {
+        val shared = incoming.copy(sender = "you", app = SHARED_TEXT_APP)
+        val noKey = pipeline(listOf(dinner), key = null).share(shared)
+        assertTrue(noKey.needsKey)
+        val offline = pipeline(error = AnthropicIoException("offline")).share(shared)
+        assertEquals("Couldn't reach Claude. Check your internet and try again.", offline.note)
+        assertTrue(offline.canRetry)
+        assertTrue(retries.isEmpty())
+        assertTrue(dao.dueRetries(Long.MAX_VALUE).isEmpty())
+        assertEquals("No plans found in this.", pipeline().share(shared).note)
+        assertEquals("That plan has already started.", pipeline(listOf(past)).share(shared).note)
+    }
+
     // Clear history deletes ignored suggestions and added plans that are over, and keeps waiting and coming-up ones
     @Test
     fun clearHistoryKeepsWhatsAhead() = runTest {

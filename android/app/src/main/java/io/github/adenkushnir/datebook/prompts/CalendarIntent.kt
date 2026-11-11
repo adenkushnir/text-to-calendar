@@ -5,18 +5,30 @@ import android.content.Intent
 import android.provider.CalendarContract
 import io.github.adenkushnir.datebook.capture.WATCHABLE_APPS
 import io.github.adenkushnir.datebook.data.Suggestion
+import io.github.adenkushnir.datebook.pipeline.SHARED_IMAGE_APP
+import io.github.adenkushnir.datebook.pipeline.SHARED_TEXT_APP
 import io.github.adenkushnir.datebook.pipeline.eventTimes
 import io.github.adenkushnir.datebook.pipeline.eventZone
+import io.github.adenkushnir.datebook.pipeline.isShared
 import io.github.adenkushnir.datebook.pipeline.repeatRule
 
-// Who a suggestion came from, like "Sam" or "Jake in Soccer Team"
+// Who a suggestion came from, like "Sam", "Jake in Soccer Team" or "you (shared to Datebook)"
 fun fromLine(suggestion: Suggestion): String {
-    return if (suggestion.conversation.isNotBlank()) "${suggestion.sender} in ${suggestion.conversation}"
-    else suggestion.sender  // one-to-one
+    // Pick the wording for where it came from
+    return when {
+        isShared(suggestion.app) -> "you (shared to Datebook)"
+        suggestion.conversation.isNotBlank() -> "${suggestion.sender} in ${suggestion.conversation}"
+        else -> suggestion.sender  // one-to-one
+    }
 }
 
-// The event's notes in the calendar, like "Jake · Soccer Team (GroupMe)" or "Sam (Messages)"
+// The event's notes in the calendar, like "Jake · Soccer Team (GroupMe)", "Sam (Messages)" or "Shared to Datebook"
 fun calendarNotes(suggestion: Suggestion): String {
+    // Shared things say so instead of naming a sender
+    when (suggestion.app) {
+        SHARED_TEXT_APP -> return "Shared to Datebook"
+        SHARED_IMAGE_APP -> return "Image shared to Datebook"
+    }
     val app = WATCHABLE_APPS.firstOrNull { it.packageName == suggestion.app }?.shortName  // the app's name, if known
     val group = if (suggestion.conversation.isNotBlank()) " · ${suggestion.conversation}" else ""  // group chats only
     val via = if (app != null) " ($app)" else ""

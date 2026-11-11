@@ -2,4 +2,5 @@
 <!-- Text shown by Android outside the app's own screens -->
 <resources>
     <string name="app_name">Datebook</string>
+    <string name="add_to_calendar">Add to calendar</string>
 </resources>

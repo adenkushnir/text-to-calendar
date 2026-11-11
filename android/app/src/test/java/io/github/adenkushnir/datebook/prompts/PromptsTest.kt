@@ -9,6 +9,8 @@ import androidx.test.core.app.ApplicationProvider
 import io.github.adenkushnir.datebook.capture.GROUPME
 import io.github.adenkushnir.datebook.capture.SAMSUNG_MESSAGES
 import io.github.adenkushnir.datebook.data.Suggestion
+import io.github.adenkushnir.datebook.pipeline.SHARED_IMAGE_APP
+import io.github.adenkushnir.datebook.pipeline.SHARED_TEXT_APP
 import io.github.adenkushnir.datebook.pipeline.eventTimes
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -52,6 +54,15 @@ class PromptsTest {
         assertEquals("Jake · Soccer Team (GroupMe)", intent.getStringExtra(CalendarContract.Events.DESCRIPTION))
         assertEquals("FREQ=WEEKLY;BYDAY=SA", intent.getStringExtra(CalendarContract.Events.RRULE))
         assertFalse(intent.hasExtra(CalendarContract.Events.EVENT_LOCATION))
+    }
+
+    // Shared plans say so in their notes and From line instead of naming a sender
+    @Test
+    fun sharedEventDetails() {
+        val shared = dinner.copy(sender = "you", app = SHARED_TEXT_APP)
+        assertEquals("Shared to Datebook", calendarNotes(shared))
+        assertEquals("Image shared to Datebook", calendarNotes(shared.copy(app = SHARED_IMAGE_APP)))
+        assertEquals("you (shared to Datebook)", fromLine(shared))
     }
 
     // An all-day event says so and gets no time zone

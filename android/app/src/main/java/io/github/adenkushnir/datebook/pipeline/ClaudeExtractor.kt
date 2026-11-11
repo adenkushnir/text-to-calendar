@@ -3,6 +3,8 @@ package io.github.adenkushnir.datebook.pipeline
 import com.anthropic.client.AnthropicClient
 import com.anthropic.client.okhttp.AnthropicOkHttpClient
 import com.anthropic.core.JsonValue
+import com.anthropic.models.beta.messages.BetaBase64ImageSource
+import com.anthropic.models.beta.messages.BetaContentBlockParam
 import com.anthropic.models.beta.messages.BetaJsonOutputFormat
 import com.anthropic.models.beta.messages.BetaOutputConfig
 import com.anthropic.models.beta.messages.BetaStopReason
@@ -14,6 +16,8 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 const val DEFAULT_MODEL = "claude-opus-5-5"
 private const val FALLBACK_BETA = "server-side-fallback-2026-07-01"
+const val SHARED_TEXT_APP = "datebook.shared.text"
+const val SHARED_IMAGE_APP = "datebook.shared.image"
 private val RECEIVED_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.US)
 private val WEEKDAY_FORMAT = DateTimeFormatter.ofPattern("EEEE", Locale.US)
 private val MAPPER = ObjectMapper()
@@ -40,7 +44,8 @@ val EVENTS_SCHEMA = mapOf(
 )
 
 // A text to ask Claude about: who sent it, what it says, when it arrived in the phone's time, which app, and which
-// group chat it came from (empty for one-to-one); exactTime means receivedAt is the message's own timestamp
+// group chat it came from (empty for one-to-one); exactTime means receivedAt is the message's own timestamp, and
+// image is a shared picture as base64 JPEG (empty for texts)
 data class IncomingText(
     val sender: String,
     val text: String,
@@ -48,7 +53,13 @@ data class IncomingText(
     val app: String = "",
     val group: String = "",
     val exactTime: Boolean = false,
+    val image: String = "",
 )
+
+// Return true if something came from long-press or Share rather than a notification
+fun isShared(app: String): Boolean {
+    return app == SHARED_TEXT_APP || app == SHARED_IMAGE_APP
+}
 
 // Read Claude's instructions, shared word for word with the Python version, from the app's resources
 private fun loadSystemPrompt(): String {
@@ -62,13 +73,26 @@ fun makeClient(apiKey: String): AnthropicClient {
 }
 
 // Build the message for Claude: when it arrived (with weekday and phone zone), who sent it, then the text in tags;
-// for group chats the group's name is sent instead of the sender's
+// for group chats the group's name is sent instead of the sender's, and shared things say they were shared
 fun buildPrompt(incoming: IncomingText, phoneZone: String): String {
     val received = incoming.receivedAt.format(RECEIVED_FORMAT)
     val weekday = incoming.receivedAt.format(WEEKDAY_FORMAT)
     val zone = if (phoneZone.isNotBlank()) ", phone time zone $phoneZone" else ""  // only when the zone is known
-    val from = if (incoming.group.isNotBlank()) "${incoming.group} (group chat)" else incoming.sender  // never both
-    return "Received: $received ($weekday$zone)\nFrom: $from\n<message>\n${incoming.text}\n</message>"
+
+    // Say who it's from: the phone's owner for shared things, the group for group chats (never the sender too)
+    val from = when {
+        isShared(incoming.app) -> "the phone's owner (shared to Datebook)"
+        incoming.group.isNotBlank() -> "${incoming.group} (group chat)"
+        else -> incoming.sender
+    }
+
+    // Point Claude at the picture when one was shared
+    val text = when {
+        incoming.image.isBlank() -> incoming.text
+        incoming.text.isBlank() -> "(see the attached image)"
+        else -> "${incoming.text}\n(and the attached image)"
+    }
+    return "Received: $received ($weekday$zone)\nFrom: $from\n<message>\n$text\n</message>"
 }
 
 // Return true if the model supports server-side refusal fallbacks (Haiku models don't)
@@ -92,7 +116,17 @@ fun buildRequest(incoming: IncomingText, phoneZone: String, model: String = DEFA
         .maxTokens(16000L)
         .outputConfig(output)
         .system(SYSTEM_PROMPT)
-        .addUserMessage(buildPrompt(incoming, phoneZone))
+    val prompt = buildPrompt(incoming, phoneZone)
+
+    // Send a shared picture before the words, or just the words for a text
+    if (incoming.image.isNotBlank()) {
+        val image = BetaBase64ImageSource.builder().data(incoming.image)
+            .mediaType(BetaBase64ImageSource.MediaType.IMAGE_JPEG).build()
+        request.addUserMessageOfContentBlockParams(listOf(BetaContentBlockParam.ofImage(image),
+            BetaContentBlockParam.ofText(prompt)))
+    } else {
+        request.addUserMessage(prompt)
+    }
 
     // Ask for a fallback model on refusals, where the chosen model supports it
     if (supportsFallbacks(model)) {
