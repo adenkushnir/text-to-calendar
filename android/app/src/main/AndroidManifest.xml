@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Datebook's app manifest: permissions, the app's name, icon, theme and its one screen so far -->
+<!-- Datebook's app manifest: permissions, the app's name, icon and theme, its screen and its notification listener -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <application
@@ -17,5 +17,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- Reads message notifications; Android delivers only conversation notifications (chat messages) to it -->
+        <service
+            android:name=".capture.MessageListener"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.notification.default_filter_types"
+                android:value="conversations" />
+        </service>
     </application>
 </manifest>
