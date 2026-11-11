@@ -3,6 +3,7 @@ package io.github.adenkushnir.datebook.pipeline
 import io.github.adenkushnir.datebook.data.DatebookDao
 import io.github.adenkushnir.datebook.data.RetryText
 import io.github.adenkushnir.datebook.data.SeenText
+import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.data.suggestionOf
 import java.security.MessageDigest
 import java.time.LocalDateTime
@@ -31,6 +32,7 @@ class TextPipeline(
     private val phoneZone: () -> String = { ZoneId.systemDefault().id },
     private val now: () -> Long = { System.currentTimeMillis() },
     private val onRetrySaved: (atMillis: Long) -> Unit = {},
+    private val onSuggested: (suggestion: Suggestion, incoming: IncomingText) -> Unit = { _, _ -> },
 ) {
     private val health = Health(dao)
 
@@ -158,9 +160,18 @@ class TextPipeline(
         dao.deleteSuggestionsBefore(now() - KEEP_SUGGESTIONS_MILLIS)
     }
 
-    // Save each event as a waiting suggestion and return their ids
+    // Save each event as a waiting suggestion, announce it (the app shows its prompt), and return their ids
     private suspend fun saveSuggestions(events: List<Event>, incoming: IncomingText): List<Long> {
-        return events.map { dao.saveSuggestion(suggestionOf(it, incoming, now())) }  // one each
+        val ids = mutableListOf<Long>()
+
+        // Save and announce each event
+        for (event in events) {
+            val suggestion = suggestionOf(event, incoming, now())
+            val id = dao.saveSuggestion(suggestion)
+            onSuggested(suggestion.copy(id = id), incoming)
+            ids.add(id)
+        }
+        return ids
     }
 
     // After Claude answers, clear both API alert counts, and note in the log when an alert goes away
