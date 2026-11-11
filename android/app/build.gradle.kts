@@ -2,6 +2,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
 }
 android {
     namespace = "io.github.adenkushnir.datebook"
@@ -26,6 +27,9 @@ android {
     buildFeatures {
         compose = true
     }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
 }
 kotlin {
     compilerOptions {
@@ -40,6 +44,13 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation(libs.anthropic.java)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
+    implementation(libs.androidx.work.runtime.ktx)
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.kotlinx.coroutines.test)
 }
