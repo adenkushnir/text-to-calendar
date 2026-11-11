@@ -1,4 +1,4 @@
-// The home dashboard from the mockup: a teal top bar, then Next up, Waiting for you and Coming up (empty for now)
+// The home dashboard from the mockup: a teal top bar, then Next up, Waiting for you and Coming up
 package io.github.adenkushnir.datebook
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -27,30 +27,42 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.adenkushnir.datebook.data.Suggestion
+import io.github.adenkushnir.datebook.pipeline.summary
 import io.github.adenkushnir.datebook.ui.theme.DatebookTheme
 
-// Show the whole home dashboard
+// Show the whole home dashboard: waiting suggestions from the database, and test tools in debug builds
 @Composable
-fun HomeScreen() {
+fun HomeScreen(waiting: List<Suggestion> = emptyList(), testTools: (@Composable () -> Unit)? = null) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         TopBar()
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Card(accent = true) {
+            DatebookCard(accent = true) {
                 SectionLabel("Next up")
                 Text("Nothing coming up yet", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
                 Muted("Your next plan from Datebook will show here, with a countdown.")
             }
-            SectionLabel("Waiting for you (0)")
-            Card {
-                Muted("No suggestions yet. They appear here when a text mentions a plan.")
+            SectionLabel("Waiting for you (${waiting.size})")
+            DatebookCard {
+                // Show an empty message until there are suggestions
+                if (waiting.isEmpty()) {
+                    Muted("No suggestions yet. They appear here when a text mentions a plan.")
+                }
+
+                // Show each waiting suggestion as its title and when it is
+                for (suggestion in waiting) {
+                    Text(suggestion.title, fontWeight = FontWeight.SemiBold)
+                    Muted(summary(suggestion.toEvent()).removePrefix("${suggestion.title} · "))
+                }
             }
             SectionLabel("Coming up")
-            Card {
+            DatebookCard {
                 Muted("Plans you add will be listed here.")
             }
+            testTools?.invoke()
         }
     }
 }
@@ -66,7 +78,7 @@ private fun TopBar() {
 
 // A small uppercase heading above a group of cards
 @Composable
-private fun SectionLabel(text: String) {
+fun SectionLabel(text: String) {
     Text(
         text.uppercase(),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -78,13 +90,13 @@ private fun SectionLabel(text: String) {
 
 // Grey supporting text
 @Composable
-private fun Muted(text: String) {
+fun Muted(text: String) {
     Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
 }
 
 // A white card with a thin border, and a teal left edge when it is the highlighted one
 @Composable
-private fun Card(accent: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
+fun DatebookCard(accent: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
     Surface(
         shape = MaterialTheme.shapes.small,
         color = MaterialTheme.colorScheme.surface,
