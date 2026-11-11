@@ -13,6 +13,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -58,7 +60,10 @@ class MainActivity : ComponentActivity() {
         promptSuggestion = suggestionIn(intent)
         setContent {
             DatebookTheme {
-                DatebookApp()
+                // The theme's background and text colours for every screen, so text is readable in light and dark
+                Surface(color = MaterialTheme.colorScheme.background) {
+                    DatebookApp()
+                }
             }
         }
     }
