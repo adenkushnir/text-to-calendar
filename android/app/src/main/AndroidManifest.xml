@@ -2,6 +2,7 @@
 <!-- Datebook's app manifest: permissions, the app's name, icon and theme, its screen and its notification listener -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
@@ -17,6 +18,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- Invisible screen the prompt's Add button opens; it opens Google Calendar and closes -->
+        <activity
+            android:name=".prompts.PromptActionActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <!-- Handles the prompt's Ignore button in the background -->
+        <receiver
+            android:name=".prompts.IgnoreReceiver"
+            android:exported="false" />
         <!-- Reads message notifications; Android delivers only conversation notifications (chat messages) to it -->
         <service
             android:name=".capture.MessageListener"
