@@ -177,4 +177,49 @@ class TextPipelineTest {
         pipeline().cleanUp()
         assertTrue(dao.watchSuggestions(Suggestion.STATUS_WAITING).first().isEmpty())
     }
+
+    // A text with no date is dropped before anything is saved, so it leaves no trace
+    @Test
+    fun noDateLeavesNoTrace() = runTest {
+        val outcome = pipeline(listOf(dinner)).receive(incoming.copy(text = "lol ok"))
+        assertEquals(null, outcome)
+        assertEquals(null, dao.seenAt(fingerprint(incoming.copy(text = "lol ok"))))
+    }
+
+    // A text with a date is handled once, and skipped when the notification shows it again
+    @Test
+    fun receiveOnce() = runTest {
+        val pipeline = pipeline(listOf(dinner))
+        assertEquals(1, pipeline.receive(incoming)!!.suggestionIds.size)
+        assertEquals(null, pipeline.receive(incoming))
+    }
+
+    // A message with its own timestamp is never handled twice, even hours later
+    @Test
+    fun exactTimeMessagesOnlyOnce() = runTest {
+        val pipeline = pipeline(listOf(dinner))
+        val exact = incoming.copy(exactTime = true)
+        assertTrue(pipeline.isNew(exact))
+        clock += 5 * REPEAT_MILLIS
+        assertFalse(pipeline.isNew(exact))
+    }
+
+    // Group chats use the stricter date check
+    @Test
+    fun groupsNeedAClearDate() = runTest {
+        val group = incoming.copy(group = "Soccer Team", text = "see you saturday")
+        assertEquals(null, pipeline(listOf(dinner)).receive(group))
+        assertEquals(listOf("no date"), pipeline(listOf(dinner)).describe(group).lines)
+        assertEquals(1, pipeline(listOf(dinner)).receive(group.copy(text = "practice sat 9am"))!!.events.size)
+    }
+
+    // A birthday from a group comes back named after the group, and is renamed after the sender on the phone
+    @Test
+    fun groupBirthdayNamedAfterSender() = runTest {
+        val birthday = Event("Soccer Team's birthday", "2037-03-03", allDay = true, repeat = "FREQ=YEARLY")
+        val group = incoming.copy(sender = "Jake", group = "Soccer Team", text = "its my birthday march 3!")
+        val outcome = pipeline(listOf(birthday)).handle(group)
+        assertEquals("Jake's birthday", outcome.events.single().title)
+        assertEquals("Soccer Team", dao.suggestion(outcome.suggestionIds.single())!!.conversation)
+    }
 }

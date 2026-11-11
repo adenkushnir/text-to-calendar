@@ -3,6 +3,7 @@ package io.github.adenkushnir.datebook.data
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import io.github.adenkushnir.datebook.pipeline.Event
+import io.github.adenkushnir.datebook.pipeline.IncomingText
 
 // A fingerprint of a text that was already handled, so the same text is only handled once (kept 7 days)
 @Entity(tableName = "seen")
@@ -11,12 +12,14 @@ data class SeenText(
     val seenAt: Long,
 )
 
-// An event Datebook suggested, and whether it is waiting, added or ignored (kept 1 year; never the message text)
+// An event Datebook suggested, who from (and which group chat), and whether it is waiting, added or ignored
+// (kept 1 year; never the message text)
 @Entity(tableName = "suggestions")
 data class Suggestion(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val sender: String,
     val app: String,
+    val conversation: String = "",
     val title: String,
     val start: String,
     val end: String,
@@ -41,11 +44,12 @@ data class Suggestion(
     }
 }
 
-// Save an event as a waiting suggestion from the given sender
-fun suggestionOf(event: Event, sender: String, app: String, now: Long): Suggestion {
+// Save an event as a waiting suggestion from the text's sender, app and group chat (empty for one-to-one)
+fun suggestionOf(event: Event, incoming: IncomingText, now: Long): Suggestion {
     return Suggestion(
-        sender = sender,
-        app = app,
+        sender = incoming.sender,
+        app = incoming.app,
+        conversation = incoming.group,
         title = event.title,
         start = event.start,
         end = event.end,
@@ -66,6 +70,7 @@ data class RetryText(
     val text: String,
     val receivedAt: String,
     val app: String,
+    val conversation: String = "",
     val savedAt: Long,
     val nextTry: Long,
 )

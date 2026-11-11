@@ -22,3 +22,20 @@ private val DATE_HINT = Regex(PATTERNS.joinToString("|"), RegexOption.IGNORE_CAS
 fun hasDateHint(text: String?): Boolean {
     return text != null && DATE_HINT.containsMatchIn(text)
 }
+private val CLEAR_PATTERNS = listOf(
+    """\b(today|tonight|tonite|tomorrow|tmrw|tmr|tmw|2morrow|noon|midnight)\b""",  // a specific day or time of day
+    """\b\d{1,2}(:\d{2})?\s?(am|pm|a\.m\.|p\.m\.)""",  // times like 7pm or 7:30 am
+    """\b\d{1,2}:\d{2}\b""",  // times like 19:00
+    """\b\d{1,2}\s?o['’]?clock\b""",  // times like 7 o'clock
+    """\b\d{1,2}/\d{1,2}(/\d{2,4})?\b""",  // dates like 12/3 or 12/3/26
+    """\b\d{1,2}[.-]\d{1,2}[.-]\d{2,4}\b""",  // dates like 1-6-2026 or 1.6.2026
+    """\b\d{4}-\d{2}-\d{2}\b""",  // dates like 2026-12-03
+    """\b($MONTHS)\.?\s+\d{1,2}(st|nd|rd|th)?\b""",  // dates like Nov 14 or November 14th
+    """\b\d{1,2}(st|nd|rd|th)?\s+(of\s+)?($MONTHS)\b""",  // dates like 14 Nov or the 14th of November
+)
+private val CLEAR_DATE = Regex(CLEAR_PATTERNS.joinToString("|"), RegexOption.IGNORE_CASE)
+
+// Stricter check for group chats: true only for a clear date or time, not loose hints like "sat", "may" or "the 3rd"
+fun hasClearDate(text: String?): Boolean {
+    return text != null && CLEAR_DATE.containsMatchIn(text)
+}

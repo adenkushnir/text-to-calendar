@@ -1,7 +1,8 @@
-// Creates the app's shared pieces once: database, key store, Claude client and the text pipeline
+// Creates the app's shared pieces once: database, key store, app switches, Claude client and the text pipeline
 package io.github.adenkushnir.datebook
 import android.content.Context
 import com.anthropic.client.AnthropicClient
+import io.github.adenkushnir.datebook.capture.AppSwitches
 import io.github.adenkushnir.datebook.data.DatebookDatabase
 import io.github.adenkushnir.datebook.pipeline.ApiKeyStore
 import io.github.adenkushnir.datebook.pipeline.DEFAULT_MODEL
@@ -13,6 +14,7 @@ import io.github.adenkushnir.datebook.pipeline.makeClient
 class AppGraph private constructor(context: Context) {
     val dao = DatebookDatabase.get(context).dao()
     val keyStore = ApiKeyStore(context)
+    val appSwitches = AppSwitches(context)
     private var client: Pair<String, AnthropicClient>? = null
     val pipeline = TextPipeline(
         dao = dao,

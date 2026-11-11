@@ -1,5 +1,8 @@
-// Temporary test tools for debug builds: save a Claude API key and pretend a text arrived (replaced in steps 3 and 5)
+// Temporary test tools for debug builds: notification access, the Claude API key, and pretend a text arrived
+// (replaced by the setup and settings screens in step 5)
 package io.github.adenkushnir.datebook
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
@@ -11,8 +14,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import io.github.adenkushnir.datebook.capture.hasNotificationAccess
 import io.github.adenkushnir.datebook.pipeline.IncomingText
 import io.github.adenkushnir.datebook.pipeline.maskKey
 import io.github.adenkushnir.datebook.pipeline.summary
@@ -29,8 +34,19 @@ fun TestToolsCard(graph: AppGraph) {
     var sender by remember { mutableStateOf("Test sender") }
     var results by remember { mutableStateOf(listOf<String>()) }
     var busy by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    var access by remember { mutableStateOf(hasNotificationAccess(context)) }
     SectionLabel("Test tools (debug builds only)")
     DatebookCard {
+        Muted("Notification access: ${if (access) "on" else "off"}")  // whether Datebook can read texts
+        Button(onClick = {
+            context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        }) {
+            Text("Open notification access settings")
+        }
+        Button(onClick = { access = hasNotificationAccess(context) }) {
+            Text("Check access again")
+        }
         Muted("Saved key: $savedKey")
         OutlinedTextField(
             value = keyInput,

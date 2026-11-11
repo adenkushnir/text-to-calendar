@@ -66,5 +66,30 @@ class DateHintsTest {
     @Test
     fun nullIsNoDate() {
         assertFalse(hasDateHint(null))
+        assertFalse(hasClearDate(null))
+    }
+
+    // Group chats need a clear date or time
+    @Test
+    fun clearDatesForGroups() {
+        val clear = listOf("practice fri 7pm", "game Nov 14", "the 14th of November", "14 nov",
+            "lunch tomorrow at noon", "dentist 12/3", "meet at 19:00", "party tonight", "flight 2026-12-03")
+
+        // Check each clear date
+        for (text in clear) {
+            assertTrue("should be clear: $text", hasClearDate(text))
+        }
+    }
+
+    // Loose hints that are enough for texts are not enough for group chats
+    @Test
+    fun looseHintsNotEnoughForGroups() {
+        val loose = listOf("I sat down", "may be late", "the 3rd one was better", "be there at 7", "see you saturday",
+            "this weekend?", "next week maybe", "lol ok")
+
+        // Check each loose hint
+        for (text in loose) {
+            assertFalse("should not be clear: $text", hasClearDate(text))
+        }
     }
 }
