@@ -214,3 +214,13 @@ python -m t2c.simulate "lunch tomorrow at noon" "Sam"
 ```
 
 It goes through the same date check, Claude call, retry queue and **Add to calendar?** prompt as a real text, but doesn't read the phone's notifications. The second argument is the sender's name. The default is "Test sender". To see the text in its output too, run it with `T2C_LOG_TEXT=1` in front, like `T2C_LOG_TEXT=1 python -m t2c.simulate "..."`.
+
+## Credits
+
+Built by [adenkushnir](https://github.com/adenkushnir), with help from [Claude](https://claude.com/claude-code), Anthropic's AI assistant, using Claude Code. Claude helped with:
+
+- **All the tests:** the Python test suite in `tests/` and the Kotlin unit tests for the Android app.
+- **The design:** the app's look and screens, and the clickable mockup in `android/mockup/`.
+- **Building the Android app**, Datebook, in `android/`.
+
+Commits Claude made end with a `Co-Authored-By: Claude` line. All other commits are by adenkushnir.
