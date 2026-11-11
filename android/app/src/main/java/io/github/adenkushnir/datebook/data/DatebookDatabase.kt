@@ -5,8 +5,9 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-// The database holding seen texts, suggestions, the retry queue and failure counts
-@Database(entities = [SeenText::class, Suggestion::class, RetryText::class, FailureCount::class], version = 1,
+// The database holding seen texts, suggestions, the retry queue and failure counts; until version 1.0.0 is
+// released, a new version starts from an empty database instead of converting the old one
+@Database(entities = [SeenText::class, Suggestion::class, RetryText::class, FailureCount::class], version = 2,
     exportSchema = false)
 abstract class DatebookDatabase : RoomDatabase() {
     // The queries for all four tables
@@ -21,6 +22,7 @@ abstract class DatebookDatabase : RoomDatabase() {
             return instance ?: synchronized(this) {
                 val appContext = context.applicationContext
                 instance ?: Room.databaseBuilder(appContext, DatebookDatabase::class.java, "datebook.db")
+                    .fallbackToDestructiveMigration(true)
                     .build()
                     .also { instance = it }
             }

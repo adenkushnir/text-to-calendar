@@ -39,8 +39,16 @@ val EVENTS_SCHEMA = mapOf(
     "additionalProperties" to false,
 )
 
-// A text to ask Claude about: who sent it, what it says, and when it arrived in the phone's time
-data class IncomingText(val sender: String, val text: String, val receivedAt: LocalDateTime, val app: String = "")
+// A text to ask Claude about: who sent it, what it says, when it arrived in the phone's time, which app, and which
+// group chat it came from (empty for one-to-one); exactTime means receivedAt is the message's own timestamp
+data class IncomingText(
+    val sender: String,
+    val text: String,
+    val receivedAt: LocalDateTime,
+    val app: String = "",
+    val group: String = "",
+    val exactTime: Boolean = false,
+)
 
 // Read Claude's instructions, shared word for word with the Python version, from the app's resources
 private fun loadSystemPrompt(): String {
@@ -53,12 +61,14 @@ fun makeClient(apiKey: String): AnthropicClient {
     return AnthropicOkHttpClient.builder().apiKey(apiKey).timeout(Duration.ofSeconds(60)).build()
 }
 
-// Build the message for Claude: when it arrived (with weekday and phone zone), who sent it, then the text in tags
+// Build the message for Claude: when it arrived (with weekday and phone zone), who sent it, then the text in tags;
+// for group chats the group's name is sent instead of the sender's
 fun buildPrompt(incoming: IncomingText, phoneZone: String): String {
     val received = incoming.receivedAt.format(RECEIVED_FORMAT)
     val weekday = incoming.receivedAt.format(WEEKDAY_FORMAT)
     val zone = if (phoneZone.isNotBlank()) ", phone time zone $phoneZone" else ""  // only when the zone is known
-    return "Received: $received ($weekday$zone)\nFrom: ${incoming.sender}\n<message>\n${incoming.text}\n</message>"
+    val from = if (incoming.group.isNotBlank()) "${incoming.group} (group chat)" else incoming.sender  // never both
+    return "Received: $received ($weekday$zone)\nFrom: $from\n<message>\n${incoming.text}\n</message>"
 }
 
 // Build the request: the chosen model at low effort, the events format, and server-side refusal fallbacks

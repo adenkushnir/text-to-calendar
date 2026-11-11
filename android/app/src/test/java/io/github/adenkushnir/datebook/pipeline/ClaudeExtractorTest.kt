@@ -30,6 +30,14 @@ class ClaudeExtractorTest {
         assertTrue(buildPrompt(incoming, newYork).contains("(Monday, phone time zone America/New_York)"))
     }
 
+    // Group chats send the group's name and never the sender's
+    @Test
+    fun promptForGroup() {
+        val prompt = buildPrompt(incoming.copy(sender = "Jake", group = "Soccer Team"), newYork)
+        assertTrue(prompt.contains("From: Soccer Team (group chat)"))
+        assertTrue(!prompt.contains("Jake"))
+    }
+
     // Claude's instructions are the Python version's, including the plan, fallback, birthday and zone rules
     @Test
     fun systemPromptRules() {

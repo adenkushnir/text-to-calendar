@@ -40,18 +40,33 @@ class TextPipeline(
         val lastSeen = dao.seenAt(hash)
         val time = now()
 
-        // Skip texts seen within the last hour (notification updates repeat the same text)
-        if (lastSeen != null && time - lastSeen < REPEAT_MILLIS) {
+        // Skip a message seen before: always when it has its own timestamp, otherwise within the last hour
+        if (lastSeen != null && (incoming.exactTime || time - lastSeen < REPEAT_MILLIS)) {
             return false
         }
         dao.saveSeen(SeenText(hash, time))
         return true
     }
 
+    // Handle a text from a notification: texts with no date are dropped before anything is saved (no trace), texts
+    // already handled are skipped, and the rest are handled; returns null when the text was dropped or skipped
+    suspend fun receive(incoming: IncomingText): Outcome? {
+        // Drop texts with no date before the fingerprint is saved
+        if (!passesDateCheck(incoming)) {
+            return null
+        }
+
+        // Skip texts already handled
+        if (!isNew(incoming)) {
+            return null
+        }
+        return handle(incoming)
+    }
+
     // Work out one text: the events to offer, the lines describing what happened, and whether to try again later
     suspend fun describe(incoming: IncomingText): Outcome {
         // Texts with no date never leave the phone
-        if (!hasDateHint(incoming.text)) {
+        if (!passesDateCheck(incoming)) {
             return Outcome(emptyList(), listOf("no date"), false)
         }
         val key = apiKey()
@@ -84,7 +99,9 @@ class TextPipeline(
         val toOffer = mutableListOf<Event>()
 
         // Keep each event that hasn't started yet, and describe every one
-        for (event in found) {
+        for (claudeEvent in found) {
+            val event = nameGroupBirthday(claudeEvent, incoming)
+
             // Don't offer events that have already started
             if (hasStarted(event, now())) {
                 lines.add("already started, skipped: ${eventDetails(event)}")
@@ -104,7 +121,8 @@ class TextPipeline(
         if (outcome.retry) {
             val time = now()
             dao.saveRetry(RetryText(sender = incoming.sender, text = incoming.text,
-                receivedAt = incoming.receivedAt.toString(), app = incoming.app, savedAt = time,
+                receivedAt = incoming.receivedAt.toString(), app = incoming.app, conversation = incoming.group,
+                savedAt = time,
                 nextTry = time + RETRY_MILLIS))
             onRetrySaved(time + RETRY_MILLIS)
             return outcome.copy(lines = outcome.lines + "will try again every minute once online")
@@ -118,7 +136,8 @@ class TextPipeline(
 
         // Try each saved text that is due
         for (retry in dao.dueRetries(now())) {
-            val incoming = IncomingText(retry.sender, retry.text, LocalDateTime.parse(retry.receivedAt), retry.app)
+            val receivedAt = LocalDateTime.parse(retry.receivedAt)
+            val incoming = IncomingText(retry.sender, retry.text, receivedAt, retry.app, retry.conversation)
             val outcome = describe(incoming)
 
             // Wait for the next round if it still fails and isn't too old yet
@@ -141,7 +160,7 @@ class TextPipeline(
 
     // Save each event as a waiting suggestion and return their ids
     private suspend fun saveSuggestions(events: List<Event>, incoming: IncomingText): List<Long> {
-        return events.map { dao.saveSuggestion(suggestionOf(it, incoming.sender, incoming.app, now())) }  // one each
+        return events.map { dao.saveSuggestion(suggestionOf(it, incoming, now())) }  // one each
     }
 
     // After Claude answers, clear both API alert counts, and note in the log when an alert goes away
@@ -156,6 +175,21 @@ class TextPipeline(
     }
 }
 
+// Group texts reach Claude under the group's name, so "it's my birthday" comes back as "<Group>'s birthday";
+// put the sender's name back in, on the phone, so it reads "Jake's birthday"
+fun nameGroupBirthday(event: Event, incoming: IncomingText): Event {
+    // Only group texts need the fix
+    if (incoming.group.isBlank() || event.title != "${incoming.group}'s birthday") {
+        return event
+    }
+    return event.copy(title = "${incoming.sender}'s birthday")
+}
+
+// Return true if a text passes the on-phone date check: group chats need a clear date or time
+fun passesDateCheck(incoming: IncomingText): Boolean {
+    return if (incoming.group.isNotBlank()) hasClearDate(incoming.text) else hasDateHint(incoming.text)  // stricter
+}
+
 // Describe one event for the log, like: Dinner | 2026-11-13T19:00 to ? | Joe's | zone America/Los_Angeles
 fun eventDetails(event: Event): String {
     val end = event.end.ifBlank { "?" }  // unknown end
@@ -165,9 +199,11 @@ fun eventDetails(event: Event): String {
     return details + repeat + zone
 }
 
-// Make a fingerprint of a text from its app, sender and text, so the same text is only handled once
+// Make a fingerprint of a text from its app, group, sender and text (and its own timestamp when it has one), so the
+// same message is only handled once even when a conversation notification shows it again
 fun fingerprint(incoming: IncomingText): String {
-    val key = "${incoming.app}|${incoming.sender}|${incoming.text}"
+    val time = if (incoming.exactTime) incoming.receivedAt.toString() else ""  // only messages with their own time
+    val key = "${incoming.app}|${incoming.group}|${incoming.sender}|${incoming.text}|$time"
     val digest = MessageDigest.getInstance("SHA-256").digest(key.toByteArray(Charsets.UTF_8))
     return digest.joinToString("") { "%02x".format(it) }  // each byte as two hex digits
 }
