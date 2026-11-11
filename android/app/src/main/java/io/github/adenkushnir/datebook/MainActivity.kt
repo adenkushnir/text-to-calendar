@@ -1,5 +1,5 @@
 // Datebook's main screen: setup until it's finished, then Home, a suggestion's card and Settings; opens the
-// suggestion a tapped prompt names, shows banners for required settings that are off, and test tools in debug builds
+// suggestion a tapped prompt names, and shows banners for required settings that are off
 package io.github.adenkushnir.datebook
 import android.Manifest
 import android.content.Intent
@@ -30,10 +30,22 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import io.github.adenkushnir.datebook.capture.WATCHABLE_APPS
 import io.github.adenkushnir.datebook.data.Suggestion
+import io.github.adenkushnir.datebook.pipeline.IncomingText
+import io.github.adenkushnir.datebook.pipeline.maskKey
+import io.github.adenkushnir.datebook.pipeline.summary
 import io.github.adenkushnir.datebook.prompts.EXTRA_SUGGESTION_ID
 import io.github.adenkushnir.datebook.prompts.addSuggestion
 import io.github.adenkushnir.datebook.prompts.ignoreSuggestion
+import io.github.adenkushnir.datebook.settings.AboutPage
+import io.github.adenkushnir.datebook.settings.AppsPage
+import io.github.adenkushnir.datebook.settings.ClaudePage
+import io.github.adenkushnir.datebook.settings.GITHUB_URL
+import io.github.adenkushnir.datebook.settings.NotificationsPage
+import io.github.adenkushnir.datebook.settings.PrivacyPage
+import io.github.adenkushnir.datebook.settings.SettingsItem
+import io.github.adenkushnir.datebook.settings.SettingsMenu
 import io.github.adenkushnir.datebook.setup.SetupActions
 import io.github.adenkushnir.datebook.setup.SetupScreen
 import io.github.adenkushnir.datebook.setup.SetupStatus
@@ -43,11 +55,17 @@ import io.github.adenkushnir.datebook.setup.readSetupStatus
 import io.github.adenkushnir.datebook.setup.setupFinished
 import io.github.adenkushnir.datebook.setup.showSamplePrompt
 import io.github.adenkushnir.datebook.ui.theme.DatebookTheme
+import java.time.LocalDateTime
 import kotlinx.coroutines.launch
 const val ROUTE_SETUP = "setup"
 const val ROUTE_HOME = "home"
 const val ROUTE_SUGGESTION = "suggestion/{id}"
 const val ROUTE_SETTINGS = "settings"
+const val ROUTE_SETTINGS_APPS = "settings/apps"
+const val ROUTE_SETTINGS_CLAUDE = "settings/claude"
+const val ROUTE_SETTINGS_NOTIFICATIONS = "settings/notifications"
+const val ROUTE_SETTINGS_PRIVACY = "settings/privacy"
+const val ROUTE_SETTINGS_ABOUT = "settings/about"
 
 // The activity Android starts when you tap the Datebook icon or a prompt
 class MainActivity : ComponentActivity() {
@@ -146,7 +164,6 @@ class MainActivity : ComponentActivity() {
                     onIgnore = ignore,
                     onSettings = { nav.navigate(ROUTE_SETTINGS) },
                     fixes = fixesFor(status, actions, openKeySetup = { nav.navigate(ROUTE_SETUP) }),
-                    testTools = if (debugBuild) ({ TestToolsCard(graph) }) else null,  // debug builds only
                 )
             }
             composable(ROUTE_SUGGESTION, arguments = listOf(navArgument("id") { type = NavType.LongType })) { entry ->
@@ -160,7 +177,39 @@ class MainActivity : ComponentActivity() {
                 )
             }
             composable(ROUTE_SETTINGS) {
-                SettingsPlaceholder(onBack = { nav.popBackStack() })
+                SettingsMenu(items = settingsItems(nav::navigate), onBack = { nav.popBackStack() })
+            }
+            composable(ROUTE_SETTINGS_APPS) {
+                val switches = graph.appSwitches
+                AppsPage(WATCHABLE_APPS, switches::isOn, switches::set, onBack = { nav.popBackStack() })
+            }
+            composable(ROUTE_SETTINGS_CLAUDE) {
+                var model by remember { mutableStateOf(graph.modelChoice.get()) }
+                ClaudePage(
+                    maskedKey = graph.keyStore.load()?.let { maskKey(it) },
+                    model = model,
+                    onModel = { graph.modelChoice.set(it); model = it },
+                    checkAndSaveKey = { key -> checkAndSaveKey(graph, key, refresh) },
+                    onBack = { nav.popBackStack() },
+                )
+            }
+            composable(ROUTE_SETTINGS_NOTIFICATIONS) {
+                NotificationsPage(status.access, status.notifications, actions.openAccess,
+                    openNotifications = { startActivity(appNotificationSettings()) }, onBack = { nav.popBackStack() })
+            }
+            composable(ROUTE_SETTINGS_PRIVACY) {
+                PrivacyPage(clearHistory = { graph.pipeline.clearHistory() }, onBack = { nav.popBackStack() })
+            }
+            composable(ROUTE_SETTINGS_ABOUT) {
+                val pretend: suspend (String, String) -> List<String> = { text, sender ->
+                    pretendText(graph, text, sender)
+                }
+                AboutPage(
+                    version = packageManager.getPackageInfo(packageName, 0).versionName.orEmpty(),
+                    openGitHub = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(GITHUB_URL))) },
+                    pretend = if (debugBuild) pretend else null,  // debug builds only
+                    onBack = { nav.popBackStack() },
+                )
             }
         }
     }
@@ -187,6 +236,32 @@ class MainActivity : ComponentActivity() {
             refresh()
         }
         return problem
+    }
+
+    // The Settings menu's rows, each opening its page (Smart features and Automatic mode come in later steps)
+    private fun settingsItems(open: (String) -> Unit): List<SettingsItem> {
+        return listOf(
+            SettingsItem("▣", "Apps to watch", "Which apps Datebook reads texts from") { open(ROUTE_SETTINGS_APPS) },
+            SettingsItem("AI", "Claude & API key", "Your key and which model to use") { open(ROUTE_SETTINGS_CLAUDE) },
+            SettingsItem("🔔", "Notifications & alerts", "Reading texts and showing prompts") {
+                open(ROUTE_SETTINGS_NOTIFICATIONS)
+            },
+            SettingsItem("🔒", "Privacy & history", "What's kept, and clearing history") {
+                open(ROUTE_SETTINGS_PRIVACY)
+            },
+            SettingsItem("i", "About Datebook", "Version, GitHub and privacy") { open(ROUTE_SETTINGS_ABOUT) },
+        )
+    }
+
+    // Debug builds only: run a typed text through Datebook as if it had arrived, and return what happened
+    private suspend fun pretendText(graph: AppGraph, text: String, sender: String): List<String> {
+        val outcome = graph.pipeline.handle(IncomingText(sender, text, LocalDateTime.now(), "simulated"))
+        return outcome.lines + outcome.events.map { "prompt: ${summary(it)}" }  // what a prompt would say
+    }
+
+    // Android's notification settings for Datebook, where prompts can be turned back on
+    private fun appNotificationSettings(): Intent {
+        return Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
     }
 
     // Android's page for Datebook, where Samsung's Battery → Unrestricted setting lives

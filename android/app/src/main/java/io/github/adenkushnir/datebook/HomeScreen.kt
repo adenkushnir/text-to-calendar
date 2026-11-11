@@ -48,7 +48,6 @@ fun HomeScreen(
     onIgnore: (Long) -> Unit = {},
     onSettings: () -> Unit = {},
     fixes: List<Pair<String, () -> Unit>> = emptyList(),
-    testTools: (@Composable () -> Unit)? = null,
 ) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         TopBar("Datebook", onSettings = onSettings)
@@ -101,7 +100,6 @@ fun HomeScreen(
                     }
                 }
             }
-            testTools?.invoke()
         }
     }
 }
