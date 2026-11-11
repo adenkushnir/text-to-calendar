@@ -1,2 +1,6 @@
 # Shell scripts run on the phone, so they must keep Unix line endings even when committed from Windows
 *.sh text eol=lf
+# The Gradle wrapper script runs in Git Bash and on Linux, so it keeps Unix line endings; Windows scripts keep their own
+android/gradlew text eol=lf
+*.bat text eol=crlf
+*.jar binary
