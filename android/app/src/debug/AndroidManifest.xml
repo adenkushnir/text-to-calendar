@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: the pretend-a-notification receiver, which only adb (holding the DUMP permission) can call -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <receiver
+            android:name=".PretendNotificationReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="io.github.adenkushnir.datebook.PRETEND_NOTIFICATION" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
