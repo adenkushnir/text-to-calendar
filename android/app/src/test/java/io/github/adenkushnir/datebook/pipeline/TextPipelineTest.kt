@@ -33,6 +33,7 @@ class TextPipelineTest {
     private lateinit var dao: DatebookDao
     private var clock = Instant.parse("2026-11-10T14:00:00Z").toEpochMilli()
     private val retries = mutableListOf<Long>()
+    private val prompts = mutableListOf<Pair<String, String>>()
 
     // Open a fresh in-memory database before each test
     @Before
@@ -58,6 +59,7 @@ class TextPipelineTest {
             phoneZone = { newYork },
             now = { clock },
             onRetrySaved = { retries.add(it) },
+            onSuggested = { suggestion, text -> prompts.add(Pair(suggestion.title, text.text)) },
         )
     }
 
@@ -221,5 +223,12 @@ class TextPipelineTest {
         val outcome = pipeline(listOf(birthday)).handle(group)
         assertEquals("Jake's birthday", outcome.events.single().title)
         assertEquals("Soccer Team", dao.suggestion(outcome.suggestionIds.single())!!.conversation)
+    }
+
+    // Each saved suggestion is announced once with its text, so the app can show its prompt
+    @Test
+    fun eachSuggestionGetsAPrompt() = runTest {
+        pipeline(listOf(dinner, movie)).handle(incoming)
+        assertEquals(listOf(Pair("Dinner with Sam", incoming.text), Pair("Movie", incoming.text)), prompts)
     }
 }
