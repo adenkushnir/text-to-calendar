@@ -30,6 +30,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.work.ExistingWorkPolicy
 import io.github.adenkushnir.datebook.calendar.phoneCalendars
 import io.github.adenkushnir.datebook.capture.WATCHABLE_APPS
 import io.github.adenkushnir.datebook.data.Suggestion
@@ -48,6 +49,7 @@ import io.github.adenkushnir.datebook.settings.NotificationsPage
 import io.github.adenkushnir.datebook.settings.PrivacyPage
 import io.github.adenkushnir.datebook.settings.SettingsItem
 import io.github.adenkushnir.datebook.settings.SettingsMenu
+import io.github.adenkushnir.datebook.summary.scheduleSummary
 import io.github.adenkushnir.datebook.setup.SetupActions
 import io.github.adenkushnir.datebook.setup.SetupScreen
 import io.github.adenkushnir.datebook.setup.SetupStatus
@@ -122,6 +124,7 @@ class MainActivity : ComponentActivity() {
         }
         LaunchedEffect(Unit) {
             graph.pipeline.cleanUp()
+            scheduleSummary(applicationContext)  // book the morning summary if it isn't already
         }
         val actions = SetupActions(
             openAccess = { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
@@ -203,8 +206,15 @@ class MainActivity : ComponentActivity() {
                     onBack = { nav.popBackStack() })
             }
             composable(ROUTE_SETTINGS_NOTIFICATIONS) {
+                val summary = graph.summarySettings
                 NotificationsPage(status.access, status.notifications, actions.openAccess,
-                    openNotifications = { startActivity(appNotificationSettings()) }, onBack = { nav.popBackStack() })
+                    openNotifications = { startActivity(appNotificationSettings()) },
+                    summaryOn = summary.isOn(), summaryHour = summary.hour(), summaryMinute = summary.minute(),
+                    setSummary = { on, hour, minute ->
+                        summary.set(on, hour, minute)
+                        scheduleSummary(applicationContext, ExistingWorkPolicy.REPLACE)  // re-book at the new time
+                    },
+                    onBack = { nav.popBackStack() })
             }
             composable(ROUTE_SETTINGS_PRIVACY) {
                 PrivacyPage(clearHistory = { graph.pipeline.clearHistory() }, onBack = { nav.popBackStack() })
