@@ -1,18 +1,31 @@
 // The suggestion card from the mockup: a read-only summary of one suggestion, with Add and Ignore
 package io.github.adenkushnir.datebook
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -23,6 +36,8 @@ import io.github.adenkushnir.datebook.prompts.fromLine
 import io.github.adenkushnir.datebook.prompts.isChange
 import io.github.adenkushnir.datebook.prompts.promptTitle
 import io.github.adenkushnir.datebook.tracking.trackLinkFor
+import io.github.adenkushnir.datebook.trains.TrainChoices
+import io.github.adenkushnir.datebook.trains.TrainRow
 
 // Show one suggestion; null while it is loading or after it was deleted
 @Composable
@@ -36,11 +51,16 @@ fun SuggestionScreen(
     onTravelMode: (String) -> Unit = {},
     onTrack: (String) -> Unit = {},
     flightStatus: String? = null,
-    trainLine: String? = null,
+    trains: TrainChoices? = null,
+    onPickTrain: (TrainRow) -> Unit = {},
+    onSwitchOrigin: (String) -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         TopBar("Suggestion", onBack = onBack)
-        Column(Modifier.navigationBarsPadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(
+            Modifier.verticalScroll(rememberScrollState()).navigationBarsPadding().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
             // Show a short message until the suggestion has loaded, or if it is gone
             if (suggestion == null) {
                 Muted("This suggestion is no longer available.")
@@ -57,11 +77,12 @@ fun SuggestionScreen(
                     Text("✈ $flightStatus", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                 }
 
-                // Show the suggested NJ Transit train for transit plans
-                if (trainLine != null) {
-                    Text("🚆 $trainLine", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-                }
                 Muted(statusText(suggestion))
+            }
+
+            // Show the plan's NJ Transit trains when it goes by transit
+            if (trains != null) {
+                TrainList(trains, onPickTrain, onSwitchOrigin)
             }
 
             // Offer the travel modes for new plans with a place (the leave-by alert uses the one picked)
@@ -108,6 +129,55 @@ fun SuggestionScreen(
                 Muted(help)
             }
         }
+    }
+}
+
+// A plan's NJ Transit trains: where they leave from (with a menu to switch to another nearby station), where they go,
+// then each train with its time, state and arrival, marked ✓ yours, ★ Best or (late); tapping one makes it yours
+@Composable
+private fun TrainList(choices: TrainChoices, onPick: (TrainRow) -> Unit, onSwitch: (String) -> Unit) {
+    var switching by remember { mutableStateOf(false) }
+    SectionLabel("🚆 Trains")
+
+    // Show the station the trains leave from, with a menu of the other nearby ones
+    if (choices.from != null) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("From:")
+            Box {
+                TextButton(onClick = { switching = true }) {
+                    Text("${choices.from.name} ▾")
+                }
+                DropdownMenu(expanded = switching, onDismissRequest = { switching = false }) {
+                    // One choice per nearby station
+                    for (station in choices.origins) {
+                        DropdownMenuItem(text = { Text(station.name) }, onClick = {
+                            switching = false
+                            onSwitch(station.code)
+                        })
+                    }
+                }
+            }
+        }
+    }
+    choices.to?.let { Muted("→ ${it.name}") }
+
+    // Say why there are no trains, or list them
+    if (choices.rows.isEmpty()) {
+        Muted(choices.note)
+    } else {
+        DatebookCard {
+            // One row per train; tapping it makes it yours
+            for (row in choices.rows) {
+                val marks = listOfNotNull("✓".takeIf { row.mine }, "★ Best".takeIf { row.best },
+                    "(late)".takeIf { row.late }).joinToString(" ")
+                val weight = if (row.mine) FontWeight.SemiBold else FontWeight.Normal  // yours stands out
+                Row(Modifier.fillMaxWidth().clickable { onPick(row) }, verticalAlignment = Alignment.CenterVertically) {
+                    Text("${row.leaves} · ${row.state}", fontWeight = weight, modifier = Modifier.weight(1f))
+                    Text("${row.arrives} $marks".trim(), fontWeight = weight)
+                }
+            }
+        }
+        Muted("Tap a train to make it yours; the leave-by alert and delay alerts follow it.")
     }
 }
 

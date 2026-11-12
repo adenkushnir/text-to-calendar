@@ -4,6 +4,7 @@ package io.github.adenkushnir.datebook.trains
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import io.github.adenkushnir.datebook.HomeScreen
 import io.github.adenkushnir.datebook.ui.theme.DatebookTheme
@@ -143,5 +144,61 @@ class TrainsTest {
         compose.onNodeWithText("5:12 PM · Track 2 · On time").assertExists()
         compose.onNodeWithText("⇄").performClick()
         assertEquals(1, flipped)
+    }
+
+    // A plan's list has every train from the station that stops near the plan, marking the best one, the ones that get
+    // there late, and yours
+    @Test
+    fun planList() {
+        val trains = parseBoard(board)
+        val start = Instant.parse("2037-11-13T23:40:00Z").toEpochMilli()  // 6:40 PM
+        val (to, rows) = trainRows(newBrunswick, trains, listOf(penn), start, mine = "3855")
+        assertEquals(penn, to)
+        assertEquals(listOf("3851", "3855"), rows.map { it.pick.trainId })
+        assertTrue(rows[0].best)
+        assertTrue(rows[1].late)
+        assertTrue(rows[1].mine)
+        assertEquals("5:12 PM", rows[0].leaves)
+        assertEquals("6:38 PM", rows[1].arrives)  // 6:35 PM plus 3 minutes late
+        assertEquals(Pair(null, emptyList<TrainRow>()), trainRows(newBrunswick, trains, emptyList(), start, null))
+    }
+
+    // Your chosen train and station are remembered per plan; switching station forgets the train
+    @Test
+    fun choicesRemembered() {
+        val store = TrainStore(ApplicationProvider.getApplicationContext())
+        store.setChoice("plan", "3851")
+        assertEquals("3851", store.choice("plan"))
+        store.setOrigin("plan", "ED")
+        assertEquals("ED", store.origin("plan"))
+        assertNull(store.choice("plan"))
+    }
+
+    // The plan card lists the trains with their marks, switches station and makes a tapped train yours
+    @Test
+    fun planCard() {
+        val trains = parseBoard(board)
+        val start = Instant.parse("2037-11-13T23:40:00Z").toEpochMilli()
+        val rows = trainRows(newBrunswick, trains, listOf(penn), start, null).second
+        val edison = Station("ED", "Edison", 40.5194, -74.4108)
+        val picked = mutableListOf<String>()
+        val switched = mutableListOf<String>()
+        val plan = io.github.adenkushnir.datebook.data.Suggestion(sender = "you", app = "", title = "Dinner",
+            start = "2037-11-13T19:00", end = "", allDay = false, location = "Carmine's", repeat = "", timezone = "",
+            phoneTimezone = "America/New_York", createdAt = 0)
+        compose.setContent {
+            DatebookTheme {
+                io.github.adenkushnir.datebook.SuggestionScreen(plan, onBack = {}, onAdd = {}, onIgnore = {},
+                    trains = TrainChoices(newBrunswick, listOf(newBrunswick, edison), penn, rows),
+                    onPickTrain = { picked.add(it.pick.trainId) }, onSwitchOrigin = { switched.add(it) })
+            }
+        }
+        compose.onNodeWithText("6:05 PM ★ Best").assertExists()
+        compose.onNodeWithText("6:38 PM (late)").assertExists()
+        compose.onNodeWithText("5:12 PM · Track 2 · On time").performScrollTo().performClick()
+        assertEquals(listOf("3851"), picked)
+        compose.onNodeWithText("New Brunswick ▾").performScrollTo().performClick()
+        compose.onNodeWithText("Edison").performClick()
+        assertEquals(listOf("ED"), switched)
     }
 }
