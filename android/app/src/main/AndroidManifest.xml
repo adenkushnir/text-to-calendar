@@ -5,6 +5,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
@@ -48,6 +51,10 @@
                 <data android:mimeType="image/*" />
             </intent-filter>
         </activity>
+        <!-- Handles the travel-mode buttons on leave-by alerts in the background -->
+        <receiver
+            android:name=".leaveby.LeaveByModeReceiver"
+            android:exported="false" />
         <!-- Handles the prompt's Ignore button in the background -->
         <receiver
             android:name=".prompts.IgnoreReceiver"

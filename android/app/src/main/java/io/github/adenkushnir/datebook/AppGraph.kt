@@ -1,5 +1,5 @@
-// Creates the app's shared pieces once: database, key store, app and calendar switches, summary settings, prompts,
-// Claude client and the pipeline
+// Creates the app's shared pieces once: database, key stores, app and calendar switches, summary and travel settings,
+// prompts, Claude client and the pipeline
 package io.github.adenkushnir.datebook
 import android.content.Context
 import com.anthropic.client.AnthropicClient
@@ -11,6 +11,8 @@ import io.github.adenkushnir.datebook.pipeline.ApiKeyStore
 import io.github.adenkushnir.datebook.pipeline.TextPipeline
 import io.github.adenkushnir.datebook.pipeline.extractEvents
 import io.github.adenkushnir.datebook.pipeline.makeClient
+import io.github.adenkushnir.datebook.places.TravelSettings
+import io.github.adenkushnir.datebook.places.findPlace
 import io.github.adenkushnir.datebook.prompts.SuggestionNotifier
 import io.github.adenkushnir.datebook.settings.ModelChoice
 import io.github.adenkushnir.datebook.summary.SummarySettings
@@ -25,6 +27,7 @@ class AppGraph private constructor(context: Context) {
     val modelChoice = ModelChoice(context)
     val calendarSwitches = CalendarSwitches(context)
     val summarySettings = SummarySettings(context)
+    val travelSettings = TravelSettings(context)
     private var client: Pair<String, AnthropicClient>? = null
     val pipeline = TextPipeline(
         dao = dao,
@@ -33,6 +36,7 @@ class AppGraph private constructor(context: Context) {
         onRetrySaved = { scheduleRetry(context, it) },
         onSuggested = { suggestion, incoming -> notifier.show(suggestion, incoming.text) },
         calendar = { from, to -> calendarEvents(context, from, to, calendarSwitches.switchedOff()) },
+        findPlace = { place -> findPlace(context, mapsKeyStore.load(), travelSettings.home(), place) },
     )
 
     // Return a Claude client for the key, reusing it while the key stays the same

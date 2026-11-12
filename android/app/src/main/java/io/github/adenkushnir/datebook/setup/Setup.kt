@@ -6,6 +6,8 @@ import android.content.pm.PackageManager
 import android.os.PowerManager
 import androidx.core.content.ContextCompat
 import io.github.adenkushnir.datebook.AppGraph
+import io.github.adenkushnir.datebook.places.hasBackgroundLocation
+import io.github.adenkushnir.datebook.places.hasLocationAccess
 import io.github.adenkushnir.datebook.capture.hasNotificationAccess
 import io.github.adenkushnir.datebook.data.suggestionOf
 import io.github.adenkushnir.datebook.pipeline.Event
@@ -25,6 +27,7 @@ private const val FINISHED = "finished"
 private const val SAMPLE_TEXT = "dinner fri 7pm at joes"
 
 // Where each step stands; the first three are required before Home opens, the rest can be done later in Settings
+// (location is only asked for in Settings → Places & travel)
 data class SetupStatus(
     val access: Boolean = false,
     val notifications: Boolean = false,
@@ -32,6 +35,8 @@ data class SetupStatus(
     val battery: Boolean = false,
     val calendar: Boolean = false,
     val mapsKey: Boolean = false,
+    val location: Boolean = false,
+    val backgroundLocation: Boolean = false,
 ) {
     val requiredDone = access && notifications && key
 }
@@ -47,6 +52,8 @@ fun readSetupStatus(context: Context, graph: AppGraph): SetupStatus {
         battery = power.isIgnoringBatteryOptimizations(context.packageName),
         calendar = calendarPermission == PackageManager.PERMISSION_GRANTED,
         mapsKey = graph.mapsKeyStore.load() != null,
+        location = hasLocationAccess(context),
+        backgroundLocation = hasBackgroundLocation(context),
     )
 }
 

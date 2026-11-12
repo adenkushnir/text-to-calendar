@@ -47,7 +47,8 @@ data class ShareResult(
     val needsKey: Boolean = false,
 )
 
-// The text pipeline; the Claude call, key, zone, clock and calendar are passed in so tests can replace them
+// The text pipeline; the Claude call, key, zone, clock, calendar and place lookup are passed in so tests can replace
+// them
 class TextPipeline(
     private val dao: DatebookDao,
     private val apiKey: () -> String?,
@@ -57,6 +58,7 @@ class TextPipeline(
     private val onRetrySaved: (atMillis: Long) -> Unit = {},
     private val onSuggested: (suggestion: Suggestion, incoming: IncomingText) -> Unit = { _, _ -> },
     private val calendar: (fromMillis: Long, toMillis: Long) -> List<CalendarEvent> = { _, _ -> emptyList() },
+    private val findPlace: (place: String) -> String? = { null },
 ) {
     private val health = Health(dao)
 
@@ -145,9 +147,10 @@ class TextPipeline(
                 lines.add("already moved, skipped: ${eventDetails(event)}")
                 continue
             }
-            toOffer.add(event)
-            val kind = event.change.ifBlank { "event" }  // "moved" or "cancelled" for changes
-            lines.add("$kind: ${eventDetails(event)}")
+            val placed = withFullAddress(event)
+            toOffer.add(placed)
+            val kind = placed.change.ifBlank { "event" }  // "moved" or "cancelled" for changes
+            lines.add("$kind: ${eventDetails(placed)}")
         }
         return Outcome(toOffer, lines, false)
     }
@@ -276,6 +279,17 @@ class TextPipeline(
             return true
         }
         return incoming.group.isBlank() && soundsLikeChange(incoming.text) && upcomingEvents().isNotEmpty()
+    }
+
+    // Swap a new plan's place, like "Luigi's", for its full address, off the main thread; it stays as written when
+    // there is no Maps key or no match (changes keep the calendar event's own place)
+    private suspend fun withFullAddress(event: Event): Event {
+        // Only new plans that name a place are looked up
+        if (event.location.isBlank() || event.change.isNotBlank()) {
+            return event
+        }
+        val full = withContext(Dispatchers.IO) { findPlace(event.location) }
+        return if (full != null) event.copy(location = full) else event
     }
 
     // Read the calendar events of the next 2 weeks (at most 40) that a change could refer to, off the main thread

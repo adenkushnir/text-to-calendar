@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Debug builds only: the pretend-a-notification and show-the-summary receivers, which only adb (holding the DUMP
-     permission) can call -->
+<!-- Debug builds only: the pretend-a-notification, show-the-summary and leave-by-now receivers, which only adb
+     (holding the DUMP permission) can call -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
         <receiver
@@ -17,6 +17,14 @@
             android:permission="android.permission.DUMP">
             <intent-filter>
                 <action android:name="io.github.adenkushnir.datebook.SHOW_SUMMARY" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name=".LeaveByNowReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="io.github.adenkushnir.datebook.LEAVE_BY_NOW" />
             </intent-filter>
         </receiver>
     </application>
