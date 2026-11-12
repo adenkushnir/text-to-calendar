@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.pipeline.summary
 import io.github.adenkushnir.datebook.prompts.fromLine
+import io.github.adenkushnir.datebook.trains.TrainBoard
 import io.github.adenkushnir.datebook.prompts.isChange
 import io.github.adenkushnir.datebook.prompts.promptTitle
 import io.github.adenkushnir.datebook.ui.theme.DatebookTheme
@@ -50,6 +52,8 @@ fun HomeScreen(
     onIgnore: (Long) -> Unit = {},
     onSettings: () -> Unit = {},
     fixes: List<Pair<String, () -> Unit>> = emptyList(),
+    trains: TrainBoard? = null,
+    onFlipTrains: () -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         TopBar("Datebook", onSettings = onSettings)
@@ -62,6 +66,11 @@ fun HomeScreen(
                 FixBanner(problem, fix)
             }
             NextUpCard(ahead.firstOrNull(), nowMillis, onOpen)
+
+            // Show the Next trains card once a trip is saved
+            if (trains != null) {
+                NextTrainsCard(trains, onFlipTrains)
+            }
             SectionLabel("Waiting for you (${waiting.size})")
             DatebookCard {
                 // Show an empty message until there are suggestions
@@ -139,6 +148,27 @@ private fun NextUpCard(next: Suggestion?, nowMillis: Long, onOpen: (Long) -> Uni
             Text(next.title, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
             Muted(whenAndWhere(next))
             Muted("From ${fromLine(next)}")
+        }
+    }
+}
+
+// The Next trains card: the saved trip with a ⇄ button to flip it, then the next 3 trains or why there are none
+@Composable
+private fun NextTrainsCard(board: TrainBoard, onFlip: () -> Unit) {
+    DatebookCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SectionLabel("Next trains · ${board.fromName} → ${board.toName}")
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onFlip) {
+                Text("⇄")
+            }
+        }
+
+        // List the trains, or say why there are none
+        if (board.lines.isEmpty()) {
+            Muted(board.note.ifBlank { "Loading…" })
+        } else {
+            board.lines.forEach { Text(it, fontWeight = FontWeight.SemiBold) }  // one line per train
         }
     }
 }

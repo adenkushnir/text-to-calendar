@@ -37,6 +37,13 @@ import io.github.adenkushnir.datebook.calendar.phoneCalendars
 import io.github.adenkushnir.datebook.flights.scheduleFlightChecks
 import io.github.adenkushnir.datebook.flights.statusLine
 import io.github.adenkushnir.datebook.leaveby.LeaveByStore
+import io.github.adenkushnir.datebook.trains.ON_THE_DAY
+import io.github.adenkushnir.datebook.trains.TrainBoard
+import io.github.adenkushnir.datebook.trains.nextTrains
+import io.github.adenkushnir.datebook.trains.pickLine
+import io.github.adenkushnir.datebook.trains.refreshStations
+import io.github.adenkushnir.datebook.trains.scheduleTrains
+import io.github.adenkushnir.datebook.trains.wantsTrain
 import io.github.adenkushnir.datebook.leaveby.eventKey
 import io.github.adenkushnir.datebook.leaveby.scheduleLeaveBy
 import io.github.adenkushnir.datebook.pipeline.eventTimes
@@ -71,7 +78,10 @@ import io.github.adenkushnir.datebook.setup.setupFinished
 import io.github.adenkushnir.datebook.setup.showSamplePrompt
 import io.github.adenkushnir.datebook.ui.theme.DatebookTheme
 import java.time.LocalDateTime
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 const val ROUTE_SETUP = "setup"
 const val ROUTE_HOME = "home"
 const val ROUTE_SUGGESTION = "suggestion/{id}"
@@ -145,6 +155,7 @@ class MainActivity : ComponentActivity() {
             scheduleSummary(applicationContext)  // book the morning summary if it isn't already
             scheduleLeaveBy(applicationContext)  // start planning leave-by alerts if it isn't already
             scheduleFlightChecks(applicationContext)  // start the flight checks if they aren't running
+            scheduleTrains(applicationContext)  // start the NJ Transit train checks if they aren't running
         }
         val actions = SetupActions(
             openAccess = { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
@@ -181,6 +192,18 @@ class MainActivity : ComponentActivity() {
             }
             composable(ROUTE_HOME) {
                 val now = remember(added) { System.currentTimeMillis() }
+                var trip by remember { mutableStateOf(graph.trainSettings.trip()) }
+                var trains by remember { mutableStateOf<TrainBoard?>(null) }
+                LaunchedEffect(trip) {
+                    val saved = trip ?: return@LaunchedEffect  // no card until a trip is saved
+                    trains = TrainBoard(saved.first, saved.second, emptyList())
+
+                    // Refresh the board every minute while Home is showing
+                    while (true) {
+                        trains = withContext(Dispatchers.IO) { nextTrains(graph, saved.first, saved.second) }
+                        delay(60_000)
+                    }
+                }
                 HomeScreen(
                     waiting = waiting,
                     ahead = upcoming(added, now),
@@ -190,6 +213,16 @@ class MainActivity : ComponentActivity() {
                     onIgnore = ignore,
                     onSettings = { nav.navigate(ROUTE_SETTINGS) },
                     fixes = fixesFor(status, actions, openKeySetup = { nav.navigate(ROUTE_SETUP) }),
+                    trains = trains,
+                    onFlipTrains = {
+                        val saved = trip
+
+                        // Flip the saved trip's direction
+                        if (saved != null) {
+                            graph.trainSettings.setTrip(saved.second, saved.first)
+                            trip = Pair(saved.second, saved.first)
+                        }
+                    },
                 )
             }
             composable(ROUTE_SUGGESTION, arguments = listOf(navArgument("id") { type = NavType.LongType })) { entry ->
@@ -204,6 +237,7 @@ class MainActivity : ComponentActivity() {
                     onOpenMaps = { place -> openMaps(place, travelMode ?: graph.travelSettings.mode()) },
                     onTrack = { url -> openLink(url) },
                     flightStatus = suggestion?.let { flightStatusFor(graph, it) },
+                    trainLine = suggestion?.let { trainLineFor(graph, it) },
                     travelMode = travelMode,
                     onTravelMode = { mode ->
                         val plan = suggestion ?: return@SuggestionScreen
@@ -256,6 +290,20 @@ class MainActivity : ComponentActivity() {
                 FlightsPage(
                     maskedKey = graph.flightsKeyStore.load()?.let { maskKey(it) },
                     saveKey = { key -> graph.flightsKeyStore.save(key) },
+                    njtUser = graph.njtUserStore.load(),
+                    saveNjt = { user, password ->
+                        graph.njtUserStore.save(user)
+                        graph.njtPasswordStore.save(password)
+                    },
+                    stations = graph.trainSettings.stations(),
+                    trip = graph.trainSettings.trip(),
+                    setTrip = { from, to -> graph.trainSettings.setTrip(from, to) },
+                    loadStations = {
+                        withContext(Dispatchers.IO) {
+                            refreshStations(graph.trainSettings, graph.railData, System.currentTimeMillis())
+                            graph.trainSettings.stations()
+                        }
+                    },
                     onBack = { nav.popBackStack() },
                 )
             }
@@ -352,6 +400,17 @@ class MainActivity : ComponentActivity() {
             return null
         }
         return graph.flightStore.info(plan.flight, plan.start)?.let { statusLine(it) }
+    }
+
+    // A transit plan's suggested NJ Transit train, or "Train suggested on the day" until it's picked (null for other
+    // plans)
+    private fun trainLineFor(graph: AppGraph, plan: Suggestion): String? {
+        // Only transit plans with a place get a train, once an NJ Transit account is saved
+        if (graph.njtUserStore.load().isNullOrBlank() || !wantsTrain(applicationContext, plan)) {
+            return null
+        }
+        val pick = graph.trainStore.pick(eventKey(plan.title, planBegin(plan)))
+        return pick?.let { pickLine(it) } ?: ON_THE_DAY
     }
 
     // The travel mode picked for a plan, or the default
