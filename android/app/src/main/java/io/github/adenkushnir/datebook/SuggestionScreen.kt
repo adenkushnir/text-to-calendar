@@ -34,6 +34,7 @@ fun SuggestionScreen(suggestion: Suggestion?, onBack: () -> Unit, onAdd: () -> U
                 Text(suggestion.title, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
                 Muted(whenAndWhere(suggestion))
                 Muted("From ${fromLine(suggestion)}")
+                ClashLine(suggestion.clash)
                 Muted(statusText(suggestion.status))
             }
 
@@ -47,7 +48,8 @@ fun SuggestionScreen(suggestion: Suggestion?, onBack: () -> Unit, onAdd: () -> U
                         Text("IGNORE")
                     }
                 }
-                Muted("Add opens Google Calendar with everything filled in, so you can change anything before saving.")
+                Muted("Add opens your calendar app with everything filled in, so you can change anything before " +
+                    "saving.")
             }
         }
     }

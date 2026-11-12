@@ -1,15 +1,22 @@
-// Tests for the Settings screens: the menu, app switches, model choice, Clear history and the debug-only test box
+// Tests for the Settings screens: the menu, app and calendar switches, model choice, Clear history and the debug-only
+// test box
 package io.github.adenkushnir.datebook.settings
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
+import io.github.adenkushnir.datebook.calendar.CalendarSwitches
+import io.github.adenkushnir.datebook.calendar.PhoneCalendar
 import io.github.adenkushnir.datebook.capture.WatchedApp
 import io.github.adenkushnir.datebook.pipeline.DEFAULT_MODEL
 import io.github.adenkushnir.datebook.ui.theme.DatebookTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -94,6 +101,38 @@ class SettingsScreensTest {
         }
         compose.onNodeWithText("Datebook 1.0.0").assertExists()
         compose.onNodeWithText("Pretend a text arrived").assertDoesNotExist()
+    }
+
+    // Without calendar access the page offers Allow; with it, each calendar has a switch that saves the choice
+    @Test
+    fun calendarsPage() {
+        var access by mutableStateOf(false)
+        val saved = mutableMapOf<Long, Boolean>()
+        var asked = 0
+        val calendars = listOf(PhoneCalendar(4, "Personal", "me@example.com"))
+        compose.setContent {
+            DatebookTheme {
+                CalendarsPage(access, calendars, isOn = { true }, setOn = { id, on -> saved[id] = on },
+                    askAccess = { asked += 1 }, onBack = {})
+            }
+        }
+        compose.onNodeWithText("ALLOW").performScrollTo().performClick()
+        assertEquals(1, asked)
+        access = true
+        compose.onNodeWithText("Personal").assertExists()
+        compose.onNode(isToggleable()).performScrollTo().performClick()
+        assertEquals(mapOf(4L to false), saved)
+    }
+
+    // Calendars start switched on and remember being switched off
+    @Test
+    fun calendarSwitchesRemembered() {
+        val switches = CalendarSwitches(ApplicationProvider.getApplicationContext())
+        assertTrue(switches.isOn(4))
+        switches.set(4, false)
+        assertEquals(setOf(4L), switches.switchedOff())
+        switches.set(4, true)
+        assertTrue(switches.isOn(4))
     }
 
     // The chosen model is remembered, and anything unknown falls back to Opus 5.5

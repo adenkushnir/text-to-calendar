@@ -12,8 +12,9 @@ data class SeenText(
     val seenAt: Long,
 )
 
-// An event Datebook suggested, who from (and which group chat), and whether it is waiting, added or ignored
-// (kept 1 year; never the message text)
+// An event Datebook suggested, who from (and which group chat), whether it is waiting, added or ignored, the clash
+// warning shown with it, and for a changed or cancelled plan, which calendar event it changes (kept 1 year; never the
+// message text)
 @Entity(tableName = "suggestions")
 data class Suggestion(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -30,22 +31,28 @@ data class Suggestion(
     val phoneTimezone: String,
     val status: String = STATUS_WAITING,
     val createdAt: Long,
+    val clash: String = "",
+    val change: String = "",
+    val calendarEventId: Long = 0,
 ) {
     // Turn the saved row back into an event
     fun toEvent(): Event {
         return Event(title, start, end, allDay, location, repeat, timezone, phoneTimezone)
     }
 
-    // Names for the three states a suggestion can be in
+    // Names for the three states a suggestion can be in, and the two kinds of change
     companion object {
         const val STATUS_WAITING = "waiting"
         const val STATUS_ADDED = "added"
         const val STATUS_IGNORED = "ignored"
+        const val CHANGE_MOVED = "moved"
+        const val CHANGE_CANCELLED = "cancelled"
     }
 }
 
-// Save an event as a waiting suggestion from the text's sender, app and group chat (empty for one-to-one)
-fun suggestionOf(event: Event, incoming: IncomingText, now: Long): Suggestion {
+// Save an event as a waiting suggestion from the text's sender, app and group chat (empty for one-to-one), with its
+// clash warning (empty when nothing clashes)
+fun suggestionOf(event: Event, incoming: IncomingText, now: Long, clash: String = ""): Suggestion {
     return Suggestion(
         sender = incoming.sender,
         app = incoming.app,
@@ -59,6 +66,7 @@ fun suggestionOf(event: Event, incoming: IncomingText, now: Long): Suggestion {
         timezone = event.timezone,
         phoneTimezone = event.phoneTimezone,
         createdAt = now,
+        clash = clash,
     )
 }
 

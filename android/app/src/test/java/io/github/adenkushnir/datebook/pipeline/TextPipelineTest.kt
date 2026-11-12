@@ -3,12 +3,14 @@ package io.github.adenkushnir.datebook.pipeline
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.anthropic.errors.AnthropicIoException
+import io.github.adenkushnir.datebook.calendar.CalendarEvent
 import io.github.adenkushnir.datebook.data.DatebookDao
 import io.github.adenkushnir.datebook.data.DatebookDatabase
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.data.suggestionOf
 import java.time.Instant
 import java.time.LocalDateTime
+import java.time.ZoneId
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -50,9 +52,9 @@ class TextPipelineTest {
         database.close()
     }
 
-    // Build a pipeline whose Claude returns the given events, or throws the given error
-    private fun pipeline(events: List<Event> = emptyList(), error: Exception? = null, key: String? = "sk-test"):
-        TextPipeline {
+    // Build a pipeline whose Claude returns the given events, or throws the given error, with the given calendar
+    private fun pipeline(events: List<Event> = emptyList(), error: Exception? = null, key: String? = "sk-test",
+        onCalendar: List<CalendarEvent> = emptyList()): TextPipeline {
         return TextPipeline(
             dao = dao,
             apiKey = { key },
@@ -61,6 +63,7 @@ class TextPipelineTest {
             now = { clock },
             onRetrySaved = { retries.add(it) },
             onSuggested = { suggestion, text -> prompts.add(Pair(suggestion.title, text.text)) },
+            calendar = { from, to -> onCalendar.filter { it.begin < to && from < it.end } },
         )
     }
 
@@ -258,6 +261,25 @@ class TextPipelineTest {
         assertTrue(dao.dueRetries(Long.MAX_VALUE).isEmpty())
         assertEquals("No plans found in this.", pipeline().share(shared).note)
         assertEquals("That plan has already started.", pipeline(listOf(past)).share(shared).note)
+    }
+
+    // A plan already on the calendar gets no suggestion or prompt; a plan that overlaps another gets a clash warning
+    @Test
+    fun calendarChecks() = runTest {
+        val zone = ZoneId.of(newYork)
+        val sameDinner = CalendarEvent(1, 1, "Dinner", toMillis("2037-11-13T19:00", zone),
+            toMillis("2037-11-13T21:00", zone), false)
+        val skipped = pipeline(listOf(dinner), onCalendar = listOf(sameDinner)).handle(incoming)
+        assertTrue(skipped.suggestionIds.isEmpty())
+        assertTrue(skipped.lines.single().startsWith("already on calendar, skipped: Dinner with Sam"))
+        assertTrue(prompts.isEmpty())
+        val practice = sameDinner.copy(title = "Practice", begin = toMillis("2037-11-13T18:00", zone))
+        val clashing = pipeline(listOf(dinner), onCalendar = listOf(practice)).handle(incoming)
+        val saved = dao.suggestion(clashing.suggestionIds.single())!!
+        assertEquals("You already have Practice 6:00 PM–9:00 PM", saved.clash)
+        val shared = incoming.copy(sender = "you", app = SHARED_TEXT_APP)
+        assertEquals("That's already on your calendar.",
+            pipeline(listOf(dinner), onCalendar = listOf(sameDinner)).share(shared).note)
     }
 
     // Clear history deletes ignored suggestions and added plans that are over, and keeps waiting and coming-up ones

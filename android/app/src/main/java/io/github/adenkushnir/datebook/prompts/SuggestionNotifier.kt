@@ -38,7 +38,8 @@ class SuggestionNotifier(private val context: Context) {
         }
         val id = suggestion.id.toInt()
         val whenAndWhere = summary(suggestion.toEvent()).removePrefix("${suggestion.title} · ")
-        val details = "From ${fromLine(suggestion)}: \"$quote\"\n$whenAndWhere"
+        val clash = if (suggestion.clash.isNotBlank()) "\n⚠ ${suggestion.clash}" else ""  // only when it clashes
+        val details = "From ${fromLine(suggestion)}: \"$quote\"\n$whenAndWhere$clash"
         val notification = NotificationCompat.Builder(context, SUGGESTIONS_CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_datebook)
             .setColor(ContextCompat.getColor(context, R.color.brand_teal))
@@ -68,7 +69,7 @@ class SuggestionNotifier(private val context: Context) {
         return PendingIntent.getActivity(context, requestCode(suggestionId, 0), intent, FLAGS)
     }
 
-    // Add opens a small invisible screen that marks the suggestion added and opens Google Calendar
+    // Add opens a small invisible screen that marks the suggestion added and opens your calendar app
     private fun addAction(suggestionId: Long): PendingIntent {
         val intent = Intent(context, PromptActionActivity::class.java).setAction(ACTION_ADD)
             .putExtra(EXTRA_SUGGESTION_ID, suggestionId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

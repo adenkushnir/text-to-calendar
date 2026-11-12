@@ -1,7 +1,10 @@
-// Creates the app's shared pieces once: database, key store, app switches, prompts, Claude client and the pipeline
+// Creates the app's shared pieces once: database, key store, app and calendar switches, prompts, Claude client and
+// the pipeline
 package io.github.adenkushnir.datebook
 import android.content.Context
 import com.anthropic.client.AnthropicClient
+import io.github.adenkushnir.datebook.calendar.CalendarSwitches
+import io.github.adenkushnir.datebook.calendar.calendarEvents
 import io.github.adenkushnir.datebook.capture.AppSwitches
 import io.github.adenkushnir.datebook.data.DatebookDatabase
 import io.github.adenkushnir.datebook.pipeline.ApiKeyStore
@@ -19,6 +22,7 @@ class AppGraph private constructor(context: Context) {
     val appSwitches = AppSwitches(context)
     val notifier = SuggestionNotifier(context)
     val modelChoice = ModelChoice(context)
+    val calendarSwitches = CalendarSwitches(context)
     private var client: Pair<String, AnthropicClient>? = null
     val pipeline = TextPipeline(
         dao = dao,
@@ -26,6 +30,7 @@ class AppGraph private constructor(context: Context) {
         extract = { key, incoming, zone -> extractEvents(clientFor(key), incoming, zone, modelChoice.get()) },
         onRetrySaved = { scheduleRetry(context, it) },
         onSuggested = { suggestion, incoming -> notifier.show(suggestion, incoming.text) },
+        calendar = { from, to -> calendarEvents(context, from, to, calendarSwitches.switchedOff()) },
     )
 
     // Return a Claude client for the key, reusing it while the key stays the same

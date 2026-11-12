@@ -20,7 +20,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <!-- Invisible screen the prompt's Add button opens; it opens Google Calendar and closes -->
+        <!-- Invisible screen the prompt's Add button opens; it opens your calendar app and closes -->
         <activity
             android:name=".prompts.PromptActionActivity"
             android:exported="false"

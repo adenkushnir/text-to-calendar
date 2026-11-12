@@ -42,6 +42,7 @@ import io.github.adenkushnir.datebook.DatebookCard
 import io.github.adenkushnir.datebook.Muted
 import io.github.adenkushnir.datebook.SectionLabel
 import io.github.adenkushnir.datebook.TopBar
+import io.github.adenkushnir.datebook.calendar.PhoneCalendar
 import io.github.adenkushnir.datebook.capture.WatchedApp
 import kotlinx.coroutines.launch
 const val GITHUB_URL = "https://github.com/adenkushnir/text-to-calendar"
@@ -93,6 +94,56 @@ fun AppsPage(apps: List<WatchedApp>, isOn: (String) -> Boolean, setOn: (String, 
                 SwitchRow(app.label, on) { checked ->
                     setOn(app.packageName, checked)
                     on = checked
+                }
+            }
+        }
+    }
+}
+
+// Calendars: which of the phone's calendars Datebook reads for clash warnings and skipping plans already added, or
+// a button to allow calendar access
+@Composable
+fun CalendarsPage(
+    access: Boolean,
+    calendars: List<PhoneCalendar>,
+    isOn: (Long) -> Boolean,
+    setOn: (Long, Boolean) -> Unit,
+    askAccess: () -> Unit,
+    onBack: () -> Unit,
+) {
+    SettingsPage("Calendars", onBack) {
+        Muted("Datebook reads the calendars switched on here to warn about clashes and skip plans you've already " +
+            "added. It never adds, changes or deletes anything.")
+
+        // Without access there's nothing to list, only a way to allow it
+        if (!access) {
+            DatebookCard {
+                Text("Datebook can't see your calendar yet.", fontWeight = FontWeight.SemiBold)
+                Button(onClick = askAccess) {
+                    Text("ALLOW")
+                }
+                Muted("If nothing happens, allow Calendar in Android's settings for Datebook.")
+            }
+            return@SettingsPage
+        }
+        DatebookCard {
+            // Say so when the phone has no calendars
+            if (calendars.isEmpty()) {
+                Muted("No calendars found on this phone.")
+            }
+
+            // One switch per calendar, with the account it belongs to
+            for (calendar in calendars) {
+                var on by remember(calendar.id) { mutableStateOf(isOn(calendar.id)) }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(calendar.name.ifBlank { "Calendar" })
+                        Muted(calendar.account)
+                    }
+                    Switch(checked = on, onCheckedChange = { checked ->
+                        setOn(calendar.id, checked)
+                        on = checked
+                    })
                 }
             }
         }

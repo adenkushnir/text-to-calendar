@@ -1,4 +1,4 @@
-// Builds the intent that opens Google Calendar's new-event screen with a suggestion filled in (Datebook never
+// Builds the intent that opens your calendar app's new-event screen with a suggestion filled in (Datebook never
 // writes events itself; you save them in Calendar)
 package io.github.adenkushnir.datebook.prompts
 import android.content.Intent
@@ -35,7 +35,7 @@ fun calendarNotes(suggestion: Suggestion): String {
     return "${suggestion.sender}$group$via"
 }
 
-// The intent for Google Calendar's new-event screen: title, start and end, all-day, place, repeat, zone and notes
+// The intent for the calendar app's new-event screen: title, start and end, all-day, place, repeat, zone and notes
 fun calendarInsertIntent(suggestion: Suggestion): Intent {
     val event = suggestion.toEvent()
     val (begin, end) = eventTimes(event)

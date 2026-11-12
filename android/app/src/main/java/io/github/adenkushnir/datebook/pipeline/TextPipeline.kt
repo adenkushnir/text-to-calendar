@@ -1,5 +1,9 @@
 // Runs a text through Datebook: date check, Claude, already-started check, then saves suggestions or a retry
 package io.github.adenkushnir.datebook.pipeline
+import io.github.adenkushnir.datebook.calendar.CalendarEvent
+import io.github.adenkushnir.datebook.calendar.alreadyOnCalendar
+import io.github.adenkushnir.datebook.calendar.clashText
+import io.github.adenkushnir.datebook.calendar.clashesFor
 import io.github.adenkushnir.datebook.data.DatebookDao
 import io.github.adenkushnir.datebook.data.RetryText
 import io.github.adenkushnir.datebook.data.SeenText
@@ -15,6 +19,7 @@ const val GIVE_UP_MILLIS = 24L * 60 * 60 * 1000
 const val REPEAT_MILLIS = 60L * 60 * 1000
 const val KEEP_SEEN_MILLIS = 7L * 24 * 60 * 60 * 1000
 const val KEEP_SUGGESTIONS_MILLIS = 365L * 24 * 60 * 60 * 1000
+private const val DAY = 24L * 60 * 60 * 1000
 
 // One text's result: events to offer, their saved suggestion ids, the lines describing what happened, retry, and what
 // went wrong asking Claude (null when nothing did)
@@ -35,7 +40,7 @@ data class ShareResult(
     val needsKey: Boolean = false,
 )
 
-// The text pipeline; the Claude call, key, zone and clock are passed in so tests can replace them
+// The text pipeline; the Claude call, key, zone, clock and calendar are passed in so tests can replace them
 class TextPipeline(
     private val dao: DatebookDao,
     private val apiKey: () -> String?,
@@ -44,6 +49,7 @@ class TextPipeline(
     private val now: () -> Long = { System.currentTimeMillis() },
     private val onRetrySaved: (atMillis: Long) -> Unit = {},
     private val onSuggested: (suggestion: Suggestion, incoming: IncomingText) -> Unit = { _, _ -> },
+    private val calendar: (fromMillis: Long, toMillis: Long) -> List<CalendarEvent> = { _, _ -> emptyList() },
 ) {
     private val health = Health(dao)
 
@@ -121,6 +127,12 @@ class TextPipeline(
                 lines.add("already started, skipped: ${eventDetails(event)}")
                 continue
             }
+
+            // Don't offer plans that are already on the calendar
+            if (alreadyOnCalendar(event, calendarAround(event))) {
+                lines.add("already on calendar, skipped: ${eventDetails(event)}")
+                continue
+            }
             toOffer.add(event)
             lines.add("event: ${eventDetails(event)}")
         }
@@ -166,10 +178,14 @@ class TextPipeline(
         }
         val ids = saveSuggestions(outcome.events, incoming, announce = false)
 
-        // Say why nothing was found: the plans are over, or there were none
+        // Say why nothing was found: the plans are already on the calendar, are over, or there were none
         if (ids.isEmpty()) {
-            val over = outcome.lines.any { it.startsWith("already started") }
-            return ShareResult(emptyList(), if (over) "That plan has already started." else "No plans found in this.")
+            val note = when {
+                outcome.lines.any { it.startsWith("already on calendar") } -> "That's already on your calendar."
+                outcome.lines.any { it.startsWith("already started") } -> "That plan has already started."
+                else -> "No plans found in this."
+            }
+            return ShareResult(emptyList(), note)
         }
         return ShareResult(ids.mapNotNull { dao.suggestion(it) })
     }
@@ -224,7 +240,8 @@ class TextPipeline(
 
         // Save and announce each event
         for (event in events) {
-            val suggestion = suggestionOf(event, incoming, now())
+            val clash = clashText(clashesFor(event, calendarAround(event)), event.phoneTimezone)
+            val suggestion = suggestionOf(event, incoming, now(), clash)
             val id = dao.saveSuggestion(suggestion)
 
             // Show a prompt for it, except for shared things
@@ -234,6 +251,13 @@ class TextPipeline(
             ids.add(id)
         }
         return ids
+    }
+
+    // Read the calendar events from a day before a plan to a day after it, off the main thread (a day either side
+    // covers all-day events, which are stored at midnight UTC)
+    private suspend fun calendarAround(event: Event): List<CalendarEvent> {
+        val (begin, end) = eventTimes(event)
+        return withContext(Dispatchers.IO) { calendar(begin - DAY, end + DAY) }
     }
 
     // After Claude answers, clear both API alert counts, and note in the log when an alert goes away

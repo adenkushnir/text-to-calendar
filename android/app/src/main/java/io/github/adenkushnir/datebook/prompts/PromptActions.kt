@@ -13,7 +13,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-// Mark a suggestion added, remove its prompt, and open Google Calendar with it filled in
+// Mark a suggestion added, remove its prompt, and open your calendar app with it filled in
 suspend fun addSuggestion(context: Context, suggestionId: Long) {
     val graph = AppGraph.get(context)
     val suggestion = graph.dao.suggestion(suggestionId) ?: return  // already gone
