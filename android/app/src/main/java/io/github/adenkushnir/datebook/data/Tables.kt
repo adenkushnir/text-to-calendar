@@ -40,18 +40,16 @@ data class Suggestion(
         return Event(title, start, end, allDay, location, repeat, timezone, phoneTimezone)
     }
 
-    // Names for the three states a suggestion can be in, and the two kinds of change
+    // Names for the three states a suggestion can be in
     companion object {
         const val STATUS_WAITING = "waiting"
         const val STATUS_ADDED = "added"
         const val STATUS_IGNORED = "ignored"
-        const val CHANGE_MOVED = "moved"
-        const val CHANGE_CANCELLED = "cancelled"
     }
 }
 
 // Save an event as a waiting suggestion from the text's sender, app and group chat (empty for one-to-one), with its
-// clash warning (empty when nothing clashes)
+// clash warning (empty when nothing clashes), and for a change, which calendar event it changes
 fun suggestionOf(event: Event, incoming: IncomingText, now: Long, clash: String = ""): Suggestion {
     return Suggestion(
         sender = incoming.sender,
@@ -67,6 +65,8 @@ fun suggestionOf(event: Event, incoming: IncomingText, now: Long, clash: String 
         phoneTimezone = event.phoneTimezone,
         createdAt = now,
         clash = clash,
+        change = event.change,
+        calendarEventId = event.calendarEventId,
     )
 }
 

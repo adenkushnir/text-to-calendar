@@ -10,8 +10,12 @@ import io.github.adenkushnir.datebook.data.SeenText
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.data.suggestionOf
 import java.security.MessageDigest
+import java.time.Duration
+import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 const val RETRY_MILLIS = 60L * 1000
@@ -20,6 +24,9 @@ const val REPEAT_MILLIS = 60L * 60 * 1000
 const val KEEP_SEEN_MILLIS = 7L * 24 * 60 * 60 * 1000
 const val KEEP_SUGGESTIONS_MILLIS = 365L * 24 * 60 * 60 * 1000
 private const val DAY = 24L * 60 * 60 * 1000
+private const val CHANGE_WINDOW = 14 * DAY
+private const val MAX_LISTED = 40
+private val LOCAL_MINUTES = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
 
 // One text's result: events to offer, their saved suggestion ids, the lines describing what happened, retry, and what
 // went wrong asking Claude (null when nothing did)
@@ -71,7 +78,7 @@ class TextPipeline(
     // already handled are skipped, and the rest are handled; returns null when the text was dropped or skipped
     suspend fun receive(incoming: IncomingText): Outcome? {
         // Drop texts with no date before the fingerprint is saved
-        if (!passesDateCheck(incoming)) {
+        if (!worthAsking(incoming)) {
             return null
         }
 
@@ -86,7 +93,7 @@ class TextPipeline(
     // checkDate is false for things you shared on purpose, which always go to Claude
     suspend fun describe(incoming: IncomingText, checkDate: Boolean = true): Outcome {
         // Texts with no date never leave the phone
-        if (checkDate && !passesDateCheck(incoming)) {
+        if (checkDate && !worthAsking(incoming)) {
             return Outcome(emptyList(), listOf("no date"), false)
         }
         val key = apiKey()
@@ -97,10 +104,12 @@ class TextPipeline(
         }
         val zone = phoneZone()
         val lines = mutableListOf<String>()
+        val upcoming = if (soundsLikeChange(incoming.text)) upcomingEvents() else emptyList()  // only for changes
+        val asked = incoming.copy(upcoming = upcoming)
 
         // Ask Claude off the main thread, and turn errors into a log line, a retry and an alert count
         val found = try {
-            withContext(Dispatchers.IO) { extract(key, incoming, zone) }
+            withContext(Dispatchers.IO) { extract(key, asked, zone) }
         } catch (error: Exception) {  // any failure from the API, the network or reading the reply
             val failure = classifyError(error)
 
@@ -120,7 +129,7 @@ class TextPipeline(
 
         // Keep each event that hasn't started yet, and describe every one
         for (claudeEvent in found) {
-            val event = nameGroupBirthday(claudeEvent, incoming)
+            val (event, changed) = matchChange(nameGroupBirthday(claudeEvent, incoming), upcoming)
 
             // Don't offer events that have already started
             if (hasStarted(event, now())) {
@@ -128,13 +137,17 @@ class TextPipeline(
                 continue
             }
 
-            // Don't offer plans that are already on the calendar
-            if (alreadyOnCalendar(event, calendarAround(event))) {
+            // Don't offer new plans that are already on the calendar, or moves the calendar already has
+            if (changed == null && alreadyOnCalendar(event, calendarAround(event))) {
                 lines.add("already on calendar, skipped: ${eventDetails(event)}")
+                continue
+            } else if (event.change == CHANGE_MOVED && changed?.begin == eventTimes(event).first) {
+                lines.add("already moved, skipped: ${eventDetails(event)}")
                 continue
             }
             toOffer.add(event)
-            lines.add("event: ${eventDetails(event)}")
+            val kind = event.change.ifBlank { "event" }  // "moved" or "cancelled" for changes
+            lines.add("$kind: ${eventDetails(event)}")
         }
         return Outcome(toOffer, lines, false)
     }
@@ -240,7 +253,9 @@ class TextPipeline(
 
         // Save and announce each event
         for (event in events) {
-            val clash = clashText(clashesFor(event, calendarAround(event)), event.phoneTimezone)
+            val others = calendarAround(event).filter { it.eventId != event.calendarEventId }  // not the one it moves
+            val clashes = if (event.change == CHANGE_CANCELLED) emptyList() else clashesFor(event, others)
+            val clash = clashText(clashes, event.phoneTimezone)
             val suggestion = suggestionOf(event, incoming, now(), clash)
             val id = dao.saveSuggestion(suggestion)
 
@@ -251,6 +266,22 @@ class TextPipeline(
             ids.add(id)
         }
         return ids
+    }
+
+    // Return true if a text should go to Claude: it passes the date check, or (outside group chats, which always need a
+    // clear date) it sounds like a change and there are calendar events it could change
+    private suspend fun worthAsking(incoming: IncomingText): Boolean {
+        // Texts with a date always go
+        if (passesDateCheck(incoming)) {
+            return true
+        }
+        return incoming.group.isBlank() && soundsLikeChange(incoming.text) && upcomingEvents().isNotEmpty()
+    }
+
+    // Read the calendar events of the next 2 weeks (at most 40) that a change could refer to, off the main thread
+    private suspend fun upcomingEvents(): List<CalendarEvent> {
+        val from = now()
+        return withContext(Dispatchers.IO) { calendar(from, from + CHANGE_WINDOW).take(MAX_LISTED) }
     }
 
     // Read the calendar events from a day before a plan to a day after it, off the main thread (a day either side
@@ -280,6 +311,39 @@ fun nameGroupBirthday(event: Event, incoming: IncomingText): Event {
         return event
     }
     return event.copy(title = "${incoming.sender}'s birthday")
+}
+
+// Match an event Claude says moves or cancels a calendar event to that event: it takes the calendar's title and id,
+// a cancellation keeps the event's own time, and a move without an end keeps the event's length; returns the event and
+// the calendar event it changes (null for new plans, or when Claude's number doesn't match a listed event)
+fun matchChange(event: Event, upcoming: List<CalendarEvent>): Pair<Event, CalendarEvent?> {
+    val changed = upcoming.getOrNull(event.calendarRef - 1)
+
+    // A plan that changes nothing on the list is a new plan
+    if (event.change.isBlank() || changed == null) {
+        return Pair(event.copy(change = "", calendarRef = 0), null)
+    }
+    val zone = zoneOf(event.phoneTimezone) ?: ZoneId.systemDefault()
+    val matched = event.copy(title = changed.title.ifBlank { event.title }, calendarEventId = changed.eventId,
+        allDay = changed.allDay, timezone = "")
+
+    // A cancellation keeps the calendar event's own time; a move keeps its length when no end was given
+    if (matched.change == CHANGE_CANCELLED) {
+        return Pair(matched.copy(start = localText(changed.begin, changed.allDay, zone),
+            end = localText(changed.end, changed.allDay, zone)), changed)
+    } else if (matched.end.isBlank() && !changed.allDay) {
+        val length = Duration.ofMillis(changed.end - changed.begin)
+        return Pair(matched.copy(end = parseLocal(matched.start).plus(length).format(LOCAL_MINUTES)), changed)
+    }
+    return Pair(matched, changed)
+}
+
+// A calendar time as Datebook writes times: YYYY-MM-DD for all-day events (kept at midnight UTC), else
+// YYYY-MM-DDTHH:MM in the phone's zone
+private fun localText(millis: Long, allDay: Boolean, zone: ZoneId): String {
+    val instant = Instant.ofEpochMilli(millis)
+    return if (allDay) instant.atZone(ZoneOffset.UTC).toLocalDate().toString()
+    else LocalDateTime.ofInstant(instant, zone).format(LOCAL_MINUTES)
 }
 
 // Return true if a text passes the on-phone date check: group chats need a clear date or time

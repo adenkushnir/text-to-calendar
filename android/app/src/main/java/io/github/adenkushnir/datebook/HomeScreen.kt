@@ -35,6 +35,8 @@ import androidx.compose.ui.unit.sp
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.pipeline.summary
 import io.github.adenkushnir.datebook.prompts.fromLine
+import io.github.adenkushnir.datebook.prompts.isChange
+import io.github.adenkushnir.datebook.prompts.promptTitle
 import io.github.adenkushnir.datebook.ui.theme.DatebookTheme
 
 // Show the whole home dashboard: the next added plan, suggestions waiting for you, and what else is coming up
@@ -71,12 +73,12 @@ fun HomeScreen(
                 for (suggestion in waiting) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f).clickable { onOpen(suggestion.id) }) {
-                            Text(suggestion.title, fontWeight = FontWeight.SemiBold)
+                            Text(promptTitle(suggestion), fontWeight = FontWeight.SemiBold)
                             Muted(whenAndWhere(suggestion))
                             ClashLine(suggestion.clash)
                         }
                         Button(onClick = { onAdd(suggestion.id) }) {
-                            Text("ADD")
+                            Text(if (isChange(suggestion)) "OPEN" else "ADD")  // changes open the event instead
                         }
                         TextButton(onClick = { onIgnore(suggestion.id) }) {
                             Text("✕")

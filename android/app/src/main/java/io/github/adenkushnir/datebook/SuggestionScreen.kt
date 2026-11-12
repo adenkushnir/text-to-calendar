@@ -18,6 +18,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.prompts.fromLine
+import io.github.adenkushnir.datebook.prompts.isChange
+import io.github.adenkushnir.datebook.prompts.promptTitle
 
 // Show one suggestion; null while it is loading or after it was deleted
 @Composable
@@ -31,35 +33,37 @@ fun SuggestionScreen(suggestion: Suggestion?, onBack: () -> Unit, onAdd: () -> U
                 return@Column
             }
             DatebookCard(accent = true) {
-                Text(suggestion.title, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                Text(promptTitle(suggestion), fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
                 Muted(whenAndWhere(suggestion))
                 Muted("From ${fromLine(suggestion)}")
                 ClashLine(suggestion.clash)
-                Muted(statusText(suggestion.status))
+                Muted(statusText(suggestion))
             }
 
             // Only waiting suggestions can still be added or ignored
             if (suggestion.status == Suggestion.STATUS_WAITING) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = onAdd) {
-                        Text("ADD")
+                        Text(if (isChange(suggestion)) "OPEN EVENT" else "ADD")  // changes open the event instead
                     }
                     OutlinedButton(onClick = onIgnore) {
                         Text("IGNORE")
                     }
                 }
-                Muted("Add opens your calendar app with everything filled in, so you can change anything before " +
-                    "saving.")
+                val help = if (isChange(suggestion)) "Open event shows it in your calendar app, where you can " +
+                    "change or delete it." else "Add opens your calendar app with everything filled in, so you can " +
+                    "change anything before saving."
+                Muted(help)
             }
         }
     }
 }
 
 // Describe a suggestion's status in words
-private fun statusText(status: String): String {
+private fun statusText(suggestion: Suggestion): String {
     // Pick the words for each status
-    return when (status) {
-        Suggestion.STATUS_ADDED -> "Added to your calendar"
+    return when (suggestion.status) {
+        Suggestion.STATUS_ADDED -> if (isChange(suggestion)) "Opened in your calendar" else "Added to your calendar"
         Suggestion.STATUS_IGNORED -> "Ignored"
         else -> "Waiting for you"
     }

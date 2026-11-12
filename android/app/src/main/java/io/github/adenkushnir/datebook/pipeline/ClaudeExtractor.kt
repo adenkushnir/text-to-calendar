@@ -10,8 +10,12 @@ import com.anthropic.models.beta.messages.BetaOutputConfig
 import com.anthropic.models.beta.messages.BetaStopReason
 import com.anthropic.models.beta.messages.MessageCreateParams
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.github.adenkushnir.datebook.calendar.CalendarEvent
 import java.time.Duration
+import java.time.Instant
 import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 const val DEFAULT_MODEL = "claude-opus-5-5"
@@ -20,6 +24,15 @@ const val SHARED_TEXT_APP = "datebook.shared.text"
 const val SHARED_IMAGE_APP = "datebook.shared.image"
 private val RECEIVED_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.US)
 private val WEEKDAY_FORMAT = DateTimeFormatter.ofPattern("EEEE", Locale.US)
+private val DAY_FORMAT = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US)
+private val CLOCK_FORMAT = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
+const val CHANGE_MOVED = "moved"
+const val CHANGE_CANCELLED = "cancelled"
+private const val CHANGE_RULES = "The calendar lists the phone owner's events for the next 2 weeks. If the message " +
+    "moves or cancels one of them, return that event with its title from the calendar, change set to \"moved\" " +
+    "(with its new start and end) or \"cancelled\" (with its current start and end), and calendar_event set to its " +
+    "number. For every other event, set change to \"\" and calendar_event to 0. Don't list calendar events the " +
+    "message doesn't change."
 private val MAPPER = ObjectMapper()
 val SYSTEM_PROMPT: String = loadSystemPrompt()
 private val EVENT_ITEM = mapOf(
@@ -32,8 +45,11 @@ private val EVENT_ITEM = mapOf(
         "location" to mapOf("type" to "string"),
         "repeat" to mapOf("type" to "string"),
         "timezone" to mapOf("type" to "string"),
+        "change" to mapOf("type" to "string", "enum" to listOf("", CHANGE_MOVED, CHANGE_CANCELLED)),
+        "calendar_event" to mapOf("type" to "integer"),
     ),
-    "required" to listOf("title", "start", "end", "all_day", "location", "repeat", "timezone"),
+    "required" to listOf("title", "start", "end", "all_day", "location", "repeat", "timezone", "change",
+        "calendar_event"),
     "additionalProperties" to false,
 )
 val EVENTS_SCHEMA = mapOf(
@@ -45,7 +61,8 @@ val EVENTS_SCHEMA = mapOf(
 
 // A text to ask Claude about: who sent it, what it says, when it arrived in the phone's time, which app, and which
 // group chat it came from (empty for one-to-one); exactTime means receivedAt is the message's own timestamp, and
-// image is a shared picture as base64 JPEG (empty for texts)
+// image is a shared picture as base64 JPEG (empty for texts), and upcoming holds the calendar events Claude may match a
+// change against (empty unless the text sounds like a change)
 data class IncomingText(
     val sender: String,
     val text: String,
@@ -54,6 +71,7 @@ data class IncomingText(
     val group: String = "",
     val exactTime: Boolean = false,
     val image: String = "",
+    val upcoming: List<CalendarEvent> = emptyList(),
 )
 
 // Return true if something came from long-press or Share rather than a notification
@@ -73,7 +91,8 @@ fun makeClient(apiKey: String): AnthropicClient {
 }
 
 // Build the message for Claude: when it arrived (with weekday and phone zone), who sent it, then the text in tags;
-// for group chats the group's name is sent instead of the sender's, and shared things say they were shared
+// for group chats the group's name is sent instead of the sender's, and shared things say they were shared; when
+// calendar events are given, they follow as a numbered list with the rules for changes
 fun buildPrompt(incoming: IncomingText, phoneZone: String): String {
     val received = incoming.receivedAt.format(RECEIVED_FORMAT)
     val weekday = incoming.receivedAt.format(WEEKDAY_FORMAT)
@@ -92,7 +111,28 @@ fun buildPrompt(incoming: IncomingText, phoneZone: String): String {
         incoming.text.isBlank() -> "(see the attached image)"
         else -> "${incoming.text}\n(and the attached image)"
     }
-    return "Received: $received ($weekday$zone)\nFrom: $from\n<message>\n$text\n</message>"
+    val prompt = "Received: $received ($weekday$zone)\nFrom: $from\n<message>\n$text\n</message>"
+
+    // Without calendar events there is nothing a change could refer to
+    if (incoming.upcoming.isEmpty()) {
+        return prompt
+    }
+    val listed = incoming.upcoming.mapIndexed { i, event -> "${i + 1}. ${calendarLine(event, phoneZone)}" }
+    return "$prompt\n<calendar>\n${listed.joinToString("\n")}\n</calendar>\n$CHANGE_RULES"
+}
+
+// One calendar event for the prompt, like "Dinner · Fri Nov 13, 7:00 PM–9:00 PM" or "Day off · Fri Nov 13 (all day)"
+fun calendarLine(event: CalendarEvent, phoneZone: String): String {
+    val title = event.title.ifBlank { "(no title)" }
+
+    // All-day events are kept at midnight UTC, so their date is read in UTC
+    if (event.allDay) {
+        return "$title · ${Instant.ofEpochMilli(event.begin).atZone(ZoneOffset.UTC).format(DAY_FORMAT)} (all day)"
+    }
+    val zone = zoneOf(phoneZone) ?: ZoneId.systemDefault()
+    val begin = Instant.ofEpochMilli(event.begin).atZone(zone)
+    val end = Instant.ofEpochMilli(event.end).atZone(zone)
+    return "$title · ${begin.format(DAY_FORMAT)}, ${begin.format(CLOCK_FORMAT)}–${end.format(CLOCK_FORMAT)}"
 }
 
 // Return true if the model supports server-side refusal fallbacks (Haiku models don't)
@@ -163,6 +203,8 @@ fun parseResponse(stopped: Boolean, json: String, phoneZone: String): List<Event
             repeat = item.path("repeat").asText(""),
             timezone = item.path("timezone").asText(""),
             phoneTimezone = phoneZone,
+            change = item.path("change").asText(""),
+            calendarRef = item.path("calendar_event").asInt(0),
         )
         if (event.start.isBlank()) null else event  // no start means nothing to put on the calendar
     }

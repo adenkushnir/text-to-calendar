@@ -1,6 +1,9 @@
 // Tests for the Claude request and reply handling, with the same cases as the Python extractor tests
 package io.github.adenkushnir.datebook.pipeline
+import io.github.adenkushnir.datebook.calendar.CalendarEvent
+import java.time.Instant
 import java.time.LocalDateTime
+import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -125,5 +128,31 @@ class ClaudeExtractorTest {
     fun stoppedOrEmpty() {
         assertEquals(emptyList<Event>(), parseResponse(true, twoEvents, newYork))
         assertEquals(emptyList<Event>(), parseResponse(false, "", newYork))
+    }
+
+    // Calendar events are listed by number with their times in the phone's zone, followed by the change rules, and
+    // only when the text sounds like a change (there are events to list)
+    @Test
+    fun promptWithCalendar() {
+        val zone = ZoneId.of(newYork)
+        val dinner = CalendarEvent(5, 1, "Dinner", toMillis("2026-11-13T19:00", zone),
+            toMillis("2026-11-13T21:00", zone), false)
+        val dayOff = CalendarEvent(6, 1, "Day off", Instant.parse("2026-11-14T00:00:00Z").toEpochMilli(),
+            Instant.parse("2026-11-15T00:00:00Z").toEpochMilli(), true)
+        val prompt = buildPrompt(incoming.copy(upcoming = listOf(dinner, dayOff)), newYork)
+        val listed = "<calendar>\n1. Dinner · Fri Nov 13, 7:00 PM–9:00 PM\n2. Day off · Sat Nov 14 (all day)\n"
+        assertTrue(prompt.contains(listed))
+        assertTrue(prompt.contains("calendar_event set to its number"))
+        assertTrue(!buildPrompt(incoming, newYork).contains("<calendar>"))
+    }
+
+    // A change in Claude's reply keeps its kind and the number of the calendar event it changes
+    @Test
+    fun parseChange() {
+        val json = """{"events": [{"title": "Dinner", "start": "2026-11-13T20:00", "end": "", "all_day": false,
+            "location": "", "repeat": "", "timezone": "", "change": "moved", "calendar_event": 1}]}"""
+        val found = parseResponse(false, json, newYork).single()
+        assertEquals(CHANGE_MOVED, found.change)
+        assertEquals(1, found.calendarRef)
     }
 }
