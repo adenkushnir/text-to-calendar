@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -17,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.adenkushnir.datebook.data.Suggestion
+import io.github.adenkushnir.datebook.places.TRAVEL_MODES
 import io.github.adenkushnir.datebook.prompts.fromLine
 import io.github.adenkushnir.datebook.prompts.isChange
 import io.github.adenkushnir.datebook.prompts.promptTitle
@@ -29,6 +31,8 @@ fun SuggestionScreen(
     onAdd: () -> Unit,
     onIgnore: () -> Unit,
     onOpenMaps: (String) -> Unit = {},
+    travelMode: String? = null,
+    onTravelMode: (String) -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         TopBar("Suggestion", onBack = onBack)
@@ -44,6 +48,18 @@ fun SuggestionScreen(
                 Muted("From ${fromLine(suggestion)}")
                 ClashLine(suggestion.clash)
                 Muted(statusText(suggestion))
+            }
+
+            // Offer the travel modes for new plans with a place (the leave-by alert uses the one picked)
+            if (suggestion.location.isNotBlank() && travelMode != null && !isChange(suggestion)) {
+                SectionLabel("Getting there")
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // One chip per mode
+                    for (option in TRAVEL_MODES) {
+                        FilterChip(selected = option.id == travelMode, onClick = { onTravelMode(option.id) },
+                            label = { Text(option.label) })
+                    }
+                }
             }
 
             // Offer directions when the plan has a place

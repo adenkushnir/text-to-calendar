@@ -198,6 +198,8 @@ fun PlacesPage(
     saveHome: (String) -> Unit,
     location: Boolean,
     askLocation: () -> Unit,
+    allTheTime: Boolean,
+    askAllTheTime: () -> Unit,
     onBack: () -> Unit,
 ) {
     var homeInput by remember { mutableStateOf(home) }
@@ -235,7 +237,10 @@ fun PlacesPage(
         Muted("Used to find places near you, and for travel times when your location isn't known.")
         DatebookCard {
             StatusRow("Your location", location, askLocation)
+            StatusRow("All the time (for leave-by alerts)", allTheTime, askAllTheTime)
         }
+        Muted("Leave-by alerts come 10 minutes before you need to leave for an event with a place: its travel time " +
+            "plus 5 spare minutes. They measure from where you are, or from home when your location isn't known.")
         Muted("Finding a place sends Google only its name (like \"Luigi's\") and roughly where you are, never your " +
             "texts.")
     }

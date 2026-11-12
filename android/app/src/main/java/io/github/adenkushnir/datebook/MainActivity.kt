@@ -34,6 +34,10 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.work.ExistingWorkPolicy
 import io.github.adenkushnir.datebook.calendar.phoneCalendars
+import io.github.adenkushnir.datebook.leaveby.LeaveByStore
+import io.github.adenkushnir.datebook.leaveby.eventKey
+import io.github.adenkushnir.datebook.leaveby.scheduleLeaveBy
+import io.github.adenkushnir.datebook.pipeline.eventTimes
 import io.github.adenkushnir.datebook.places.mapsIntent
 import io.github.adenkushnir.datebook.capture.WATCHABLE_APPS
 import io.github.adenkushnir.datebook.data.Suggestion
@@ -73,6 +77,8 @@ const val ROUTE_SETTINGS_APPS = "settings/apps"
 const val ROUTE_SETTINGS_CLAUDE = "settings/claude"
 const val ROUTE_SETTINGS_CALENDARS = "settings/calendars"
 const val ROUTE_SETTINGS_PLACES = "settings/places"
+private val LOCATION_PERMISSIONS = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION,
+    Manifest.permission.ACCESS_COARSE_LOCATION)
 const val ROUTE_SETTINGS_NOTIFICATIONS = "settings/notifications"
 const val ROUTE_SETTINGS_PRIVACY = "settings/privacy"
 const val ROUTE_SETTINGS_ABOUT = "settings/about"
@@ -123,6 +129,9 @@ class MainActivity : ComponentActivity() {
         val askPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
             refresh()
         }
+        val askPermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+            refresh()
+        }
         LifecycleResumeEffect(Unit) {
             refresh()  // re-check every step when you come back from Android's settings
             onPauseOrDispose {}
@@ -130,6 +139,7 @@ class MainActivity : ComponentActivity() {
         LaunchedEffect(Unit) {
             graph.pipeline.cleanUp()
             scheduleSummary(applicationContext)  // book the morning summary if it isn't already
+            scheduleLeaveBy(applicationContext)  // start planning leave-by alerts if it isn't already
         }
         val actions = SetupActions(
             openAccess = { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
@@ -180,12 +190,19 @@ class MainActivity : ComponentActivity() {
             composable(ROUTE_SUGGESTION, arguments = listOf(navArgument("id") { type = NavType.LongType })) { entry ->
                 val id = entry.arguments?.getLong("id") ?: -1
                 val suggestion by produceState<Suggestion?>(null, id) { value = graph.dao.suggestion(id) }
+                var travelMode by remember(suggestion) { mutableStateOf(suggestion?.let { modeFor(graph, it) }) }
                 SuggestionScreen(
                     suggestion = suggestion,
                     onBack = { nav.popBackStack() },
                     onAdd = { add(id); nav.popBackStack() },
                     onIgnore = { ignore(id); nav.popBackStack() },
-                    onOpenMaps = { place -> openMaps(place, graph.travelSettings.mode()) },
+                    onOpenMaps = { place -> openMaps(place, travelMode ?: graph.travelSettings.mode()) },
+                    travelMode = travelMode,
+                    onTravelMode = { mode ->
+                        val plan = suggestion ?: return@SuggestionScreen
+                        LeaveByStore(applicationContext).setMode(eventKey(plan.title, planBegin(plan)), mode)
+                        travelMode = mode
+                    },
                 )
             }
             composable(ROUTE_SETTINGS) {
@@ -222,7 +239,9 @@ class MainActivity : ComponentActivity() {
                     home = travel.home(),
                     saveHome = { travel.setHome(it) },
                     location = status.location,
-                    askLocation = { askPermission.launch(Manifest.permission.ACCESS_COARSE_LOCATION) },
+                    askLocation = { askPermissions.launch(LOCATION_PERMISSIONS) },
+                    allTheTime = status.backgroundLocation,
+                    askAllTheTime = { askAllTheTime(status, askPermissions::launch, askPermission::launch) },
                     onBack = { nav.popBackStack() },
                 )
             }
@@ -309,6 +328,27 @@ class MainActivity : ComponentActivity() {
     // Android's page for Datebook, where Samsung's Battery → Unrestricted setting lives
     private fun appDetails(): Intent {
         return Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
+    }
+
+    // The travel mode picked for a plan, or the default
+    private fun modeFor(graph: AppGraph, plan: Suggestion): String {
+        val picked = LeaveByStore(applicationContext).mode(eventKey(plan.title, planBegin(plan)))
+        return picked ?: graph.travelSettings.mode()
+    }
+
+    // When a plan starts, in milliseconds, matching the calendar event it becomes
+    private fun planBegin(plan: Suggestion): Long {
+        return eventTimes(plan.toEvent()).first
+    }
+
+    // Ask for location while Datebook is in use first, then "Allow all the time" (Android shows that one in Settings)
+    private fun askAllTheTime(status: SetupStatus, askMany: (Array<String>) -> Unit, askOne: (String) -> Unit) {
+        // Location in use has to be allowed before all the time
+        if (!status.location) {
+            askMany(LOCATION_PERMISSIONS)
+        } else {
+            askOne(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        }
     }
 
     // Start directions to a place in Google Maps, telling you if no maps app can open it

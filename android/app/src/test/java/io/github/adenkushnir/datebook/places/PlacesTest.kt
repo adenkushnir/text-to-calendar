@@ -2,6 +2,7 @@
 package io.github.adenkushnir.datebook.places
 import android.content.Intent
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -87,7 +88,7 @@ class PlacesTest {
             DatebookTheme {
                 PlacesPage(maskedKey = null, saveKey = {}, mode = TRAVEL_DRIVE, onMode = { chosen.add(it) },
                     home = "", saveHome = { home = it }, location = false, askLocation = { asked += 1 },
-                    onBack = {})
+                    allTheTime = false, askAllTheTime = {}, onBack = {})
             }
         }
         compose.onNodeWithText("🚌 Transit").performScrollTo().performClick()
@@ -95,7 +96,7 @@ class PlacesTest {
         compose.onNodeWithText("Home address").performScrollTo().performTextReplacement("1 College Ave")
         compose.onNodeWithText("SAVE").performScrollTo().performClick()
         assertEquals("1 College Ave", home)
-        compose.onNodeWithText("TURN ON").performScrollTo().performClick()
+        compose.onAllNodesWithText("TURN ON")[0].performScrollTo().performClick()
         assertEquals(1, asked)
     }
 }
