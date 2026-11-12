@@ -2,12 +2,14 @@
 // suggestion a tapped prompt names, and shows banners for required settings that are off
 package io.github.adenkushnir.datebook
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -32,6 +34,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.work.ExistingWorkPolicy
 import io.github.adenkushnir.datebook.calendar.phoneCalendars
+import io.github.adenkushnir.datebook.places.mapsIntent
 import io.github.adenkushnir.datebook.capture.WATCHABLE_APPS
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.pipeline.IncomingText
@@ -46,6 +49,7 @@ import io.github.adenkushnir.datebook.settings.CalendarsPage
 import io.github.adenkushnir.datebook.settings.ClaudePage
 import io.github.adenkushnir.datebook.settings.GITHUB_URL
 import io.github.adenkushnir.datebook.settings.NotificationsPage
+import io.github.adenkushnir.datebook.settings.PlacesPage
 import io.github.adenkushnir.datebook.settings.PrivacyPage
 import io.github.adenkushnir.datebook.settings.SettingsItem
 import io.github.adenkushnir.datebook.settings.SettingsMenu
@@ -68,6 +72,7 @@ const val ROUTE_SETTINGS = "settings"
 const val ROUTE_SETTINGS_APPS = "settings/apps"
 const val ROUTE_SETTINGS_CLAUDE = "settings/claude"
 const val ROUTE_SETTINGS_CALENDARS = "settings/calendars"
+const val ROUTE_SETTINGS_PLACES = "settings/places"
 const val ROUTE_SETTINGS_NOTIFICATIONS = "settings/notifications"
 const val ROUTE_SETTINGS_PRIVACY = "settings/privacy"
 const val ROUTE_SETTINGS_ABOUT = "settings/about"
@@ -180,6 +185,7 @@ class MainActivity : ComponentActivity() {
                     onBack = { nav.popBackStack() },
                     onAdd = { add(id); nav.popBackStack() },
                     onIgnore = { ignore(id); nav.popBackStack() },
+                    onOpenMaps = { place -> openMaps(place, graph.travelSettings.mode()) },
                 )
             }
             composable(ROUTE_SETTINGS) {
@@ -204,6 +210,21 @@ class MainActivity : ComponentActivity() {
                 val switches = graph.calendarSwitches
                 CalendarsPage(status.calendar, calendars, switches::isOn, switches::set, actions.askCalendar,
                     onBack = { nav.popBackStack() })
+            }
+            composable(ROUTE_SETTINGS_PLACES) {
+                val travel = graph.travelSettings
+                var mode by remember { mutableStateOf(travel.mode()) }
+                PlacesPage(
+                    maskedKey = graph.mapsKeyStore.load()?.let { maskKey(it) },
+                    saveKey = { key -> graph.mapsKeyStore.save(key); refresh() },
+                    mode = mode,
+                    onMode = { travel.setMode(it); mode = it },
+                    home = travel.home(),
+                    saveHome = { travel.setHome(it) },
+                    location = status.location,
+                    askLocation = { askPermission.launch(Manifest.permission.ACCESS_COARSE_LOCATION) },
+                    onBack = { nav.popBackStack() },
+                )
             }
             composable(ROUTE_SETTINGS_NOTIFICATIONS) {
                 val summary = graph.summarySettings
@@ -263,6 +284,7 @@ class MainActivity : ComponentActivity() {
             SettingsItem("▣", "Apps to watch", "Which apps Datebook reads texts from") { open(ROUTE_SETTINGS_APPS) },
             SettingsItem("AI", "Claude & API key", "Your key and which model to use") { open(ROUTE_SETTINGS_CLAUDE) },
             SettingsItem("13", "Calendars", "Which calendars to check for clashes") { open(ROUTE_SETTINGS_CALENDARS) },
+            SettingsItem("📍", "Places & travel", "Maps key, how you get around, home") { open(ROUTE_SETTINGS_PLACES) },
             SettingsItem("🔔", "Notifications & alerts", "Reading texts and showing prompts") {
                 open(ROUTE_SETTINGS_NOTIFICATIONS)
             },
@@ -287,6 +309,16 @@ class MainActivity : ComponentActivity() {
     // Android's page for Datebook, where Samsung's Battery → Unrestricted setting lives
     private fun appDetails(): Intent {
         return Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
+    }
+
+    // Start directions to a place in Google Maps, telling you if no maps app can open it
+    private fun openMaps(place: String, mode: String) {
+        // Open the maps app, or say there isn't one
+        try {
+            startActivity(mapsIntent(place, mode))
+        } catch (error: ActivityNotFoundException) {  // no maps app or browser installed
+            Toast.makeText(this, "No maps app found", Toast.LENGTH_LONG).show()
+        }
     }
 
     // A banner for each required setting that's off, each with what fixes it

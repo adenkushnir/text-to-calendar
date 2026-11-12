@@ -53,9 +53,10 @@ class TextPipelineTest {
         database.close()
     }
 
-    // Build a pipeline whose Claude returns the given events, or throws the given error, with the given calendar
+    // Build a pipeline whose Claude returns the given events, or throws the given error, with the given calendar and
+    // the full addresses Google would find
     private fun pipeline(events: List<Event> = emptyList(), error: Exception? = null, key: String? = "sk-test",
-        onCalendar: List<CalendarEvent> = emptyList()): TextPipeline {
+        onCalendar: List<CalendarEvent> = emptyList(), places: Map<String, String> = emptyMap()): TextPipeline {
         return TextPipeline(
             dao = dao,
             apiKey = { key },
@@ -68,6 +69,7 @@ class TextPipelineTest {
             onRetrySaved = { retries.add(it) },
             onSuggested = { suggestion, text -> prompts.add(Pair(suggestion.title, text.text)) },
             calendar = { from, to -> onCalendar.filter { it.begin < to && from < it.end } },
+            findPlace = { places[it] },
         )
     }
 
@@ -353,5 +355,14 @@ class TextPipelineTest {
         val (event, changed) = matchChange(movie.copy(change = CHANGE_MOVED, calendarRef = 3), listOf(lunch))
         assertEquals(null, changed)
         assertEquals("", event.change)
+    }
+
+    // A place named in a text becomes its full address; places Google can't find stay as written
+    @Test
+    fun fullAddress() = runTest {
+        val found = mapOf("Joe's" to "Joe's, 1 Main St, Newark, NJ")
+        val outcome = pipeline(listOf(dinner, movie.copy(location = "the park")), places = found).handle(incoming)
+        val saved = outcome.suggestionIds.map { dao.suggestion(it)!!.location }
+        assertEquals(listOf("Joe's, 1 Main St, Newark, NJ", "the park"), saved)
     }
 }

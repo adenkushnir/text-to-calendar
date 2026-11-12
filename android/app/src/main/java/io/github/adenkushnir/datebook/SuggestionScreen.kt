@@ -23,7 +23,13 @@ import io.github.adenkushnir.datebook.prompts.promptTitle
 
 // Show one suggestion; null while it is loading or after it was deleted
 @Composable
-fun SuggestionScreen(suggestion: Suggestion?, onBack: () -> Unit, onAdd: () -> Unit, onIgnore: () -> Unit) {
+fun SuggestionScreen(
+    suggestion: Suggestion?,
+    onBack: () -> Unit,
+    onAdd: () -> Unit,
+    onIgnore: () -> Unit,
+    onOpenMaps: (String) -> Unit = {},
+) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         TopBar("Suggestion", onBack = onBack)
         Column(Modifier.navigationBarsPadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -38,6 +44,13 @@ fun SuggestionScreen(suggestion: Suggestion?, onBack: () -> Unit, onAdd: () -> U
                 Muted("From ${fromLine(suggestion)}")
                 ClashLine(suggestion.clash)
                 Muted(statusText(suggestion))
+            }
+
+            // Offer directions when the plan has a place
+            if (suggestion.location.isNotBlank()) {
+                OutlinedButton(onClick = { onOpenMaps(suggestion.location) }) {
+                    Text("OPEN IN MAPS")
+                }
             }
 
             // Only waiting suggestions can still be added or ignored

@@ -48,6 +48,7 @@ import io.github.adenkushnir.datebook.SectionLabel
 import io.github.adenkushnir.datebook.TopBar
 import io.github.adenkushnir.datebook.calendar.PhoneCalendar
 import io.github.adenkushnir.datebook.capture.WatchedApp
+import io.github.adenkushnir.datebook.places.TRAVEL_MODES
 import io.github.adenkushnir.datebook.summary.timeLabel
 import kotlinx.coroutines.launch
 const val GITHUB_URL = "https://github.com/adenkushnir/text-to-calendar"
@@ -182,6 +183,61 @@ fun ClaudePage(
                 }
             }
         }
+    }
+}
+
+// Places & travel: the Google Maps key, the default way of getting around, the home address travel times fall back to,
+// and location access
+@Composable
+fun PlacesPage(
+    maskedKey: String?,
+    saveKey: (String) -> Unit,
+    mode: String,
+    onMode: (String) -> Unit,
+    home: String,
+    saveHome: (String) -> Unit,
+    location: Boolean,
+    askLocation: () -> Unit,
+    onBack: () -> Unit,
+) {
+    var homeInput by remember { mutableStateOf(home) }
+    var homeSaved by remember { mutableStateOf(false) }
+    SettingsPage("Places & travel", onBack) {
+        SectionLabel("Google Maps key")
+        Muted(maskedKey ?: "No key saved. Without one, places stay as the text wrote them.")
+        KeyReplaceBox { key ->
+            saveKey(key)
+            null
+        }
+        SectionLabel("Getting there")
+        DatebookCard {
+            // One choice per travel mode
+            for (option in TRAVEL_MODES) {
+                val pick = Modifier.fillMaxWidth().clickable { onMode(option.id) }
+                Row(pick, verticalAlignment = Alignment.CenterVertically) {
+                    Text(option.label, modifier = Modifier.weight(1f))
+                    RadioButton(selected = mode == option.id, onClick = { onMode(option.id) })
+                }
+            }
+        }
+        Muted("Every plan starts with this. You can change it for one plan on its card.")
+        SectionLabel("Home")
+        OutlinedTextField(value = homeInput, onValueChange = { homeInput = it; homeSaved = false },
+            label = { Text("Home address") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedButton(onClick = { saveHome(homeInput); homeSaved = true }, enabled = homeInput.trim() != home.trim()) {
+            Text("SAVE")
+        }
+
+        // Say so once the address is saved
+        if (homeSaved) {
+            Muted("Saved.")
+        }
+        Muted("Used to find places near you, and for travel times when your location isn't known.")
+        DatebookCard {
+            StatusRow("Your location", location, askLocation)
+        }
+        Muted("Finding a place sends Google only its name (like \"Luigi's\") and roughly where you are, never your " +
+            "texts.")
     }
 }
 
