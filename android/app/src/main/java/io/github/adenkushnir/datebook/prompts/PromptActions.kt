@@ -13,7 +13,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-// Mark a suggestion added, remove its prompt, and open Google Calendar with it filled in
+// Mark a suggestion added, remove its prompt, and open your calendar app with it filled in (or, for a change, open the
+// event it changes)
 suspend fun addSuggestion(context: Context, suggestionId: Long) {
     val graph = AppGraph.get(context)
     val suggestion = graph.dao.suggestion(suggestionId) ?: return  // already gone
@@ -22,7 +23,8 @@ suspend fun addSuggestion(context: Context, suggestionId: Long) {
 
     // Open the calendar, telling you if no calendar app can take the event
     try {
-        context.startActivity(calendarInsertIntent(suggestion).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        val intent = if (isChange(suggestion)) calendarEventIntent(suggestion) else calendarInsertIntent(suggestion)
+        context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     } catch (error: ActivityNotFoundException) {  // no calendar app installed
         Toast.makeText(context, "No calendar app found to add the event", Toast.LENGTH_LONG).show()
     }

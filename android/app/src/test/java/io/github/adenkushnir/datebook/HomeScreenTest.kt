@@ -45,11 +45,13 @@ class HomeScreenTest {
     }
 
     // The soonest added plan is Next up with its countdown, later ones are under Coming up, and waiting ones have Add
+    // (and their clash warning)
     @Test
     fun homeWithPlans() {
         val dinner = plan(1, "Dinner at Joe's", "2037-11-13T19:00", Suggestion.STATUS_ADDED)
         val movie = plan(2, "Movie", "2037-11-14T22:00", Suggestion.STATUS_ADDED)
         val lunch = plan(3, "Lunch with Mom", "2037-11-15T12:00", Suggestion.STATUS_WAITING)
+            .copy(clash = "You already have Practice 11:00 AM–1:00 PM")
         val added = mutableListOf<Long>()
         compose.setContent {
             DatebookTheme {
@@ -61,6 +63,7 @@ class HomeScreenTest {
         compose.onNodeWithText("Dinner at Joe's").assertExists()
         compose.onNodeWithText("Movie").assertExists()
         compose.onNodeWithText("WAITING FOR YOU (1)").assertExists()
+        compose.onNodeWithText("⚠ You already have Practice 11:00 AM–1:00 PM").assertExists()
         compose.onAllNodesWithText("ADD")[0].performClick()
         assertEquals(listOf(3L), added)
     }

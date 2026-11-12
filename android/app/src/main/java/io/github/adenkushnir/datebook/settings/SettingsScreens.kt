@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -25,8 +26,11 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -42,7 +46,9 @@ import io.github.adenkushnir.datebook.DatebookCard
 import io.github.adenkushnir.datebook.Muted
 import io.github.adenkushnir.datebook.SectionLabel
 import io.github.adenkushnir.datebook.TopBar
+import io.github.adenkushnir.datebook.calendar.PhoneCalendar
 import io.github.adenkushnir.datebook.capture.WatchedApp
+import io.github.adenkushnir.datebook.summary.timeLabel
 import kotlinx.coroutines.launch
 const val GITHUB_URL = "https://github.com/adenkushnir/text-to-calendar"
 const val PRIVACY_SUMMARY = "Datebook checks texts from the apps you switch on, on this phone. Texts without a date " +
@@ -93,6 +99,56 @@ fun AppsPage(apps: List<WatchedApp>, isOn: (String) -> Boolean, setOn: (String, 
                 SwitchRow(app.label, on) { checked ->
                     setOn(app.packageName, checked)
                     on = checked
+                }
+            }
+        }
+    }
+}
+
+// Calendars: which of the phone's calendars Datebook reads for clash warnings and skipping plans already added, or
+// a button to allow calendar access
+@Composable
+fun CalendarsPage(
+    access: Boolean,
+    calendars: List<PhoneCalendar>,
+    isOn: (Long) -> Boolean,
+    setOn: (Long, Boolean) -> Unit,
+    askAccess: () -> Unit,
+    onBack: () -> Unit,
+) {
+    SettingsPage("Calendars", onBack) {
+        Muted("Datebook reads the calendars switched on here to warn about clashes and skip plans you've already " +
+            "added. It never adds, changes or deletes anything.")
+
+        // Without access there's nothing to list, only a way to allow it
+        if (!access) {
+            DatebookCard {
+                Text("Datebook can't see your calendar yet.", fontWeight = FontWeight.SemiBold)
+                Button(onClick = askAccess) {
+                    Text("ALLOW")
+                }
+                Muted("If nothing happens, allow Calendar in Android's settings for Datebook.")
+            }
+            return@SettingsPage
+        }
+        DatebookCard {
+            // Say so when the phone has no calendars
+            if (calendars.isEmpty()) {
+                Muted("No calendars found on this phone.")
+            }
+
+            // One switch per calendar, with the account it belongs to
+            for (calendar in calendars) {
+                var on by remember(calendar.id) { mutableStateOf(isOn(calendar.id)) }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(calendar.name.ifBlank { "Calendar" })
+                        Muted(calendar.account)
+                    }
+                    Switch(checked = on, onCheckedChange = { checked ->
+                        setOn(calendar.id, checked)
+                        on = checked
+                    })
                 }
             }
         }
@@ -163,15 +219,69 @@ fun NotificationsPage(
     canNotify: Boolean,
     openAccess: () -> Unit,
     openNotifications: () -> Unit,
+    summaryOn: Boolean,
+    summaryHour: Int,
+    summaryMinute: Int,
+    setSummary: (on: Boolean, hour: Int, minute: Int) -> Unit,
     onBack: () -> Unit,
 ) {
+    var on by remember { mutableStateOf(summaryOn) }
+    var hour by remember { mutableIntStateOf(summaryHour) }
+    var minute by remember { mutableIntStateOf(summaryMinute) }
+    var picking by remember { mutableStateOf(false) }
     SettingsPage("Notifications & alerts", onBack) {
         DatebookCard {
             StatusRow("Reading texts (notification access)", access, openAccess)
             StatusRow("Showing \"Add to calendar?\" prompts", canNotify, openNotifications)
         }
-        Muted("Alerts for problems (like a rejected key) and the morning summary arrive in a later update.")
+        SectionLabel("Morning summary")
+        DatebookCard {
+            SwitchRow("Morning summary", on) { checked ->
+                on = checked
+                setSummary(on, hour, minute)
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Time", modifier = Modifier.weight(1f))
+                TextButton(onClick = { picking = true }, enabled = on) {
+                    Text(timeLabel(hour, minute))
+                }
+            }
+        }
+        Muted("A silent notification with the day's events, only on days that have any. It stays until you swipe " +
+            "it away.")
+        Muted("Alerts for problems (like a rejected key) arrive in a later update.")
     }
+
+    // Show the clock to pick a new time
+    if (picking) {
+        TimeDialog(hour, minute, onDismiss = { picking = false }) { pickedHour, pickedMinute ->
+            hour = pickedHour
+            minute = pickedMinute
+            picking = false
+            setSummary(on, hour, minute)
+        }
+    }
+}
+
+// A clock in a dialog for choosing a time of day
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TimeDialog(hour: Int, minute: Int, onDismiss: () -> Unit, onPick: (Int, Int) -> Unit) {
+    val state = rememberTimePickerState(initialHour = hour, initialMinute = minute, is24Hour = false)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = { onPick(state.hour, state.minute) }) {
+                Text("OK")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("CANCEL")
+            }
+        },
+        text = { TimePicker(state) },
+    )
 }
 
 // Privacy & history: what Datebook keeps, and clearing old suggestions

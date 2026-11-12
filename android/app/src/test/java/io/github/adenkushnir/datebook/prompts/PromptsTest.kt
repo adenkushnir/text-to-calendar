@@ -9,6 +9,8 @@ import androidx.test.core.app.ApplicationProvider
 import io.github.adenkushnir.datebook.capture.GROUPME
 import io.github.adenkushnir.datebook.capture.SAMSUNG_MESSAGES
 import io.github.adenkushnir.datebook.data.Suggestion
+import io.github.adenkushnir.datebook.pipeline.CHANGE_CANCELLED
+import io.github.adenkushnir.datebook.pipeline.CHANGE_MOVED
 import io.github.adenkushnir.datebook.pipeline.SHARED_IMAGE_APP
 import io.github.adenkushnir.datebook.pipeline.SHARED_TEXT_APP
 import io.github.adenkushnir.datebook.pipeline.eventTimes
@@ -100,5 +102,20 @@ class PromptsTest {
         SuggestionNotifier(context).show(dinner, "dinner fri 7pm")
         val manager = context.getSystemService(NotificationManager::class.java)
         assertTrue(shadowOf(manager).allNotifications.isEmpty())
+    }
+
+    // Changes get a question or a cancelled title, and open the calendar event instead of a new one
+    @Test
+    fun changeTitlesAndIntent() {
+        val moved = dinner.copy(title = "Dinner", start = "2037-11-13T20:00", change = CHANGE_MOVED,
+            calendarEventId = 42)
+        assertEquals("Move Dinner to Fri Nov 13, 8:00 PM?", promptTitle(moved))
+        assertEquals("Dinner on Fri Nov 13 is cancelled", promptTitle(moved.copy(change = CHANGE_CANCELLED)))
+        assertEquals("Dinner at Joe's", promptTitle(dinner))
+        val intent = calendarEventIntent(moved)
+        assertEquals(android.content.Intent.ACTION_VIEW, intent.action)
+        assertEquals("content://com.android.calendar/events/42", intent.data.toString())
+        assertTrue(isChange(moved))
+        assertFalse(isChange(dinner))
     }
 }

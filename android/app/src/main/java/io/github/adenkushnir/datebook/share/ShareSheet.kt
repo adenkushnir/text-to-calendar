@@ -21,10 +21,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.adenkushnir.datebook.ClashLine
 import io.github.adenkushnir.datebook.Muted
 import io.github.adenkushnir.datebook.SectionLabel
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.pipeline.ShareResult
+import io.github.adenkushnir.datebook.prompts.isChange
+import io.github.adenkushnir.datebook.prompts.promptTitle
 import io.github.adenkushnir.datebook.whenAndWhere
 
 // Show the sheet's contents: a spinner while Claude reads it, then the plans found or why there are none; added and
@@ -84,24 +87,27 @@ fun ShareSheet(
     }
 }
 
-// One plan in the sheet: its title, when and where, then Add and ✕ (or "Added ✓" / "Ignored" once handled)
+// One plan in the sheet: its title, when and where, then Add (Open for a change) and ✕, or "Added ✓" / "Opened ✓" /
+// "Ignored" once handled
 @Composable
 private fun PlanRow(suggestion: Suggestion, isAdded: Boolean, isIgnored: Boolean, onAdd: (Long) -> Unit,
     onIgnore: (Long) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(suggestion.title, fontWeight = FontWeight.SemiBold)
+            Text(promptTitle(suggestion), fontWeight = FontWeight.SemiBold)
             Muted(whenAndWhere(suggestion))
+            ClashLine(suggestion.clash)
         }
 
         // Show what happened to it, or the buttons
         if (isAdded) {
-            Text("Added ✓", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+            val done = if (isChange(suggestion)) "Opened ✓" else "Added ✓"
+            Text(done, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
         } else if (isIgnored) {
             Muted("Ignored")
         } else {
             Button(onClick = { onAdd(suggestion.id) }) {
-                Text("ADD")
+                Text(if (isChange(suggestion)) "OPEN" else "ADD")  // changes open the event instead
             }
             TextButton(onClick = { onIgnore(suggestion.id) }) {
                 Text("✕")

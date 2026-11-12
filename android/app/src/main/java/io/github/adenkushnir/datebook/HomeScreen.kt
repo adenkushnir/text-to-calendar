@@ -35,6 +35,8 @@ import androidx.compose.ui.unit.sp
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.pipeline.summary
 import io.github.adenkushnir.datebook.prompts.fromLine
+import io.github.adenkushnir.datebook.prompts.isChange
+import io.github.adenkushnir.datebook.prompts.promptTitle
 import io.github.adenkushnir.datebook.ui.theme.DatebookTheme
 
 // Show the whole home dashboard: the next added plan, suggestions waiting for you, and what else is coming up
@@ -71,11 +73,12 @@ fun HomeScreen(
                 for (suggestion in waiting) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f).clickable { onOpen(suggestion.id) }) {
-                            Text(suggestion.title, fontWeight = FontWeight.SemiBold)
+                            Text(promptTitle(suggestion), fontWeight = FontWeight.SemiBold)
                             Muted(whenAndWhere(suggestion))
+                            ClashLine(suggestion.clash)
                         }
                         Button(onClick = { onAdd(suggestion.id) }) {
-                            Text("ADD")
+                            Text(if (isChange(suggestion)) "OPEN" else "ADD")  // changes open the event instead
                         }
                         TextButton(onClick = { onIgnore(suggestion.id) }) {
                             Text("✕")
@@ -143,6 +146,16 @@ private fun NextUpCard(next: Suggestion?, nowMillis: Long, onOpen: (Long) -> Uni
 // When and where a suggestion is, like "Fri Nov 13, 7:00 PM · Joe's"
 fun whenAndWhere(suggestion: Suggestion): String {
     return summary(suggestion.toEvent()).removePrefix("${suggestion.title} · ")
+}
+
+// The clash warning under a suggestion, like "⚠ You already have Practice 6:00 PM–8:00 PM" (nothing when it doesn't
+// clash)
+@Composable
+fun ClashLine(clash: String) {
+    // Only show it when something clashes
+    if (clash.isNotBlank()) {
+        Text("⚠ $clash", color = MaterialTheme.colorScheme.tertiary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+    }
 }
 
 // The teal bar across the top, reaching up behind the status bar, with an optional back button and Settings button

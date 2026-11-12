@@ -1,16 +1,20 @@
-// Builds the intent that opens Google Calendar's new-event screen with a suggestion filled in (Datebook never
+// Builds the intent that opens your calendar app's new-event screen with a suggestion filled in (Datebook never
 // writes events itself; you save them in Calendar)
 package io.github.adenkushnir.datebook.prompts
+import android.content.ContentUris
 import android.content.Intent
 import android.provider.CalendarContract
 import io.github.adenkushnir.datebook.capture.WATCHABLE_APPS
 import io.github.adenkushnir.datebook.data.Suggestion
+import io.github.adenkushnir.datebook.pipeline.CHANGE_CANCELLED
+import io.github.adenkushnir.datebook.pipeline.CHANGE_MOVED
 import io.github.adenkushnir.datebook.pipeline.SHARED_IMAGE_APP
 import io.github.adenkushnir.datebook.pipeline.SHARED_TEXT_APP
 import io.github.adenkushnir.datebook.pipeline.eventTimes
 import io.github.adenkushnir.datebook.pipeline.eventZone
 import io.github.adenkushnir.datebook.pipeline.isShared
 import io.github.adenkushnir.datebook.pipeline.repeatRule
+import io.github.adenkushnir.datebook.pipeline.summary
 
 // Who a suggestion came from, like "Sam", "Jake in Soccer Team" or "you (shared to Datebook)"
 fun fromLine(suggestion: Suggestion): String {
@@ -35,7 +39,32 @@ fun calendarNotes(suggestion: Suggestion): String {
     return "${suggestion.sender}$group$via"
 }
 
-// The intent for Google Calendar's new-event screen: title, start and end, all-day, place, repeat, zone and notes
+// The title a suggestion is shown with: its own title for a new plan, "Move Dinner to Fri Nov 13, 8:00 PM?" for a move,
+// or "Dinner on Fri Nov 13 is cancelled" for a cancellation
+fun promptTitle(suggestion: Suggestion): String {
+    val event = suggestion.toEvent().copy(location = "", repeat = "")
+    val whenText = summary(event).removePrefix("${event.title} · ")  // the day, and the time unless all-day
+
+    // Pick the wording for the kind of suggestion
+    return when (suggestion.change) {
+        CHANGE_MOVED -> "Move ${suggestion.title} to $whenText?"
+        CHANGE_CANCELLED -> "${suggestion.title} on ${whenText.substringBefore(",")} is cancelled"
+        else -> suggestion.title
+    }
+}
+
+// Return true if a suggestion changes or cancels an event already on the calendar
+fun isChange(suggestion: Suggestion): Boolean {
+    return suggestion.change.isNotBlank()
+}
+
+// The intent that opens a calendar event in your calendar app, where you can edit or delete it
+fun calendarEventIntent(suggestion: Suggestion): Intent {
+    val uri = ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, suggestion.calendarEventId)
+    return Intent(Intent.ACTION_VIEW, uri)
+}
+
+// The intent for the calendar app's new-event screen: title, start and end, all-day, place, repeat, zone and notes
 fun calendarInsertIntent(suggestion: Suggestion): Intent {
     val event = suggestion.toEvent()
     val (begin, end) = eventTimes(event)

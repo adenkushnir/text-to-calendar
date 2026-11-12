@@ -9,9 +9,9 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
-// Return the added suggestions that haven't started yet, soonest first
+// Return the added suggestions that haven't started yet, soonest first (changes you opened aren't new plans)
 fun upcoming(added: List<Suggestion>, nowMillis: Long): List<Suggestion> {
-    val ahead = added.filter { !hasStarted(it.toEvent(), nowMillis) }  // drop ones already started
+    val ahead = added.filter { it.change.isBlank() && !hasStarted(it.toEvent(), nowMillis) }  // drop started ones
     return ahead.sortedBy { eventTimes(it.toEvent()).first }  // soonest start first
 }
 

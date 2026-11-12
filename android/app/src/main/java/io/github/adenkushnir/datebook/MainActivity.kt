@@ -30,6 +30,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.work.ExistingWorkPolicy
+import io.github.adenkushnir.datebook.calendar.phoneCalendars
 import io.github.adenkushnir.datebook.capture.WATCHABLE_APPS
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.pipeline.IncomingText
@@ -40,12 +42,14 @@ import io.github.adenkushnir.datebook.prompts.addSuggestion
 import io.github.adenkushnir.datebook.prompts.ignoreSuggestion
 import io.github.adenkushnir.datebook.settings.AboutPage
 import io.github.adenkushnir.datebook.settings.AppsPage
+import io.github.adenkushnir.datebook.settings.CalendarsPage
 import io.github.adenkushnir.datebook.settings.ClaudePage
 import io.github.adenkushnir.datebook.settings.GITHUB_URL
 import io.github.adenkushnir.datebook.settings.NotificationsPage
 import io.github.adenkushnir.datebook.settings.PrivacyPage
 import io.github.adenkushnir.datebook.settings.SettingsItem
 import io.github.adenkushnir.datebook.settings.SettingsMenu
+import io.github.adenkushnir.datebook.summary.scheduleSummary
 import io.github.adenkushnir.datebook.setup.SetupActions
 import io.github.adenkushnir.datebook.setup.SetupScreen
 import io.github.adenkushnir.datebook.setup.SetupStatus
@@ -63,6 +67,7 @@ const val ROUTE_SUGGESTION = "suggestion/{id}"
 const val ROUTE_SETTINGS = "settings"
 const val ROUTE_SETTINGS_APPS = "settings/apps"
 const val ROUTE_SETTINGS_CLAUDE = "settings/claude"
+const val ROUTE_SETTINGS_CALENDARS = "settings/calendars"
 const val ROUTE_SETTINGS_NOTIFICATIONS = "settings/notifications"
 const val ROUTE_SETTINGS_PRIVACY = "settings/privacy"
 const val ROUTE_SETTINGS_ABOUT = "settings/about"
@@ -119,6 +124,7 @@ class MainActivity : ComponentActivity() {
         }
         LaunchedEffect(Unit) {
             graph.pipeline.cleanUp()
+            scheduleSummary(applicationContext)  // book the morning summary if it isn't already
         }
         val actions = SetupActions(
             openAccess = { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
@@ -193,9 +199,22 @@ class MainActivity : ComponentActivity() {
                     onBack = { nav.popBackStack() },
                 )
             }
+            composable(ROUTE_SETTINGS_CALENDARS) {
+                val calendars = remember(status.calendar) { phoneCalendars(applicationContext) }  // again once allowed
+                val switches = graph.calendarSwitches
+                CalendarsPage(status.calendar, calendars, switches::isOn, switches::set, actions.askCalendar,
+                    onBack = { nav.popBackStack() })
+            }
             composable(ROUTE_SETTINGS_NOTIFICATIONS) {
+                val summary = graph.summarySettings
                 NotificationsPage(status.access, status.notifications, actions.openAccess,
-                    openNotifications = { startActivity(appNotificationSettings()) }, onBack = { nav.popBackStack() })
+                    openNotifications = { startActivity(appNotificationSettings()) },
+                    summaryOn = summary.isOn(), summaryHour = summary.hour(), summaryMinute = summary.minute(),
+                    setSummary = { on, hour, minute ->
+                        summary.set(on, hour, minute)
+                        scheduleSummary(applicationContext, ExistingWorkPolicy.REPLACE)  // re-book at the new time
+                    },
+                    onBack = { nav.popBackStack() })
             }
             composable(ROUTE_SETTINGS_PRIVACY) {
                 PrivacyPage(clearHistory = { graph.pipeline.clearHistory() }, onBack = { nav.popBackStack() })
@@ -243,6 +262,7 @@ class MainActivity : ComponentActivity() {
         return listOf(
             SettingsItem("▣", "Apps to watch", "Which apps Datebook reads texts from") { open(ROUTE_SETTINGS_APPS) },
             SettingsItem("AI", "Claude & API key", "Your key and which model to use") { open(ROUTE_SETTINGS_CLAUDE) },
+            SettingsItem("13", "Calendars", "Which calendars to check for clashes") { open(ROUTE_SETTINGS_CALENDARS) },
             SettingsItem("🔔", "Notifications & alerts", "Reading texts and showing prompts") {
                 open(ROUTE_SETTINGS_NOTIFICATIONS)
             },

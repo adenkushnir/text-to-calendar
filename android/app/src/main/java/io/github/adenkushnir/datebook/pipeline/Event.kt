@@ -1,7 +1,9 @@
 // One event Claude found in a text, with the same fields as the Python version's event dicts
 package io.github.adenkushnir.datebook.pipeline
 
-// An event's details: start and end are YYYY-MM-DD or YYYY-MM-DDTHH:MM, written in timezone (empty means the phone's)
+// An event's details: start and end are YYYY-MM-DD or YYYY-MM-DDTHH:MM, written in timezone (empty means the phone's);
+// for a text that moves or cancels a calendar event, change is "moved" or "cancelled", calendarRef is the event's
+// number in the list Claude was shown, and calendarEventId is that event's id on the phone
 data class Event(
     val title: String,
     val start: String,
@@ -11,4 +13,7 @@ data class Event(
     val repeat: String = "",
     val timezone: String = "",
     val phoneTimezone: String = "",
+    val change: String = "",
+    val calendarRef: Int = 0,
+    val calendarEventId: Long = 0,
 )

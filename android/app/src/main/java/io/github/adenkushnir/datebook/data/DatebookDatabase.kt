@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 
 // The database holding seen texts, suggestions, the retry queue and failure counts; until version 1.0.0 is
 // released, a new version starts from an empty database instead of converting the old one
-@Database(entities = [SeenText::class, Suggestion::class, RetryText::class, FailureCount::class], version = 2,
+@Database(entities = [SeenText::class, Suggestion::class, RetryText::class, FailureCount::class], version = 3,
     exportSchema = false)
 abstract class DatebookDatabase : RoomDatabase() {
     // The queries for all four tables

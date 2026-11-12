@@ -92,4 +92,17 @@ class DateHintsTest {
             assertFalse("should not be clear: $text", hasClearDate(text))
         }
     }
+
+    // Texts that move or cancel a plan sound like changes; ordinary plans and chat don't
+    @Test
+    fun changes() {
+        val changes = listOf("dinner moved to 8", "practice is cancelled", "game canceled", "pushed back an hour",
+            "rescheduled for next week", "lets do 8 instead", "meeting got postponed")
+        for (text in changes) {
+            assertTrue(text, soundsLikeChange(text))
+        }
+        assertFalse(soundsLikeChange("dinner fri 7pm"))
+        assertFalse(soundsLikeChange("lol ok"))
+        assertFalse(soundsLikeChange(null))
+    }
 }
