@@ -5,4 +5,11 @@
         <item name="android:statusBarColor">@color/brand_teal</item>
         <item name="android:windowBackground">@color/background_light</item>
     </style>
+    <!-- See-through window for the share sheet, so the app you shared from stays visible behind it -->
+    <style name="Theme.Datebook.Sheet" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+    </style>
 </resources>

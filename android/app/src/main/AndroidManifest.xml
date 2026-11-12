@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Datebook's app manifest: permissions, the app's name, icon and theme, its screen and its notification listener -->
+<!-- Datebook's app manifest: permissions, the app's name, icon and theme, its screens (including long-press and Share)
+     and its notification listener -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -27,6 +28,26 @@
             android:noHistory="true"
             android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <!-- Long-press "Add to calendar" on selected text, and Share → Datebook for text and pictures; shows a bottom
+             sheet over the app you were in -->
+        <activity
+            android:name=".share.ShareActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:label="@string/add_to_calendar"
+            android:theme="@style/Theme.Datebook.Sheet">
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+        </activity>
         <!-- Handles the prompt's Ignore button in the background -->
         <receiver
             android:name=".prompts.IgnoreReceiver"

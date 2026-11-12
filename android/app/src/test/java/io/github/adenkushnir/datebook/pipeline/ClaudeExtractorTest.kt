@@ -38,6 +38,28 @@ class ClaudeExtractorTest {
         assertTrue(!prompt.contains("Jake"))
     }
 
+    // Shared things say they came from the phone's owner, and point Claude at a shared picture
+    @Test
+    fun promptForShared() {
+        val shared = incoming.copy(sender = "you", app = SHARED_TEXT_APP)
+        assertTrue(buildPrompt(shared, newYork).contains("From: the phone's owner (shared to Datebook)"))
+        val picture = shared.copy(text = "", app = SHARED_IMAGE_APP, image = "abc")
+        assertTrue(buildPrompt(picture, newYork).contains("<message>\n(see the attached image)\n</message>"))
+        val both = shared.copy(app = SHARED_IMAGE_APP, image = "abc")
+        assertTrue(buildPrompt(both, newYork).contains("dinner fri 7pm at Joe's\n(and the attached image)"))
+    }
+
+    // A shared picture goes to Claude as a JPEG image block before the words; texts stay plain words
+    @Test
+    fun imageRequest() {
+        val picture = incoming.copy(app = SHARED_IMAGE_APP, image = "abc")
+        val blocks = buildRequest(picture, newYork).messages().single().content().get().asContentBlockParams()
+        assertEquals(2, blocks.size)
+        assertEquals("abc", blocks[0].asImage().source().asBase64().data())
+        assertTrue(blocks[1].asText().text().contains("(and the attached image)"))
+        assertTrue(buildRequest(incoming, newYork).messages().single().content().get().isString())
+    }
+
     // Claude's instructions are the Python version's, including the plan, fallback, birthday and zone rules
     @Test
     fun systemPromptRules() {

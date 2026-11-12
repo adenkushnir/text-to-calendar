@@ -16,12 +16,23 @@ const val REPEAT_MILLIS = 60L * 60 * 1000
 const val KEEP_SEEN_MILLIS = 7L * 24 * 60 * 60 * 1000
 const val KEEP_SUGGESTIONS_MILLIS = 365L * 24 * 60 * 60 * 1000
 
-// One text's result: events to offer, their saved suggestion ids, the lines describing what happened, and retry
+// One text's result: events to offer, their saved suggestion ids, the lines describing what happened, retry, and what
+// went wrong asking Claude (null when nothing did)
 data class Outcome(
     val events: List<Event>,
     val lines: List<String>,
     val retry: Boolean,
     val suggestionIds: List<Long> = emptyList(),
+    val failure: Failure? = null,
+)
+
+// What sharing something to Datebook found: the saved suggestions, or a note saying why there are none, whether
+// trying again might help, and whether the Claude key needs fixing
+data class ShareResult(
+    val suggestions: List<Suggestion>,
+    val note: String = "",
+    val canRetry: Boolean = false,
+    val needsKey: Boolean = false,
 )
 
 // The text pipeline; the Claude call, key, zone and clock are passed in so tests can replace them
@@ -65,10 +76,11 @@ class TextPipeline(
         return handle(incoming)
     }
 
-    // Work out one text: the events to offer, the lines describing what happened, and whether to try again later
-    suspend fun describe(incoming: IncomingText): Outcome {
+    // Work out one text: the events to offer, the lines describing what happened, and whether to try again later;
+    // checkDate is false for things you shared on purpose, which always go to Claude
+    suspend fun describe(incoming: IncomingText, checkDate: Boolean = true): Outcome {
         // Texts with no date never leave the phone
-        if (!passesDateCheck(incoming)) {
+        if (checkDate && !passesDateCheck(incoming)) {
             return Outcome(emptyList(), listOf("no date"), false)
         }
         val key = apiKey()
@@ -90,7 +102,7 @@ class TextPipeline(
             if (failure.problem != null && health.failed(failure.problem)) {
                 lines.add("alert: ${ALERT_TITLES.getValue(failure.problem)}")
             }
-            return Outcome(emptyList(), listOf(failure.line) + lines, failure.retry)
+            return Outcome(emptyList(), listOf(failure.line) + lines, failure.retry, failure = failure)
         }
         clearApiAlerts(lines)
 
@@ -130,6 +142,36 @@ class TextPipeline(
             return outcome.copy(lines = outcome.lines + "will try again every minute once online")
         }
         return outcome.copy(suggestionIds = saveSuggestions(outcome.events, incoming))
+    }
+
+    // Handle something you long-pressed or shared: it skips the date check and the "seen" list, its suggestions are
+    // saved as waiting but not announced (the share sheet shows them), and failures aren't queued for a retry
+    suspend fun share(incoming: IncomingText): ShareResult {
+        // Without a key there is nothing to ask
+        if (apiKey().isNullOrBlank()) {
+            return ShareResult(emptyList(), "Add your Claude API key in Datebook first.", needsKey = true)
+        }
+        val outcome = describe(incoming, checkDate = false)
+        val failure = outcome.failure
+
+        // Say what went wrong asking Claude
+        if (failure != null) {
+            return when {
+                failure.problem == PROBLEM_API_KEY -> ShareResult(emptyList(),
+                    "Claude didn't accept your API key. Check it in Settings.", needsKey = true)
+                failure.retry -> ShareResult(emptyList(), "Couldn't reach Claude. Check your internet and try again.",
+                    canRetry = true)
+                else -> ShareResult(emptyList(), "Something went wrong asking Claude. Try again.", canRetry = true)
+            }
+        }
+        val ids = saveSuggestions(outcome.events, incoming, announce = false)
+
+        // Say why nothing was found: the plans are over, or there were none
+        if (ids.isEmpty()) {
+            val over = outcome.lines.any { it.startsWith("already started") }
+            return ShareResult(emptyList(), if (over) "That plan has already started." else "No plans found in this.")
+        }
+        return ShareResult(ids.mapNotNull { dao.suggestion(it) })
     }
 
     // Try the saved texts that are due, giving up on any saved over a day ago; returns what happened to each
@@ -174,15 +216,21 @@ class TextPipeline(
         dao.deleteSuggestionsBefore(now() - KEEP_SUGGESTIONS_MILLIS)
     }
 
-    // Save each event as a waiting suggestion, announce it (the app shows its prompt), and return their ids
-    private suspend fun saveSuggestions(events: List<Event>, incoming: IncomingText): List<Long> {
+    // Save each event as a waiting suggestion, announce it unless told not to (the app shows its prompt), and return
+    // their ids
+    private suspend fun saveSuggestions(events: List<Event>, incoming: IncomingText, announce: Boolean = true):
+        List<Long> {
         val ids = mutableListOf<Long>()
 
         // Save and announce each event
         for (event in events) {
             val suggestion = suggestionOf(event, incoming, now())
             val id = dao.saveSuggestion(suggestion)
-            onSuggested(suggestion.copy(id = id), incoming)
+
+            // Show a prompt for it, except for shared things
+            if (announce) {
+                onSuggested(suggestion.copy(id = id), incoming)
+            }
             ids.add(id)
         }
         return ids
