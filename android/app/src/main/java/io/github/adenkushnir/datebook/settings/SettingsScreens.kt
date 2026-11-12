@@ -246,6 +246,22 @@ fun PlacesPage(
     }
 }
 
+// Flights & trains: the flight-data key (AeroDataBox through RapidAPI); NJ Transit comes in a later update
+@Composable
+fun FlightsPage(maskedKey: String?, saveKey: (String) -> Unit, onBack: () -> Unit) {
+    SettingsPage("Flights & trains", onBack) {
+        SectionLabel("Flight data (AeroDataBox)")
+        Muted(maskedKey ?: "No key saved. Flights get a status link instead of live times.")
+        KeyReplaceBox { key ->
+            saveKey(key)
+            null
+        }
+        Muted("To get a free key: make a RapidAPI account, subscribe to AeroDataBox's free Basic plan, and paste " +
+            "your RapidAPI key here. Datebook sends only flight numbers and dates.")
+        Muted("NJ Transit trains arrive in a later update.")
+    }
+}
+
 // A box to paste a new key, checked for free before it replaces the saved one
 @Composable
 private fun KeyReplaceBox(checkAndSaveKey: suspend (String) -> String?) {

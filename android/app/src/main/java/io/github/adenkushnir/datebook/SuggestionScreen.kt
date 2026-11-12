@@ -35,6 +35,7 @@ fun SuggestionScreen(
     travelMode: String? = null,
     onTravelMode: (String) -> Unit = {},
     onTrack: (String) -> Unit = {},
+    flightStatus: String? = null,
 ) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         TopBar("Suggestion", onBack = onBack)
@@ -49,6 +50,11 @@ fun SuggestionScreen(
                 Muted(whenAndWhere(suggestion))
                 Muted("From ${fromLine(suggestion)}")
                 ClashLine(suggestion.clash)
+
+                // Show the flight's live status when it's known
+                if (flightStatus != null) {
+                    Text("✈ $flightStatus", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                }
                 Muted(statusText(suggestion))
             }
 

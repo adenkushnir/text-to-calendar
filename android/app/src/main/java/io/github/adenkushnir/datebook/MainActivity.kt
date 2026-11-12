@@ -34,6 +34,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.work.ExistingWorkPolicy
 import io.github.adenkushnir.datebook.calendar.phoneCalendars
+import io.github.adenkushnir.datebook.flights.scheduleFlightChecks
+import io.github.adenkushnir.datebook.flights.statusLine
 import io.github.adenkushnir.datebook.leaveby.LeaveByStore
 import io.github.adenkushnir.datebook.leaveby.eventKey
 import io.github.adenkushnir.datebook.leaveby.scheduleLeaveBy
@@ -50,6 +52,7 @@ import io.github.adenkushnir.datebook.prompts.ignoreSuggestion
 import io.github.adenkushnir.datebook.settings.AboutPage
 import io.github.adenkushnir.datebook.settings.AppsPage
 import io.github.adenkushnir.datebook.settings.CalendarsPage
+import io.github.adenkushnir.datebook.settings.FlightsPage
 import io.github.adenkushnir.datebook.settings.ClaudePage
 import io.github.adenkushnir.datebook.settings.GITHUB_URL
 import io.github.adenkushnir.datebook.settings.NotificationsPage
@@ -77,6 +80,7 @@ const val ROUTE_SETTINGS_APPS = "settings/apps"
 const val ROUTE_SETTINGS_CLAUDE = "settings/claude"
 const val ROUTE_SETTINGS_CALENDARS = "settings/calendars"
 const val ROUTE_SETTINGS_PLACES = "settings/places"
+const val ROUTE_SETTINGS_FLIGHTS = "settings/flights"
 private val LOCATION_PERMISSIONS = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION,
     Manifest.permission.ACCESS_COARSE_LOCATION)
 const val ROUTE_SETTINGS_NOTIFICATIONS = "settings/notifications"
@@ -140,6 +144,7 @@ class MainActivity : ComponentActivity() {
             graph.pipeline.cleanUp()
             scheduleSummary(applicationContext)  // book the morning summary if it isn't already
             scheduleLeaveBy(applicationContext)  // start planning leave-by alerts if it isn't already
+            scheduleFlightChecks(applicationContext)  // start the flight checks if they aren't running
         }
         val actions = SetupActions(
             openAccess = { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
@@ -198,6 +203,7 @@ class MainActivity : ComponentActivity() {
                     onIgnore = { ignore(id); nav.popBackStack() },
                     onOpenMaps = { place -> openMaps(place, travelMode ?: graph.travelSettings.mode()) },
                     onTrack = { url -> openLink(url) },
+                    flightStatus = suggestion?.let { flightStatusFor(graph, it) },
                     travelMode = travelMode,
                     onTravelMode = { mode ->
                         val plan = suggestion ?: return@SuggestionScreen
@@ -243,6 +249,13 @@ class MainActivity : ComponentActivity() {
                     askLocation = { askPermissions.launch(LOCATION_PERMISSIONS) },
                     allTheTime = status.backgroundLocation,
                     askAllTheTime = { askAllTheTime(status, askPermissions::launch, askPermission::launch) },
+                    onBack = { nav.popBackStack() },
+                )
+            }
+            composable(ROUTE_SETTINGS_FLIGHTS) {
+                FlightsPage(
+                    maskedKey = graph.flightsKeyStore.load()?.let { maskKey(it) },
+                    saveKey = { key -> graph.flightsKeyStore.save(key) },
                     onBack = { nav.popBackStack() },
                 )
             }
@@ -305,6 +318,7 @@ class MainActivity : ComponentActivity() {
             SettingsItem("AI", "Claude & API key", "Your key and which model to use") { open(ROUTE_SETTINGS_CLAUDE) },
             SettingsItem("13", "Calendars", "Which calendars to check for clashes") { open(ROUTE_SETTINGS_CALENDARS) },
             SettingsItem("📍", "Places & travel", "Maps key, how you get around, home") { open(ROUTE_SETTINGS_PLACES) },
+            SettingsItem("✈", "Flights & trains", "Live flight times and NJ Transit") { open(ROUTE_SETTINGS_FLIGHTS) },
             SettingsItem("🔔", "Notifications & alerts", "Reading texts and showing prompts") {
                 open(ROUTE_SETTINGS_NOTIFICATIONS)
             },
@@ -329,6 +343,15 @@ class MainActivity : ComponentActivity() {
     // Android's page for Datebook, where Samsung's Battery → Unrestricted setting lives
     private fun appDetails(): Intent {
         return Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
+    }
+
+    // A flight plan's last-known status line, like "On time · departs 6:45 PM · gate C12" (null for other plans)
+    private fun flightStatusFor(graph: AppGraph, plan: Suggestion): String? {
+        // Only flight plans have a status
+        if (plan.flight.isBlank()) {
+            return null
+        }
+        return graph.flightStore.info(plan.flight, plan.start)?.let { statusLine(it) }
     }
 
     // The travel mode picked for a plan, or the default

@@ -25,6 +25,7 @@ import io.github.adenkushnir.datebook.MainActivity
 import io.github.adenkushnir.datebook.R
 import io.github.adenkushnir.datebook.calendar.CalendarEvent
 import io.github.adenkushnir.datebook.calendar.calendarEvents
+import io.github.adenkushnir.datebook.flights.isFlightTitle
 import io.github.adenkushnir.datebook.places.TRAVEL_BIKE
 import io.github.adenkushnir.datebook.places.TRAVEL_DRIVE
 import io.github.adenkushnir.datebook.places.TRAVEL_TRANSIT
@@ -133,10 +134,11 @@ fun alertTime(begin: Long, minutes: Int): Long {
     return leaveTime(begin, minutes) - HEADS_UP_MINUTES * MINUTE
 }
 
-// The events that get leave-by alerts: timed ones with a place, starting within the next 4 hours
+// The events that get leave-by alerts: timed ones with a place, starting within the next 4 hours, except flights
 fun leaveByCandidates(events: List<CalendarEvent>, nowMillis: Long): List<CalendarEvent> {
     return events.filter {
-        !it.allDay && it.location.isNotBlank() && it.begin > nowMillis && it.begin <= nowMillis + LOOK_AHEAD_MILLIS
+        !it.allDay && it.location.isNotBlank() && it.begin > nowMillis && it.begin <= nowMillis + LOOK_AHEAD_MILLIS &&
+            !isFlightTitle(it.title)
     }
 }
 

@@ -9,6 +9,9 @@ import io.github.adenkushnir.datebook.data.RetryText
 import io.github.adenkushnir.datebook.data.SeenText
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.data.suggestionOf
+import io.github.adenkushnir.datebook.flights.FlightInfo
+import io.github.adenkushnir.datebook.flights.flightTitle
+import io.github.adenkushnir.datebook.flights.zonedText
 import io.github.adenkushnir.datebook.places.FoundPlace
 import java.security.MessageDigest
 import java.time.Duration
@@ -48,8 +51,8 @@ data class ShareResult(
     val needsKey: Boolean = false,
 )
 
-// The text pipeline; the Claude call, key, zone, clock, calendar and place lookup are passed in so tests can replace
-// them
+// The text pipeline; the Claude call, key, zone, clock, calendar, place lookup and flight lookup are passed in so tests
+// can replace them
 class TextPipeline(
     private val dao: DatebookDao,
     private val apiKey: () -> String?,
@@ -60,6 +63,7 @@ class TextPipeline(
     private val onSuggested: (suggestion: Suggestion, incoming: IncomingText) -> Unit = { _, _ -> },
     private val calendar: (fromMillis: Long, toMillis: Long) -> List<CalendarEvent> = { _, _ -> emptyList() },
     private val findPlace: (place: String) -> FoundPlace? = { null },
+    private val lookupFlight: (flight: String, date: String) -> FlightInfo? = { _, _ -> null },
 ) {
     private val health = Health(dao)
 
@@ -132,7 +136,8 @@ class TextPipeline(
 
         // Keep each event that hasn't started yet, and describe every one
         for (claudeEvent in found) {
-            val (event, changed) = matchChange(nameGroupBirthday(claudeEvent, incoming), upcoming)
+            val (matched, changed) = matchChange(nameGroupBirthday(claudeEvent, incoming), upcoming)
+            val event = withFlightTimes(matched)
 
             // Don't offer events that have already started
             if (hasStarted(event, now())) {
@@ -280,6 +285,21 @@ class TextPipeline(
             return true
         }
         return incoming.group.isBlank() && soundsLikeChange(incoming.text) && upcomingEvents().isNotEmpty()
+    }
+
+    // Fill a flight plan in from live flight data: its title with the route, its scheduled departure and arrival in
+    // the departure airport's time, and the airport as its place; it stays as Claude wrote it without data
+    private suspend fun withFlightTimes(event: Event): Event {
+        // Only flights are looked up
+        if (event.flight.isBlank()) {
+            return event
+        }
+        val info = withContext(Dispatchers.IO) { lookupFlight(event.flight, event.start.take(10)) } ?: return event
+        val departs = info.departScheduled ?: return event  // no times to fill in
+        val zone = zoneOf(info.fromZone) ?: zoneOf(event.phoneTimezone) ?: ZoneId.systemDefault()
+        val end = info.arriveScheduled?.let { zonedText(it, zone) }.orEmpty()  // empty when unknown
+        return event.copy(title = flightTitle(info), start = zonedText(departs, zone), end = end, allDay = false,
+            timezone = zone.id, location = info.fromName.ifBlank { event.location })
     }
 
     // Swap a new plan's place, like "Luigi's", for its full address and coordinates, off the main thread; it stays as

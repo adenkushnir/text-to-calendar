@@ -46,7 +46,7 @@ class LeaveByTest {
         assertEquals(listOf(TRAVEL_DRIVE, TRAVEL_TRANSIT), otherModes(TRAVEL_BIKE))
     }
 
-    // Only timed events with a place, starting in the next 4 hours, get alerts
+    // Only timed events with a place, starting in the next 4 hours, get alerts, and never flights
     @Test
     fun candidates() {
         val now = sevenPm - 2 * 3_600_000
@@ -55,7 +55,8 @@ class LeaveByTest {
         val allDay = dinner.copy(eventId = 3, allDay = true)
         val later = dinner.copy(eventId = 4, begin = sevenPm + 3 * 3_600_000)
         val started = dinner.copy(eventId = 5, begin = now - 60_000)
-        assertEquals(listOf(dinner), leaveByCandidates(listOf(dinner, noPlace, allDay, later, started), now))
+        val flight = dinner.copy(eventId = 6, title = "Flight UA1234 EWR → SFO")
+        assertEquals(listOf(dinner), leaveByCandidates(listOf(dinner, noPlace, allDay, later, started, flight), now))
     }
 
     // Driving asks for live traffic, transit for an arrival time; the trip starts at your location, else home
