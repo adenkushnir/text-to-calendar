@@ -13,8 +13,8 @@ data class SeenText(
 )
 
 // An event Datebook suggested, who from (and which group chat), whether it is waiting, added or ignored, the clash
-// warning shown with it, and for a changed or cancelled plan, which calendar event it changes (kept 1 year; never the
-// message text)
+// warning shown with it, for a changed or cancelled plan which calendar event it changes, and its flight, package
+// and place coordinates (kept 1 year; never the message text)
 @Entity(tableName = "suggestions")
 data class Suggestion(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -34,10 +34,16 @@ data class Suggestion(
     val clash: String = "",
     val change: String = "",
     val calendarEventId: Long = 0,
+    val flight: String = "",
+    val packageCarrier: String = "",
+    val trackingNumber: String = "",
+    val placeLat: Double? = null,
+    val placeLng: Double? = null,
 ) {
     // Turn the saved row back into an event
     fun toEvent(): Event {
-        return Event(title, start, end, allDay, location, repeat, timezone, phoneTimezone)
+        return Event(title, start, end, allDay, location, repeat, timezone, phoneTimezone, flight = flight,
+            packageCarrier = packageCarrier, trackingNumber = trackingNumber, placeLat = placeLat, placeLng = placeLng)
     }
 
     // Names for the three states a suggestion can be in
@@ -67,6 +73,11 @@ fun suggestionOf(event: Event, incoming: IncomingText, now: Long, clash: String 
         clash = clash,
         change = event.change,
         calendarEventId = event.calendarEventId,
+        flight = event.flight,
+        packageCarrier = event.packageCarrier,
+        trackingNumber = event.trackingNumber,
+        placeLat = event.placeLat,
+        placeLng = event.placeLng,
     )
 }
 

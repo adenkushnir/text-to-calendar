@@ -155,4 +155,21 @@ class ClaudeExtractorTest {
         assertEquals(CHANGE_MOVED, found.change)
         assertEquals(1, found.calendarRef)
     }
+
+    // Claude's reply carries a flight number and a package's carrier and tracking number, cleaned of spaces; the
+    // instructions explain both
+    @Test
+    fun parseFlightAndPackage() {
+        val json = """{"events": [{"title": "Flight UA1234", "start": "2037-11-13", "end": "", "all_day": true,
+            "location": "", "repeat": "", "timezone": "", "change": "", "calendar_event": 0, "flight": "ua 1234",
+            "package_carrier": "", "tracking_number": ""}, {"title": "UPS delivery", "start": "2037-11-14", "end": "",
+            "all_day": true, "location": "", "repeat": "", "timezone": "", "change": "", "calendar_event": 0,
+            "flight": "", "package_carrier": "ups", "tracking_number": "1Z 999 AA1 0123456784"}]}"""
+        val (flight, delivery) = parseResponse(false, json, newYork)
+        assertEquals("UA1234", flight.flight)
+        assertEquals("ups", delivery.packageCarrier)
+        assertEquals("1Z999AA10123456784", delivery.trackingNumber)
+        assertTrue(SYSTEM_PROMPT.contains("- Flights: when the text gives a flight number"))
+        assertTrue(SYSTEM_PROMPT.contains("- Packages: when the text says a package arrives"))
+    }
 }

@@ -47,12 +47,13 @@ class PlacesTest {
         assertFalse(searchBody("Luigi's", null, "").containsKey("locationBias"))
     }
 
-    // Google's reply becomes the calendar location; no match gives nothing
+    // Google's reply becomes the calendar location with its coordinates; no match gives nothing
     @Test
     fun replies() {
         val reply = """{"places": [{"displayName": {"text": "Luigi's", "languageCode": "en"},
-            "formattedAddress": "123 Main St, East Hanover, NJ 07936, USA"}]}"""
-        assertEquals("Luigi's, 123 Main St, East Hanover, NJ 07936, USA", parsePlace(reply))
+            "formattedAddress": "123 Main St, East Hanover, NJ 07936, USA",
+            "location": {"latitude": 40.8, "longitude": -74.36}}]}"""
+        assertEquals(FoundPlace("Luigi's, 123 Main St, East Hanover, NJ 07936, USA", 40.8, -74.36), parsePlace(reply))
         assertNull(parsePlace("{}"))
     }
 

@@ -197,6 +197,7 @@ class MainActivity : ComponentActivity() {
                     onAdd = { add(id); nav.popBackStack() },
                     onIgnore = { ignore(id); nav.popBackStack() },
                     onOpenMaps = { place -> openMaps(place, travelMode ?: graph.travelSettings.mode()) },
+                    onTrack = { url -> openLink(url) },
                     travelMode = travelMode,
                     onTravelMode = { mode ->
                         val plan = suggestion ?: return@SuggestionScreen
@@ -348,6 +349,16 @@ class MainActivity : ComponentActivity() {
             askMany(LOCATION_PERMISSIONS)
         } else {
             askOne(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        }
+    }
+
+    // Open a web page, like a package's tracking page, telling you if nothing can open it
+    private fun openLink(url: String) {
+        // Open the browser, or say there isn't one
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        } catch (error: ActivityNotFoundException) {  // no browser installed
+            Toast.makeText(this, "No app found to open the link", Toast.LENGTH_LONG).show()
         }
     }
 

@@ -8,6 +8,7 @@ import io.github.adenkushnir.datebook.data.DatebookDao
 import io.github.adenkushnir.datebook.data.DatebookDatabase
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.data.suggestionOf
+import io.github.adenkushnir.datebook.places.FoundPlace
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -56,7 +57,7 @@ class TextPipelineTest {
     // Build a pipeline whose Claude returns the given events, or throws the given error, with the given calendar and
     // the full addresses Google would find
     private fun pipeline(events: List<Event> = emptyList(), error: Exception? = null, key: String? = "sk-test",
-        onCalendar: List<CalendarEvent> = emptyList(), places: Map<String, String> = emptyMap()): TextPipeline {
+        onCalendar: List<CalendarEvent> = emptyList(), places: Map<String, FoundPlace> = emptyMap()): TextPipeline {
         return TextPipeline(
             dao = dao,
             apiKey = { key },
@@ -360,9 +361,11 @@ class TextPipelineTest {
     // A place named in a text becomes its full address; places Google can't find stay as written
     @Test
     fun fullAddress() = runTest {
-        val found = mapOf("Joe's" to "Joe's, 1 Main St, Newark, NJ")
+        val found = mapOf("Joe's" to FoundPlace("Joe's, 1 Main St, Newark, NJ", 40.73, -74.17))
         val outcome = pipeline(listOf(dinner, movie.copy(location = "the park")), places = found).handle(incoming)
-        val saved = outcome.suggestionIds.map { dao.suggestion(it)!!.location }
-        assertEquals(listOf("Joe's, 1 Main St, Newark, NJ", "the park"), saved)
+        val saved = outcome.suggestionIds.map { dao.suggestion(it)!! }
+        assertEquals(listOf("Joe's, 1 Main St, Newark, NJ", "the park"), saved.map { it.location })
+        assertEquals(40.73, saved[0].placeLat!!, 0.0)
+        assertEquals(null, saved[1].placeLat)
     }
 }

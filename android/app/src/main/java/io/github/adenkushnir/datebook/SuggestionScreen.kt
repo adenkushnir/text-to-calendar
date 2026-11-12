@@ -22,6 +22,7 @@ import io.github.adenkushnir.datebook.places.TRAVEL_MODES
 import io.github.adenkushnir.datebook.prompts.fromLine
 import io.github.adenkushnir.datebook.prompts.isChange
 import io.github.adenkushnir.datebook.prompts.promptTitle
+import io.github.adenkushnir.datebook.tracking.trackLinkFor
 
 // Show one suggestion; null while it is loading or after it was deleted
 @Composable
@@ -33,6 +34,7 @@ fun SuggestionScreen(
     onOpenMaps: (String) -> Unit = {},
     travelMode: String? = null,
     onTravelMode: (String) -> Unit = {},
+    onTrack: (String) -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         TopBar("Suggestion", onBack = onBack)
@@ -59,6 +61,15 @@ fun SuggestionScreen(
                         FilterChip(selected = option.id == travelMode, onClick = { onTravelMode(option.id) },
                             label = { Text(option.label) })
                     }
+                }
+            }
+
+            val track = trackLinkFor(suggestion.flight, suggestion.packageCarrier, suggestion.trackingNumber)
+
+            // Offer the package's tracking page or the flight's status
+            if (track != null) {
+                OutlinedButton(onClick = { onTrack(track.url) }) {
+                    Text(track.label)
                 }
             }
 

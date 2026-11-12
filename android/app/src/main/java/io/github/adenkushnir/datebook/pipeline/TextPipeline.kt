@@ -9,6 +9,7 @@ import io.github.adenkushnir.datebook.data.RetryText
 import io.github.adenkushnir.datebook.data.SeenText
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.data.suggestionOf
+import io.github.adenkushnir.datebook.places.FoundPlace
 import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
@@ -58,7 +59,7 @@ class TextPipeline(
     private val onRetrySaved: (atMillis: Long) -> Unit = {},
     private val onSuggested: (suggestion: Suggestion, incoming: IncomingText) -> Unit = { _, _ -> },
     private val calendar: (fromMillis: Long, toMillis: Long) -> List<CalendarEvent> = { _, _ -> emptyList() },
-    private val findPlace: (place: String) -> String? = { null },
+    private val findPlace: (place: String) -> FoundPlace? = { null },
 ) {
     private val health = Health(dao)
 
@@ -281,15 +282,15 @@ class TextPipeline(
         return incoming.group.isBlank() && soundsLikeChange(incoming.text) && upcomingEvents().isNotEmpty()
     }
 
-    // Swap a new plan's place, like "Luigi's", for its full address, off the main thread; it stays as written when
-    // there is no Maps key or no match (changes keep the calendar event's own place)
+    // Swap a new plan's place, like "Luigi's", for its full address and coordinates, off the main thread; it stays as
+    // written when there is no Maps key or no match (changes keep the calendar event's own place)
     private suspend fun withFullAddress(event: Event): Event {
         // Only new plans that name a place are looked up
         if (event.location.isBlank() || event.change.isNotBlank()) {
             return event
         }
-        val full = withContext(Dispatchers.IO) { findPlace(event.location) }
-        return if (full != null) event.copy(location = full) else event
+        val found = withContext(Dispatchers.IO) { findPlace(event.location) } ?: return event  // stays as written
+        return event.copy(location = found.line, placeLat = found.lat, placeLng = found.lng)
     }
 
     // Read the calendar events of the next 2 weeks (at most 40) that a change could refer to, off the main thread
