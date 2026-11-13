@@ -21,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -34,16 +35,18 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.work.ExistingWorkPolicy
 import io.github.adenkushnir.datebook.calendar.phoneCalendars
+import io.github.adenkushnir.datebook.capture.WATCHABLE_APPS
+import io.github.adenkushnir.datebook.data.Suggestion
+import io.github.adenkushnir.datebook.flights.scheduleFlightChecks
+import io.github.adenkushnir.datebook.flights.statusLine
 import io.github.adenkushnir.datebook.leaveby.LeaveByStore
 import io.github.adenkushnir.datebook.leaveby.eventKey
 import io.github.adenkushnir.datebook.leaveby.scheduleLeaveBy
-import io.github.adenkushnir.datebook.pipeline.eventTimes
-import io.github.adenkushnir.datebook.places.mapsIntent
-import io.github.adenkushnir.datebook.capture.WATCHABLE_APPS
-import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.pipeline.IncomingText
+import io.github.adenkushnir.datebook.pipeline.eventTimes
 import io.github.adenkushnir.datebook.pipeline.maskKey
 import io.github.adenkushnir.datebook.pipeline.summary
+import io.github.adenkushnir.datebook.places.mapsIntent
 import io.github.adenkushnir.datebook.prompts.EXTRA_SUGGESTION_ID
 import io.github.adenkushnir.datebook.prompts.addSuggestion
 import io.github.adenkushnir.datebook.prompts.ignoreSuggestion
@@ -51,13 +54,13 @@ import io.github.adenkushnir.datebook.settings.AboutPage
 import io.github.adenkushnir.datebook.settings.AppsPage
 import io.github.adenkushnir.datebook.settings.CalendarsPage
 import io.github.adenkushnir.datebook.settings.ClaudePage
+import io.github.adenkushnir.datebook.settings.FlightsPage
 import io.github.adenkushnir.datebook.settings.GITHUB_URL
 import io.github.adenkushnir.datebook.settings.NotificationsPage
 import io.github.adenkushnir.datebook.settings.PlacesPage
 import io.github.adenkushnir.datebook.settings.PrivacyPage
 import io.github.adenkushnir.datebook.settings.SettingsItem
 import io.github.adenkushnir.datebook.settings.SettingsMenu
-import io.github.adenkushnir.datebook.summary.scheduleSummary
 import io.github.adenkushnir.datebook.setup.SetupActions
 import io.github.adenkushnir.datebook.setup.SetupScreen
 import io.github.adenkushnir.datebook.setup.SetupStatus
@@ -66,9 +69,24 @@ import io.github.adenkushnir.datebook.setup.markSetupFinished
 import io.github.adenkushnir.datebook.setup.readSetupStatus
 import io.github.adenkushnir.datebook.setup.setupFinished
 import io.github.adenkushnir.datebook.setup.showSamplePrompt
+import io.github.adenkushnir.datebook.summary.scheduleSummary
+import io.github.adenkushnir.datebook.trains.ON_THE_DAY
+import io.github.adenkushnir.datebook.trains.TrainBoard
+import io.github.adenkushnir.datebook.trains.TrainChoices
+import io.github.adenkushnir.datebook.trains.nextTrains
+import io.github.adenkushnir.datebook.trains.refreshStations
+import io.github.adenkushnir.datebook.trains.scheduleTrains
+import io.github.adenkushnir.datebook.trains.trainChoices
+import io.github.adenkushnir.datebook.trains.wantsTrain
 import io.github.adenkushnir.datebook.ui.theme.DatebookTheme
+import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.ZoneId
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 const val ROUTE_SETUP = "setup"
 const val ROUTE_HOME = "home"
 const val ROUTE_SUGGESTION = "suggestion/{id}"
@@ -77,6 +95,7 @@ const val ROUTE_SETTINGS_APPS = "settings/apps"
 const val ROUTE_SETTINGS_CLAUDE = "settings/claude"
 const val ROUTE_SETTINGS_CALENDARS = "settings/calendars"
 const val ROUTE_SETTINGS_PLACES = "settings/places"
+const val ROUTE_SETTINGS_FLIGHTS = "settings/flights"
 private val LOCATION_PERMISSIONS = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION,
     Manifest.permission.ACCESS_COARSE_LOCATION)
 const val ROUTE_SETTINGS_NOTIFICATIONS = "settings/notifications"
@@ -140,6 +159,8 @@ class MainActivity : ComponentActivity() {
             graph.pipeline.cleanUp()
             scheduleSummary(applicationContext)  // book the morning summary if it isn't already
             scheduleLeaveBy(applicationContext)  // start planning leave-by alerts if it isn't already
+            scheduleFlightChecks(applicationContext)  // start the flight checks if they aren't running
+            scheduleTrains(applicationContext)  // start the NJ Transit train checks if they aren't running
         }
         val actions = SetupActions(
             openAccess = { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
@@ -176,6 +197,18 @@ class MainActivity : ComponentActivity() {
             }
             composable(ROUTE_HOME) {
                 val now = remember(added) { System.currentTimeMillis() }
+                var trip by remember { mutableStateOf(graph.trainSettings.trip()) }
+                var trains by remember { mutableStateOf<TrainBoard?>(null) }
+                LaunchedEffect(trip) {
+                    val saved = trip ?: return@LaunchedEffect  // no card until a trip is saved
+                    trains = TrainBoard(saved.first, saved.second, emptyList())
+
+                    // Refresh the board every minute while Home is showing
+                    while (true) {
+                        trains = withContext(Dispatchers.IO) { nextTrains(graph, saved.first, saved.second) }
+                        delay(60_000)
+                    }
+                }
                 HomeScreen(
                     waiting = waiting,
                     ahead = upcoming(added, now),
@@ -185,18 +218,55 @@ class MainActivity : ComponentActivity() {
                     onIgnore = ignore,
                     onSettings = { nav.navigate(ROUTE_SETTINGS) },
                     fixes = fixesFor(status, actions, openKeySetup = { nav.navigate(ROUTE_SETUP) }),
+                    trains = trains,
+                    onFlipTrains = {
+                        val saved = trip
+
+                        // Flip the saved trip's direction
+                        if (saved != null) {
+                            graph.trainSettings.setTrip(saved.second, saved.first)
+                            trip = Pair(saved.second, saved.first)
+                        }
+                    },
                 )
             }
             composable(ROUTE_SUGGESTION, arguments = listOf(navArgument("id") { type = NavType.LongType })) { entry ->
                 val id = entry.arguments?.getLong("id") ?: -1
                 val suggestion by produceState<Suggestion?>(null, id) { value = graph.dao.suggestion(id) }
                 var travelMode by remember(suggestion) { mutableStateOf(suggestion?.let { modeFor(graph, it) }) }
+                var trainChoices by remember { mutableStateOf<TrainChoices?>(null) }
+                var trainRefresh by remember { mutableIntStateOf(0) }
+                LaunchedEffect(suggestion, travelMode, trainRefresh) {
+                    val plan = suggestion ?: return@LaunchedEffect
+                    trainChoices = trainsBefore(graph, plan)
+
+                    // Refresh the live list every minute on the plan's day
+                    while (showsTrains(graph, plan) && isPlanDay(plan)) {
+                        trainChoices = withContext(Dispatchers.IO) { trainChoices(applicationContext, plan) }
+                        delay(60_000)
+                    }
+                }
                 SuggestionScreen(
                     suggestion = suggestion,
                     onBack = { nav.popBackStack() },
                     onAdd = { add(id); nav.popBackStack() },
                     onIgnore = { ignore(id); nav.popBackStack() },
                     onOpenMaps = { place -> openMaps(place, travelMode ?: graph.travelSettings.mode()) },
+                    onTrack = { url -> openLink(url) },
+                    flightStatus = suggestion?.let { flightStatusFor(graph, it) },
+                    trains = trainChoices,
+                    onPickTrain = { row ->
+                        val plan = suggestion ?: return@SuggestionScreen
+                        val key = eventKey(plan.title, planBegin(plan))
+                        graph.trainStore.setChoice(key, row.pick.trainId)
+                        graph.trainStore.setPick(key, row.pick)
+                        trainRefresh += 1
+                    },
+                    onSwitchOrigin = { code ->
+                        val plan = suggestion ?: return@SuggestionScreen
+                        graph.trainStore.setOrigin(eventKey(plan.title, planBegin(plan)), code)
+                        trainRefresh += 1
+                    },
                     travelMode = travelMode,
                     onTravelMode = { mode ->
                         val plan = suggestion ?: return@SuggestionScreen
@@ -242,6 +312,27 @@ class MainActivity : ComponentActivity() {
                     askLocation = { askPermissions.launch(LOCATION_PERMISSIONS) },
                     allTheTime = status.backgroundLocation,
                     askAllTheTime = { askAllTheTime(status, askPermissions::launch, askPermission::launch) },
+                    onBack = { nav.popBackStack() },
+                )
+            }
+            composable(ROUTE_SETTINGS_FLIGHTS) {
+                FlightsPage(
+                    maskedKey = graph.flightsKeyStore.load()?.let { maskKey(it) },
+                    saveKey = { key -> graph.flightsKeyStore.save(key) },
+                    njtUser = graph.njtUserStore.load(),
+                    saveNjt = { user, password ->
+                        graph.njtUserStore.save(user)
+                        graph.njtPasswordStore.save(password)
+                    },
+                    stations = graph.trainSettings.stations(),
+                    trip = graph.trainSettings.trip(),
+                    setTrip = { from, to -> graph.trainSettings.setTrip(from, to) },
+                    loadStations = {
+                        withContext(Dispatchers.IO) {
+                            refreshStations(graph.trainSettings, graph.railData, System.currentTimeMillis())
+                            graph.trainSettings.stations()
+                        }
+                    },
                     onBack = { nav.popBackStack() },
                 )
             }
@@ -304,6 +395,7 @@ class MainActivity : ComponentActivity() {
             SettingsItem("AI", "Claude & API key", "Your key and which model to use") { open(ROUTE_SETTINGS_CLAUDE) },
             SettingsItem("13", "Calendars", "Which calendars to check for clashes") { open(ROUTE_SETTINGS_CALENDARS) },
             SettingsItem("📍", "Places & travel", "Maps key, how you get around, home") { open(ROUTE_SETTINGS_PLACES) },
+            SettingsItem("✈", "Flights & trains", "Live flight times and NJ Transit") { open(ROUTE_SETTINGS_FLIGHTS) },
             SettingsItem("🔔", "Notifications & alerts", "Reading texts and showing prompts") {
                 open(ROUTE_SETTINGS_NOTIFICATIONS)
             },
@@ -330,6 +422,37 @@ class MainActivity : ComponentActivity() {
         return Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
     }
 
+    // A flight plan's last-known status line, like "On time · departs 6:45 PM · gate C12" (null for other plans)
+    private fun flightStatusFor(graph: AppGraph, plan: Suggestion): String? {
+        // Only flight plans have a status
+        if (plan.flight.isBlank()) {
+            return null
+        }
+        return graph.flightStore.info(plan.flight, plan.start)?.let { statusLine(it) }
+    }
+
+    // Return true if a plan gets NJ Transit trains: it goes by transit, has a place, and an NJ Transit account is saved
+    private fun showsTrains(graph: AppGraph, plan: Suggestion): Boolean {
+        return !graph.njtUserStore.load().isNullOrBlank() && wantsTrain(applicationContext, plan)
+    }
+
+    // Return true if a plan is today, when its trains are on NJ Transit's live board
+    private fun isPlanDay(plan: Suggestion): Boolean {
+        val zone = ZoneId.systemDefault()
+        return Instant.ofEpochMilli(planBegin(plan)).atZone(zone).toLocalDate() == LocalDate.now(zone)
+    }
+
+    // What a plan's train section shows before the live list loads: nothing for other plans, "Trains show on the day"
+    // before its day, or "Loading trains…"
+    private fun trainsBefore(graph: AppGraph, plan: Suggestion): TrainChoices? {
+        // Pick the waiting message for the plan
+        return when {
+            !showsTrains(graph, plan) -> null
+            !isPlanDay(plan) -> TrainChoices(null, emptyList(), null, emptyList(), ON_THE_DAY)
+            else -> TrainChoices(null, emptyList(), null, emptyList(), "Loading trains…")
+        }
+    }
+
     // The travel mode picked for a plan, or the default
     private fun modeFor(graph: AppGraph, plan: Suggestion): String {
         val picked = LeaveByStore(applicationContext).mode(eventKey(plan.title, planBegin(plan)))
@@ -348,6 +471,16 @@ class MainActivity : ComponentActivity() {
             askMany(LOCATION_PERMISSIONS)
         } else {
             askOne(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        }
+    }
+
+    // Open a web page, like a package's tracking page, telling you if nothing can open it
+    private fun openLink(url: String) {
+        // Open the browser, or say there isn't one
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        } catch (error: ActivityNotFoundException) {  // no browser installed
+            Toast.makeText(this, "No app found to open the link", Toast.LENGTH_LONG).show()
         }
     }
 

@@ -118,4 +118,14 @@ class PromptsTest {
         assertTrue(isChange(moved))
         assertFalse(isChange(dinner))
     }
+
+    // Packages and flights put their Track link in the calendar notes; other plans keep the plain notes
+    @Test
+    fun trackLinkInNotes() {
+        val delivery = dinner.copy(title = "UPS delivery", packageCarrier = "ups",
+            trackingNumber = "1Z999AA10123456784")
+        assertEquals("Sam (Messages)\nTrack: https://www.ups.com/track?tracknum=1Z999AA10123456784",
+            notesWithTrackLink(delivery))
+        assertEquals("Sam (Messages)", notesWithTrackLink(dinner))
+    }
 }

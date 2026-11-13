@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -50,6 +51,7 @@ import io.github.adenkushnir.datebook.calendar.PhoneCalendar
 import io.github.adenkushnir.datebook.capture.WatchedApp
 import io.github.adenkushnir.datebook.places.TRAVEL_MODES
 import io.github.adenkushnir.datebook.summary.timeLabel
+import io.github.adenkushnir.datebook.trains.Station
 import kotlinx.coroutines.launch
 const val GITHUB_URL = "https://github.com/adenkushnir/text-to-calendar"
 const val PRIVACY_SUMMARY = "Datebook checks texts from the apps you switch on, on this phone. Texts without a date " +
@@ -244,6 +246,146 @@ fun PlacesPage(
         Muted("Finding a place sends Google only its name (like \"Luigi's\") and roughly where you are, never your " +
             "texts.")
     }
+}
+
+// Flights & trains: the flight-data key (AeroDataBox through RapidAPI), the NJ Transit developer account, and the saved
+// trip for the Next trains card
+@Composable
+fun FlightsPage(
+    maskedKey: String?,
+    saveKey: (String) -> Unit,
+    njtUser: String?,
+    saveNjt: (String, String) -> Unit,
+    stations: List<Station>,
+    trip: Pair<String, String>?,
+    setTrip: (String, String) -> Unit,
+    loadStations: suspend () -> List<Station>,
+    onBack: () -> Unit,
+) {
+    SettingsPage("Flights & trains", onBack) {
+        SectionLabel("Flight data (AeroDataBox)")
+        Muted(maskedKey ?: "No key saved. Flights get a status link instead of live times.")
+        KeyReplaceBox { key ->
+            saveKey(key)
+            null
+        }
+        Muted("To get a free key: make a RapidAPI account, subscribe to AeroDataBox's free Basic plan, and paste " +
+            "your RapidAPI key here. Datebook sends only flight numbers and dates.")
+        SectionLabel("NJ Transit")
+        NjtAccountBox(njtUser, saveNjt)
+        SectionLabel("Next trains trip")
+        TripBox(stations, trip, setTrip, loadStations)
+        Muted("Datebook sends NJ Transit only station codes. Your account details stay encrypted on this phone.")
+    }
+}
+
+// The NJ Transit developer account: who's saved, and boxes to save a username and password
+@Composable
+private fun NjtAccountBox(njtUser: String?, saveNjt: (String, String) -> Unit) {
+    var user by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var saved by remember { mutableStateOf(njtUser) }
+    Muted(saved?.let { "Account saved: $it" } ?: "No account saved. Register at developer.njtransit.com (RailData " +
+        "and GTFS-RAIL), then enter it here.")
+    OutlinedTextField(value = user, onValueChange = { user = it }, label = { Text("NJ Transit username") },
+        singleLine = true, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Password") },
+        singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+    OutlinedButton(enabled = user.isNotBlank() && password.isNotBlank(), onClick = {
+        saveNjt(user.trim(), password)
+        saved = user.trim()
+        user = ""
+        password = ""
+    }) {
+        Text("SAVE ACCOUNT")
+    }
+}
+
+// The saved trip: a From and a To station picked from NJ Transit's list, or a button to load the list
+@Composable
+private fun TripBox(stations: List<Station>, trip: Pair<String, String>?, setTrip: (String, String) -> Unit,
+    loadStations: suspend () -> List<Station>) {
+    val scope = rememberCoroutineScope()
+    var known by remember { mutableStateOf(stations) }
+    var from by remember { mutableStateOf(trip?.first) }
+    var to by remember { mutableStateOf(trip?.second) }
+    var picking by remember { mutableStateOf<String?>(null) }  // "from" or "to" while choosing
+    var loading by remember { mutableStateOf(false) }
+
+    // Without stations, offer to load them
+    if (known.isEmpty()) {
+        Muted("NJ Transit's stations load after your account is saved.")
+        OutlinedButton(enabled = !loading, onClick = {
+            loading = true
+            scope.launch {
+                known = loadStations()
+                loading = false
+            }
+        }) {
+            Text(if (loading) "LOADING…" else "LOAD STATIONS")
+        }
+        return
+    }
+    DatebookCard {
+        // One row for each end of the trip
+        for ((label, code) in listOf("From" to from, "To" to to)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(label, modifier = Modifier.weight(1f))
+                TextButton(onClick = { picking = label }) {
+                    Text(known.firstOrNull { it.code == code }?.name ?: "Choose")
+                }
+            }
+        }
+    }
+
+    // Show the station list while choosing one end
+    if (picking != null) {
+        StationDialog(known, onDismiss = { picking = null }) { station ->
+            // Save the end being chosen, and the trip once both ends are set
+            if (picking == "From") {
+                from = station.code
+            } else {
+                to = station.code
+            }
+            picking = null
+            val start = from
+            val end = to
+
+            // Save the trip once both ends are chosen
+            if (start != null && end != null) {
+                setTrip(start, end)
+            }
+        }
+    }
+}
+
+// A searchable list of stations in a dialog
+@Composable
+private fun StationDialog(stations: List<Station>, onDismiss: () -> Unit, onPick: (Station) -> Unit) {
+    var search by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("CANCEL")
+            }
+        },
+        title = { Text("Choose a station") },
+        text = {
+            Column {
+                OutlinedTextField(value = search, onValueChange = { search = it }, label = { Text("Search") },
+                    singleLine = true, modifier = Modifier.fillMaxWidth())
+                Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+                    // One row per matching station
+                    for (station in stations.filter { it.name.contains(search, ignoreCase = true) }) {
+                        TextButton(onClick = { onPick(station) }, modifier = Modifier.fillMaxWidth()) {
+                            Text(station.name, modifier = Modifier.fillMaxWidth())
+                        }
+                    }
+                }
+            }
+        },
+    )
 }
 
 // A box to paste a new key, checked for free before it replaces the saved one

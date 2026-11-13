@@ -8,6 +8,8 @@ import io.github.adenkushnir.datebook.data.DatebookDao
 import io.github.adenkushnir.datebook.data.DatebookDatabase
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.data.suggestionOf
+import io.github.adenkushnir.datebook.flights.FlightInfo
+import io.github.adenkushnir.datebook.places.FoundPlace
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -53,10 +55,11 @@ class TextPipelineTest {
         database.close()
     }
 
-    // Build a pipeline whose Claude returns the given events, or throws the given error, with the given calendar and
-    // the full addresses Google would find
+    // Build a pipeline whose Claude returns the given events, or throws the given error, with the given calendar, the
+    // full addresses Google would find, and the flights the flight data knows
     private fun pipeline(events: List<Event> = emptyList(), error: Exception? = null, key: String? = "sk-test",
-        onCalendar: List<CalendarEvent> = emptyList(), places: Map<String, String> = emptyMap()): TextPipeline {
+        onCalendar: List<CalendarEvent> = emptyList(), places: Map<String, FoundPlace> = emptyMap(),
+        flights: Map<String, FlightInfo> = emptyMap()): TextPipeline {
         return TextPipeline(
             dao = dao,
             apiKey = { key },
@@ -70,6 +73,7 @@ class TextPipelineTest {
             onSuggested = { suggestion, text -> prompts.add(Pair(suggestion.title, text.text)) },
             calendar = { from, to -> onCalendar.filter { it.begin < to && from < it.end } },
             findPlace = { places[it] },
+            lookupFlight = { flight, date -> flights["$flight|$date"] },
         )
     }
 
@@ -360,9 +364,37 @@ class TextPipelineTest {
     // A place named in a text becomes its full address; places Google can't find stay as written
     @Test
     fun fullAddress() = runTest {
-        val found = mapOf("Joe's" to "Joe's, 1 Main St, Newark, NJ")
+        val found = mapOf("Joe's" to FoundPlace("Joe's, 1 Main St, Newark, NJ", 40.73, -74.17))
         val outcome = pipeline(listOf(dinner, movie.copy(location = "the park")), places = found).handle(incoming)
-        val saved = outcome.suggestionIds.map { dao.suggestion(it)!!.location }
-        assertEquals(listOf("Joe's, 1 Main St, Newark, NJ", "the park"), saved)
+        val saved = outcome.suggestionIds.map { dao.suggestion(it)!! }
+        assertEquals(listOf("Joe's, 1 Main St, Newark, NJ", "the park"), saved.map { it.location })
+        assertEquals(40.73, saved[0].placeLat!!, 0.0)
+        assertEquals(null, saved[1].placeLat)
+    }
+
+    // A flight plan is filled in from the flight data: route title, times (delayed ones when it's late) in the
+    // departure airport's zone, and the airport as its place; flights the data doesn't know stay as Claude wrote them
+    @Test
+    fun flightFilledIn() = runTest {
+        val info = FlightInfo("UA1234", "Expected", "EWR", "Newark", "Newark Liberty International",
+            "America/New_York", "SFO", "San Francisco", Instant.parse("2037-11-13T23:45:00Z"), null,
+            Instant.parse("2037-11-14T05:58:00Z"), null, "C", "C12")
+        val flight = Event("Flight UA1234", "2037-11-13", allDay = true, flight = "UA1234")
+        val outcome = pipeline(listOf(flight), flights = mapOf("UA1234|2037-11-13" to info)).handle(incoming)
+        val saved = dao.suggestion(outcome.suggestionIds.single())!!
+        assertEquals("Flight UA1234 EWR → SFO", saved.title)
+        assertEquals("2037-11-13T18:45", saved.start)
+        assertEquals("2037-11-14T00:58", saved.end)
+        assertFalse(saved.allDay)
+        assertEquals("America/New_York", saved.timezone)
+        assertEquals("Newark Liberty International", saved.location)
+        val delayed = info.copy(departBest = Instant.parse("2037-11-14T00:30:00Z"),
+            arriveBest = Instant.parse("2037-11-14T06:40:00Z"))
+        val late = pipeline(listOf(flight), flights = mapOf("UA1234|2037-11-13" to delayed)).handle(incoming)
+        val lateSaved = dao.suggestion(late.suggestionIds.single())!!
+        assertEquals("2037-11-13T19:30", lateSaved.start)  // the delayed time, not 6:45 PM
+        assertEquals("2037-11-14T01:40", lateSaved.end)
+        val unknown = pipeline(listOf(flight.copy(flight = "ZZ9"))).handle(incoming)
+        assertTrue(dao.suggestion(unknown.suggestionIds.single())!!.allDay)
     }
 }

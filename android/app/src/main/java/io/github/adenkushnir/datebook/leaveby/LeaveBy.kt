@@ -25,6 +25,7 @@ import io.github.adenkushnir.datebook.MainActivity
 import io.github.adenkushnir.datebook.R
 import io.github.adenkushnir.datebook.calendar.CalendarEvent
 import io.github.adenkushnir.datebook.calendar.calendarEvents
+import io.github.adenkushnir.datebook.flights.isFlightTitle
 import io.github.adenkushnir.datebook.places.TRAVEL_BIKE
 import io.github.adenkushnir.datebook.places.TRAVEL_DRIVE
 import io.github.adenkushnir.datebook.places.TRAVEL_TRANSIT
@@ -33,6 +34,8 @@ import io.github.adenkushnir.datebook.places.mapsIntent
 import io.github.adenkushnir.datebook.places.travelMinutes
 import io.github.adenkushnir.datebook.places.travelMode
 import io.github.adenkushnir.datebook.prompts.canNotify
+import io.github.adenkushnir.datebook.trains.TrainStore
+import io.github.adenkushnir.datebook.trains.pickLine
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -133,10 +136,11 @@ fun alertTime(begin: Long, minutes: Int): Long {
     return leaveTime(begin, minutes) - HEADS_UP_MINUTES * MINUTE
 }
 
-// The events that get leave-by alerts: timed ones with a place, starting within the next 4 hours
+// The events that get leave-by alerts: timed ones with a place, starting within the next 4 hours, except flights
 fun leaveByCandidates(events: List<CalendarEvent>, nowMillis: Long): List<CalendarEvent> {
     return events.filter {
-        !it.allDay && it.location.isNotBlank() && it.begin > nowMillis && it.begin <= nowMillis + LOOK_AHEAD_MILLIS
+        !it.allDay && it.location.isNotBlank() && it.begin > nowMillis && it.begin <= nowMillis + LOOK_AHEAD_MILLIS &&
+            !isFlightTitle(it.title)
     }
 }
 
@@ -168,8 +172,8 @@ private fun freshMinutes(context: Context, event: CalendarEvent, mode: String): 
         Instant.ofEpochMilli(event.begin))
 }
 
-// Post (or update) an event's leave-by alert
-fun showLeaveBy(context: Context, event: CalendarEvent, minutes: Int, mode: String) {
+// Post (or update) an event's leave-by alert, naming the suggested NJ Transit train when there is one
+fun showLeaveBy(context: Context, event: CalendarEvent, minutes: Int, mode: String, trainLine: String? = null) {
     // Nothing can be shown without permission to notify
     if (!canNotify(context)) {
         return
@@ -188,7 +192,8 @@ fun showLeaveBy(context: Context, event: CalendarEvent, minutes: Int, mode: Stri
         .setColor(ContextCompat.getColor(context, R.color.brand_teal))
         .setContentTitle(leaveByTitle(event.begin, minutes, ZoneId.systemDefault()))
         .setContentText(text)
-        .setStyle(NotificationCompat.BigTextStyle().bigText("$text\n${event.location}"))
+        .setStyle(NotificationCompat.BigTextStyle().bigText(listOfNotNull(text, trainLine?.let { "🚆 $it" },
+            event.location).joinToString("\n")))
         .setCategory(NotificationCompat.CATEGORY_REMINDER)
         .setPriority(NotificationCompat.PRIORITY_HIGH)
         .setAutoCancel(true)
@@ -285,7 +290,8 @@ class LeaveByAlertWorker(context: Context, params: WorkerParameters) : Coroutine
         val mode = store.mode(key) ?: AppGraph.get(applicationContext).travelSettings.mode()
         val minutes = freshMinutes(applicationContext, event, mode) ?: store.minutes(key) ?: return Result.success()
         store.setMinutes(key, minutes)
-        showLeaveBy(applicationContext, event, minutes, mode)
+        val train = TrainStore(applicationContext).pick(key)?.let { pickLine(it) }  // only for transit plans
+        showLeaveBy(applicationContext, event, minutes, mode, train)
         store.setAlerted(key)
         Log.i("Datebook", "leave-by alert: ${event.title} · ${tripText(minutes, mode)}")
         return Result.success()

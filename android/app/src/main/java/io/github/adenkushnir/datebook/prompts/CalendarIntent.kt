@@ -15,6 +15,7 @@ import io.github.adenkushnir.datebook.pipeline.eventZone
 import io.github.adenkushnir.datebook.pipeline.isShared
 import io.github.adenkushnir.datebook.pipeline.repeatRule
 import io.github.adenkushnir.datebook.pipeline.summary
+import io.github.adenkushnir.datebook.tracking.trackLinkFor
 
 // Who a suggestion came from, like "Sam", "Jake in Soccer Team" or "you (shared to Datebook)"
 fun fromLine(suggestion: Suggestion): String {
@@ -64,6 +65,12 @@ fun calendarEventIntent(suggestion: Suggestion): Intent {
     return Intent(Intent.ACTION_VIEW, uri)
 }
 
+// The calendar notes plus the Track link on its own line for packages and flights, so it's in the event too
+fun notesWithTrackLink(suggestion: Suggestion): String {
+    val link = trackLinkFor(suggestion.flight, suggestion.packageCarrier, suggestion.trackingNumber)
+    return if (link != null) "${calendarNotes(suggestion)}\nTrack: ${link.url}" else calendarNotes(suggestion)
+}
+
 // The intent for the calendar app's new-event screen: title, start and end, all-day, place, repeat, zone and notes
 fun calendarInsertIntent(suggestion: Suggestion): Intent {
     val event = suggestion.toEvent()
@@ -73,7 +80,7 @@ fun calendarInsertIntent(suggestion: Suggestion): Intent {
         .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, begin)
         .putExtra(CalendarContract.EXTRA_EVENT_END_TIME, end)
         .putExtra(CalendarContract.EXTRA_EVENT_ALL_DAY, event.allDay)
-        .putExtra(CalendarContract.Events.DESCRIPTION, calendarNotes(suggestion))
+        .putExtra(CalendarContract.Events.DESCRIPTION, notesWithTrackLink(suggestion))
 
     // Add the place only when there is one
     if (event.location.isNotBlank()) {

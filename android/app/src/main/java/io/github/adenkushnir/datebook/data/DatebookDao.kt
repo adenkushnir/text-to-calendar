@@ -77,6 +77,10 @@ interface DatebookDao {
     @Query("DELETE FROM suggestions WHERE id = :id")
     suspend fun deleteSuggestion(id: Long)
 
+    // Return the flight plans that aren't ignored, for the flight checks
+    @Query("SELECT * FROM suggestions WHERE flight != '' AND status != 'ignored'")
+    suspend fun flightSuggestions(): List<Suggestion>
+
     // Delete suggestions created before the cutoff
     @Query("DELETE FROM suggestions WHERE createdAt < :cutoff")
     suspend fun deleteSuggestionsBefore(cutoff: Long)

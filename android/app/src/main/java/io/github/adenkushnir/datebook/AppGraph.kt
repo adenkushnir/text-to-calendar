@@ -1,5 +1,5 @@
 // Creates the app's shared pieces once: database, key stores, app and calendar switches, summary and travel settings,
-// prompts, Claude client and the pipeline
+// flight details, the NJ Transit account and trains, prompts, Claude client and the pipeline
 package io.github.adenkushnir.datebook
 import android.content.Context
 import com.anthropic.client.AnthropicClient
@@ -7,6 +7,8 @@ import io.github.adenkushnir.datebook.calendar.CalendarSwitches
 import io.github.adenkushnir.datebook.calendar.calendarEvents
 import io.github.adenkushnir.datebook.capture.AppSwitches
 import io.github.adenkushnir.datebook.data.DatebookDatabase
+import io.github.adenkushnir.datebook.flights.FlightStore
+import io.github.adenkushnir.datebook.flights.lookupFlight
 import io.github.adenkushnir.datebook.pipeline.ApiKeyStore
 import io.github.adenkushnir.datebook.pipeline.TextPipeline
 import io.github.adenkushnir.datebook.pipeline.extractEvents
@@ -15,6 +17,9 @@ import io.github.adenkushnir.datebook.places.TravelSettings
 import io.github.adenkushnir.datebook.places.findPlace
 import io.github.adenkushnir.datebook.prompts.SuggestionNotifier
 import io.github.adenkushnir.datebook.settings.ModelChoice
+import io.github.adenkushnir.datebook.trains.RailDataClient
+import io.github.adenkushnir.datebook.trains.TrainSettings
+import io.github.adenkushnir.datebook.trains.TrainStore
 import io.github.adenkushnir.datebook.summary.SummarySettings
 
 // Holds the shared pieces; get one with AppGraph.get(context)
@@ -28,6 +33,15 @@ class AppGraph private constructor(context: Context) {
     val calendarSwitches = CalendarSwitches(context)
     val summarySettings = SummarySettings(context)
     val travelSettings = TravelSettings(context)
+    val flightsKeyStore = ApiKeyStore(context, "flights")
+    val flightStore = FlightStore(context)
+    val njtUserStore = ApiKeyStore(context, "njt-user")
+    val njtPasswordStore = ApiKeyStore(context, "njt-password")
+    private val njtTokenStore = ApiKeyStore(context, "njt-token")
+    val trainSettings = TrainSettings(context)
+    val trainStore = TrainStore(context)
+    val railData = RailDataClient({ njtUserStore.load() }, { njtPasswordStore.load() }, { njtTokenStore.load() },
+        { njtTokenStore.save(it) })
     private var client: Pair<String, AnthropicClient>? = null
     val pipeline = TextPipeline(
         dao = dao,
@@ -37,6 +51,9 @@ class AppGraph private constructor(context: Context) {
         onSuggested = { suggestion, incoming -> notifier.show(suggestion, incoming.text) },
         calendar = { from, to -> calendarEvents(context, from, to, calendarSwitches.switchedOff()) },
         findPlace = { place -> findPlace(context, mapsKeyStore.load(), travelSettings.home(), place) },
+        lookupFlight = { flight, date -> lookupFlight(flightsKeyStore.load(), flight, date)?.also {
+            flightStore.save(date, it)  // remembered for the card and the checks
+        } },
     )
 
     // Return a Claude client for the key, reusing it while the key stays the same

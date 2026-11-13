@@ -18,7 +18,7 @@ const val TRAVEL_TRANSIT = "TRANSIT"
 const val TRAVEL_WALK = "WALK"
 const val TRAVEL_BIKE = "BICYCLE"
 private const val SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
-private const val SEARCH_FIELDS = "places.displayName,places.formattedAddress"
+private const val SEARCH_FIELDS = "places.displayName,places.formattedAddress,places.location"
 private const val NEARBY_METERS = 50000.0
 private const val TIMEOUT_MILLIS = 10000
 private val MAPPER = ObjectMapper()
@@ -87,8 +87,11 @@ fun searchBody(place: String, near: Pair<Double, Double>?, home: String): Map<St
     return body
 }
 
-// Read the first place from Google's reply as a calendar location, or null when nothing matched
-fun parsePlace(json: String): String? {
+// A place Google found: the line for the calendar and its coordinates (null when Google gave none)
+data class FoundPlace(val line: String, val lat: Double? = null, val lng: Double? = null)
+
+// Read the first place from Google's reply as a calendar location with its coordinates, or null when nothing matched
+fun parsePlace(json: String): FoundPlace? {
     val first = MAPPER.readTree(json).path("places").path(0)
 
     // An empty reply means no match
@@ -96,12 +99,15 @@ fun parsePlace(json: String): String? {
         return null
     }
     val line = placeLine(first.path("displayName").path("text").asText(""), first.path("formattedAddress").asText(""))
-    return line.ifBlank { null }
+    val location = first.path("location")
+    val lat = if (location.has("latitude")) location.path("latitude").asDouble() else null  // only when given
+    val lng = if (location.has("longitude")) location.path("longitude").asDouble() else null
+    return if (line.isBlank()) null else FoundPlace(line, lat, lng)
 }
 
-// Look up a place's full address; null without a key, without a match, or on any failure (the place then stays as the
-// text wrote it); this waits on the network, so call it off the main thread
-fun findPlace(context: Context, key: String?, home: String, place: String): String? {
+// Look up a place's full address and coordinates; null without a key, without a match, or on any failure (the place
+// then stays as the text wrote it); this waits on the network, so call it off the main thread
+fun findPlace(context: Context, key: String?, home: String, place: String): FoundPlace? {
     // Nothing to look up without a key or a place
     if (key.isNullOrBlank() || place.isBlank()) {
         return null
