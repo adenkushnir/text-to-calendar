@@ -11,6 +11,7 @@ import android.provider.Settings
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import io.github.adenkushnir.datebook.AppGraph
 import io.github.adenkushnir.datebook.capture.WATCHABLE_APPS
 import io.github.adenkushnir.datebook.pipeline.IncomingText
@@ -23,6 +24,7 @@ private const val READ_DELAY_MILLIS = 700L
 private const val LEAVE_CHECK_MILLIS = 4000L
 private const val MAX_DEPTH = 40
 private const val MAX_NODES = 600
+private const val SYSTEM_UI = "com.android.systemui"  // the notification shade and system bars: not leaving the chat
 
 // Remembers which conversations are group chats, learned from their notifications (the screen doesn't say)
 class GroupChats(context: Context) {
@@ -96,10 +98,16 @@ class AutomaticModeService : AccessibilityService() {
 
     // Read the chat on screen, if the app in front is still the chosen one, and handle its new bubbles
     private fun readScreen(app: String) {
-        val root = rootInActiveWindow
+        val root = appWindow()
+
+        // Pulling down the notification shade (to see the plan) isn't leaving: wait until it's closed
+        if (root?.packageName?.toString() == SYSTEM_UI) {
+            return
+        }
 
         // Only read while that app is in front
         if (root == null || root.packageName?.toString() != app) {
+            Log.d(TAG, "[$app] automatic: left the chat, in front: ${root?.packageName}")
             leaveChat()
             return
         }
@@ -147,14 +155,24 @@ class AutomaticModeService : AccessibilityService() {
                 val open = tracker.current ?: return  // already left
                 val app = open.substringBefore("|")
 
-                // Leave when another app is in front
-                if (rootInActiveWindow?.packageName?.toString() != app) {
+                // Leave when another app is in front (the notification shade doesn't count)
+                val front = appWindow()?.packageName?.toString()
+                if (front != app && front != SYSTEM_UI) {
+                    Log.d(TAG, "[$app] automatic: left the chat, in front: $front")
                     leaveChat()
                     return
                 }
                 handler.postDelayed(this, LEAVE_CHECK_MILLIS)
             }
         }, LEAVE_CHECK_MILLIS)
+    }
+
+    // The screen of the app in front: the app window that has focus (or the top-most one), never the keyboard or the
+    // system bars, which count as "active" while you type
+    private fun appWindow(): AccessibilityNodeInfo? {
+        val apps = windows.filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
+        val front = apps.firstOrNull { it.isFocused } ?: apps.maxByOrNull { it.layer }
+        return front?.root ?: rootInActiveWindow
     }
 
     // Forget the chat and clear its quiet notifications (its plans keep waiting on Home)
@@ -187,6 +205,6 @@ class AutomaticModeService : AccessibilityService() {
             children.add(toScreenNode(child, depth + 1, count))
         }
         return ScreenNode(node.text?.toString().orEmpty(), node.viewIdResourceName.orEmpty(), node.isEditable,
-            bounds.left, bounds.top, bounds.right, bounds.bottom, children)
+            bounds.left, bounds.top, bounds.right, bounds.bottom, children, scrollable = node.isScrollable)
     }
 }

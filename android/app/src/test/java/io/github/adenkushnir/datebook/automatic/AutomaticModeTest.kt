@@ -60,7 +60,101 @@ class AutomaticModeTest {
             width, height))  // no typing box: the conversation list, not a chat
         assertTrue(isNoise("Delivered"))
         assertTrue(isNoise("6:41 PM"))
+        assertTrue(isNoise("10:52 AM"))  // Google Messages puts a narrow space before AM
         assertFalse(isNoise("see you at 6:41 PM"))
+    }
+
+    // A Google Messages chat as the phone describes it: the list scrolls under the top bar and lists the newest
+    // message first, the name sits in the bar's title row (listed after the messages), and the time heading is a
+    // message text in a separator
+    private fun googleChat(vararg bubbles: Pair<String, Boolean>): ScreenNode {
+        val rows = bubbles.mapIndexed { i, (text, mine) ->
+            val top = 103 + i * 250  // the first one is partly under the top bar
+            val left = if (mine) 663 else 84
+            ScreenNode(viewId = "message_bubble_context", children = listOf(
+                ScreenNode(text, "message_text", left = left, top = top, right = left + 700, bottom = top + 100)))
+        }
+        val heading = ScreenNode(viewId = "text_separator", children = listOf(
+            ScreenNode("10:52 AM", "message_text", left = 631, top = 2299, right = 809, bottom = 2355)))
+        return ScreenNode(children = listOf(
+            ScreenNode(viewId = "message_list", scrollable = true, left = 0, top = 149, right = 1440, bottom = 3120,
+                children = rows.reversed() + heading),
+            ScreenNode(editable = true, left = 196, top = 2843, right = 852, bottom = 3039),
+            ScreenNode(viewId = "top_app_bar", children = listOf(ScreenNode(viewId = "top_app_bar_title_row",
+                children = listOf(ScreenNode("Ryan Kushnir", left = 392, top = 219, right = 754, bottom = 303))))),
+        ))
+    }
+
+    // Google Messages: the name from the top bar, never a message near the top; no time headings
+    @Test
+    fun readsGoogleMessages() {
+        val chat = readChat(googleChat("Run same back." to true, "k change of plans, dinner sat 7:30" to false,
+            "Dinner 7pm friday at joes" to true), 1440, 3120)!!
+        assertEquals("Ryan Kushnir", chat.title)
+        assertEquals(listOf(Bubble("k change of plans, dinner sat 7:30", false),
+            Bubble("Dinner 7pm friday at joes", true)), chat.bubbles)
+        val tracker = ChatTracker()
+        tracker.update("google", chat)
+        val sent = readChat(googleChat("k change of plans, dinner sat 7:30" to false,
+            "Dinner 7pm friday at joes" to true, "Lunch Sunday 3pm at the diner" to true), 1440, 3120)!!
+        assertEquals(listOf(Bubble("Lunch Sunday 3pm at the diner", true)), tracker.update("google", sent))
+    }
+
+    // A GroupMe group chat as the phone describes it: a poll, a "Last read" line, a sender name and time over the
+    // message, pinned banners in their own sideways list, the name in the toolbar, and a typing box with a hint
+    private fun groupMeChat(): ScreenNode {
+        val id = "com.groupme.android:id/"
+        val poll = ScreenNode(viewId = "${id}list_item_system_message", children = listOf(
+            ScreenNode("WINNER!", "${id}poll_result_header_text", left = 182, top = 73, right = 407, bottom = 149),
+            ScreenNode("who's coming to practice today", "${id}poll_title", left = 182, top = 149, right = 952,
+                bottom = 225),
+            ScreenNode("Votes 4 · Ended Nov 12 at 6 PM", "${id}poll_footer", left = 347, top = 917, right = 941,
+                bottom = 974),
+        ))
+        val message = ScreenNode(viewId = "${id}list_item_chat_message", children = listOf(
+            ScreenNode("Last read", "${id}last_read_marker_text", left = 624, top = 2219, right = 816, bottom = 2281),
+            ScreenNode("Today", "${id}view_timestamp", left = 635, top = 2309, right = 805, bottom = 2380),
+            ScreenNode("Oleg Kokarev", "${id}view_sender_text", left = 182, top = 2454, right = 450, bottom = 2506),
+            ScreenNode("Just now", "${id}view_message_timestamp", left = 450, top = 2454, right = 632, bottom = 2506),
+            ScreenNode("practice moved to sat 4pm", "${id}view_message_text", left = 182, top = 2506, right = 1226,
+                bottom = 2710),
+        ))
+        return ScreenNode(children = listOf(
+            ScreenNode(viewId = "android:id/list", scrollable = true, left = 0, top = 0, right = 1440, bottom = 3120,
+                children = listOf(poll, message)),
+            ScreenNode(viewId = "${id}pills_container", scrollable = true, left = 0, top = 345, right = 1440,
+                bottom = 513, children = listOf(ScreenNode("Stephen Yu created a poll", "${id}pill_text",
+                    left = 1162, top = 398, right = 1440, bottom = 460))),
+            ScreenNode(viewId = "${id}toolbar_title_container", children = listOf(
+                ScreenNode("RU Fencing Competitive Team 2025-26", "${id}toolbar_chat_name", left = 308, top = 212,
+                    right = 978, bottom = 281))),
+            ScreenNode("Message RU Fencing Competitive Team 2025-26", "${id}input_chat_message", editable = true,
+                left = 210, top = 2885, right = 859, bottom = 3011),
+        ))
+    }
+
+    // GroupMe: the group's name from the toolbar, and only the message itself (no poll, names, times or banners)
+    @Test
+    fun readsGroupMe() {
+        val chat = readChat(groupMeChat(), 1440, 3120)!!
+        assertEquals("RU Fencing Competitive Team 2025-26", chat.title)
+        assertEquals(listOf(Bubble("practice moved to sat 4pm", false)), chat.bubbles)
+    }
+
+    // Scrolling up to older messages and back down sends nothing; the same text sent twice counts again; a message
+    // that arrives while you're scrolled up counts once you're back at the bottom
+    @Test
+    fun scrollingAndRepeats() {
+        val tracker = ChatTracker()
+
+        // Sam's chat showing the given bubbles
+        fun screen(vararg texts: String) = ChatScreen("Sam", texts.map { Bubble(it, false) })
+        assertTrue(tracker.update("sms", screen("c", "d", "e")).isEmpty())
+        assertTrue(tracker.update("sms", screen("a", "b", "c")).isEmpty())  // scrolled up
+        assertTrue(tracker.update("sms", screen("c", "d", "e")).isEmpty())  // back down
+        assertEquals(listOf(Bubble("e", false)), tracker.update("sms", screen("d", "e", "e")))  // sent twice
+        assertTrue(tracker.update("sms", screen("b", "c", "d")).isEmpty())  // scrolled up again
+        assertEquals(listOf(Bubble("f", false)), tracker.update("sms", screen("e", "e", "f")))
     }
 
     // What's showing when a chat opens counts as seen; later bubbles are new; another chat starts over
