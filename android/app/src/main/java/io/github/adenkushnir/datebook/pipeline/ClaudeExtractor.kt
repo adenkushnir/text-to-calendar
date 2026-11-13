@@ -65,7 +65,8 @@ val EVENTS_SCHEMA = mapOf(
 // A text to ask Claude about: who sent it, what it says, when it arrived in the phone's time, which app, and which
 // group chat it came from (empty for one-to-one); exactTime means receivedAt is the message's own timestamp, and
 // image is a shared picture as base64 JPEG (empty for texts), and upcoming holds the calendar events Claude may match a
-// change against (empty unless the text sounds like a change)
+// change against (empty unless the text sounds like a change); fromMe marks a text you sent and onScreen one read from
+// an open chat by automatic mode
 data class IncomingText(
     val sender: String,
     val text: String,
@@ -75,6 +76,8 @@ data class IncomingText(
     val exactTime: Boolean = false,
     val image: String = "",
     val upcoming: List<CalendarEvent> = emptyList(),
+    val fromMe: Boolean = false,
+    val onScreen: Boolean = false,
 )
 
 // Return true if something came from long-press or Share rather than a notification
@@ -104,6 +107,8 @@ fun buildPrompt(incoming: IncomingText, phoneZone: String): String {
     // Say who it's from: the phone's owner for shared things, the group for group chats (never the sender too)
     val from = when {
         isShared(incoming.app) -> "the phone's owner (shared to Datebook)"
+        incoming.fromMe && incoming.group.isNotBlank() -> "the phone's owner, writing in ${incoming.group} (group chat)"
+        incoming.fromMe -> "the phone's owner, writing to ${incoming.sender}"
         incoming.group.isNotBlank() -> "${incoming.group} (group chat)"
         else -> incoming.sender
     }

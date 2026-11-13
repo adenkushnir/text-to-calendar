@@ -22,6 +22,7 @@ fun fromLine(suggestion: Suggestion): String {
     // Pick the wording for where it came from
     return when {
         isShared(suggestion.app) -> "you (shared to Datebook)"
+        suggestion.fromMe -> "you, to ${suggestion.conversation.ifBlank { suggestion.sender }}"
         suggestion.conversation.isNotBlank() -> "${suggestion.sender} in ${suggestion.conversation}"
         else -> suggestion.sender  // one-to-one
     }
@@ -37,6 +38,11 @@ fun calendarNotes(suggestion: Suggestion): String {
     val app = WATCHABLE_APPS.firstOrNull { it.packageName == suggestion.app }?.shortName  // the app's name, if known
     val group = if (suggestion.conversation.isNotBlank()) " · ${suggestion.conversation}" else ""  // group chats only
     val via = if (app != null) " ($app)" else ""
+
+    // Texts you sent name who they went to
+    if (suggestion.fromMe) {
+        return "You → ${suggestion.conversation.ifBlank { suggestion.sender }}$via"
+    }
     return "${suggestion.sender}$group$via"
 }
 
@@ -52,6 +58,17 @@ fun promptTitle(suggestion: Suggestion): String {
         CHANGE_CANCELLED -> "${suggestion.title} on ${whenText.substringBefore(",")} is cancelled"
         else -> suggestion.title
     }
+}
+
+// The note for a waiting plan whose time changed in the chat, like "Changed in chat (was Fri Nov 13, 7:00 PM)", or
+// null when it didn't change
+fun changedNote(suggestion: Suggestion): String? {
+    // Only plans that changed get a note
+    if (suggestion.previousStart.isBlank()) {
+        return null
+    }
+    val before = suggestion.toEvent().copy(start = suggestion.previousStart, location = "", repeat = "")
+    return "Changed in chat (was ${summary(before).removePrefix("${before.title} · ")})"
 }
 
 // Return true if a suggestion changes or cancels an event already on the calendar

@@ -86,6 +86,10 @@ suspend fun handleNotification(context: Context, raw: RawNotification) {
 
     // Handle each message in the notification
     for (incoming in messagesFrom(raw)) {
+        // Remember group chats by name, so automatic mode knows them when they're open on screen
+        if (incoming.group.isNotBlank()) {
+            graph.groupChats.remember(incoming.app, incoming.group)
+        }
         val outcome = graph.pipeline.receive(incoming) ?: continue  // no date or already handled: no trace kept
         val from = if (incoming.group.isNotBlank()) "${incoming.sender} in ${incoming.group}" else incoming.sender
         outcome.lines.forEach { Log.i(TAG, "[${incoming.app}] $from -> $it") }  // one log line per result

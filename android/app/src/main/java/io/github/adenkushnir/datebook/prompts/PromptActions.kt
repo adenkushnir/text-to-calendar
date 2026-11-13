@@ -51,6 +51,14 @@ class PromptActionActivity : Activity() {
     }
 }
 
+// Handles Not now on a quiet "Plan on screen" notification: it goes away and the plan keeps waiting on Home
+class NotNowReceiver : BroadcastReceiver() {
+    // Remove the notification only
+    override fun onReceive(context: Context, intent: Intent) {
+        AppGraph.get(context).notifier.cancel(intent.getLongExtra(EXTRA_SUGGESTION_ID, -1))
+    }
+}
+
 // Handles the notification's Ignore button in the background
 class IgnoreReceiver : BroadcastReceiver() {
     // Ignore the suggestion named in the intent

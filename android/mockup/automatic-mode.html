@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Datebook Automatic Mode Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Plan: Datebook's teal, crisp-and-square look beside a rounded Messages-style chat; two phones side by side,
+   option tabs above, a "play the conversation" control so each option can be seen in motion */
+:root {
+  --teal: #00897B;
+  --teal-strong: #00695C;
+  --teal-tint: #E0F2F1;
+  --page: #F3F5F5;
+  --ink: #1B2324;
+  --muted: #5E6B6C;
+  --line: #D5DCDC;
+  --phone: #FFFFFF;
+  --chat-bg: #FFFFFF;
+  --bubble-in: #E9EEF6;
+  --bubble-out: #D3E3FD;
+  --warn: #9A5B00;
+  --display: "Inter", system-ui, sans-serif;
+  --body: "Inter", system-ui, sans-serif;
+  --chat-font: "Roboto", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --teal: #4DB6AC; --teal-strong: #80CBC4; --teal-tint: #12302D; --page: #101515; --ink: #E6ECEC;
+    --muted: #9AA8A8; --line: #2B3536; --phone: #161C1D; --chat-bg: #161C1D; --bubble-in: #2A3038;
+    --bubble-out: #24395A; --warn: #F0B35A; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --teal: #4DB6AC; --teal-strong: #80CBC4; --teal-tint: #12302D; --page: #101515; --ink: #E6ECEC;
+  --muted: #9AA8A8; --line: #2B3536; --phone: #161C1D; --chat-bg: #161C1D; --bubble-in: #2A3038;
+  --bubble-out: #24395A; --warn: #F0B35A; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--page); color: var(--ink); font-family: var(--body); padding: 20px 16px 40px; }
+header { max-width: 980px; margin: 0 auto 16px; display: grid; gap: 6px; }
+h1 { font-family: var(--display); font-size: 22px; margin: 0; text-wrap: balance; }
+.lede { color: var(--muted); margin: 0; max-width: 70ch; line-height: 1.45; }
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.tab { border: 1px solid var(--line); background: var(--phone); color: var(--ink); padding: 8px 12px; border-radius: 4px;
+  font: 600 14px var(--body); cursor: pointer; }
+.tab[aria-pressed="true"] { background: var(--teal); border-color: var(--teal); color: #fff; }
+.tab:focus-visible, button:focus-visible { outline: 3px solid var(--teal-strong); outline-offset: 2px; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn { border: 0; background: var(--teal); color: #fff; padding: 9px 14px; border-radius: 4px; font: 600 14px var(--body);
+  cursor: pointer; }
+.btn.secondary { background: transparent; color: var(--teal-strong); border: 1px solid var(--line); }
+.note { color: var(--muted); font-size: 13px; }
+main { max-width: 980px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 24px; justify-content: center; }
+.col { display: grid; gap: 8px; justify-items: center; }
+.label { font: 600 12px var(--body); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.phone { width: 330px; height: 640px; background: var(--phone); border: 10px solid #1d2324; border-radius: 34px;
+  position: relative; overflow: hidden; display: flex; flex-direction: column; }
+.status { height: 26px; display: flex; justify-content: space-between; align-items: center; padding: 0 16px;
+  font: 500 12px var(--chat-font); color: var(--ink); }
+/* Messages-style chat */
+.chat-top { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line);
+  font-family: var(--chat-font); }
+.avatar { width: 32px; height: 32px; border-radius: 50%; background: #8E7CC3; color: #fff; display: grid; place-items: center;
+  font-weight: 500; }
+.chat { flex: 1; background: var(--chat-bg); padding: 12px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto;
+  font-family: var(--chat-font); }
+.bubble { max-width: 75%; padding: 9px 13px; border-radius: 18px; font-size: 15px; line-height: 1.35; animation: pop .25s ease; }
+.bubble.in { background: var(--bubble-in); align-self: flex-start; border-bottom-left-radius: 4px; }
+.bubble.out { background: var(--bubble-out); align-self: flex-end; border-bottom-right-radius: 4px; }
+.meta { font-size: 11px; color: var(--muted); align-self: flex-end; margin-top: -4px; }
+.meta.in { align-self: flex-start; }
+.composer { display: flex; gap: 8px; padding: 8px 10px 14px; border-top: 1px solid var(--line); }
+.composer .field { flex: 1; border-radius: 22px; background: var(--bubble-in); padding: 10px 14px; color: var(--muted);
+  font: 14px var(--chat-font); }
+.composer .send { width: 40px; height: 40px; border-radius: 50%; background: #0B57D0; color: #fff; display: grid;
+  place-items: center; font-size: 16px; }
+@keyframes pop { from { transform: scale(.96); opacity: .4; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .bubble, .sheet, .notif, .float { animation: none !important; transition: none !important; } }
+/* Datebook overlays */
+.float { position: absolute; right: 0; top: 46%; background: var(--teal); color: #fff; border-radius: 4px 0 0 4px;
+  padding: 10px 10px 10px 12px; font: 700 13px var(--body); box-shadow: 0 4px 14px rgba(0,0,0,.25); cursor: pointer;
+  display: none; border: 0; text-align: center; line-height: 1.2; }
+.float.show { display: block; animation: slide .25s ease; }
+@keyframes slide { from { transform: translateX(100%); } to { transform: none; } }
+.notif { position: absolute; left: 8px; right: 8px; top: 30px; background: var(--phone); border: 1px solid var(--line);
+  border-radius: 14px; box-shadow: 0 8px 22px rgba(0,0,0,.22); padding: 12px 14px; display: none; font-family: var(--body); z-index: 5; }
+.notif.show { display: grid; gap: 4px; animation: drop .25s ease; }
+@keyframes drop { from { transform: translateY(-30px); opacity: 0; } to { transform: none; opacity: 1; } }
+.notif .app { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+.notif .app b { width: 16px; height: 16px; border-radius: 3px; background: var(--teal); display: inline-block; }
+.notif .title { font-weight: 700; font-size: 15px; }
+.notif .body { font-size: 13px; color: var(--muted); }
+.notif .actions { display: flex; gap: 18px; margin-top: 6px; }
+.notif .actions button { background: none; border: 0; color: var(--teal-strong); font: 700 13px var(--body); padding: 0; cursor: pointer; }
+.scrim { position: absolute; inset: 0; background: rgba(0,0,0,.35); display: none; z-index: 6; }
+.scrim.show { display: block; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; background: var(--phone); border-top-left-radius: 8px;
+  border-top-right-radius: 8px; padding: 14px 16px 20px; display: none; z-index: 7; font-family: var(--body); }
+.sheet.show { display: grid; gap: 10px; animation: rise .25s ease; }
+@keyframes rise { from { transform: translateY(100%); } to { transform: none; } }
+.grab { width: 36px; height: 4px; background: var(--line); border-radius: 2px; justify-self: center; }
+.eyebrow { font: 700 11px var(--body); letter-spacing: .08em; color: var(--teal-strong); text-transform: uppercase; }
+.plan-row { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 4px; padding: 10px; }
+.plan-row .what { flex: 1; display: grid; gap: 2px; }
+.plan-row .what strong { font-size: 15px; }
+.plan-row .what span { font-size: 13px; color: var(--muted); }
+.small-btn { background: var(--teal); color: #fff; border: 0; border-radius: 4px; padding: 7px 10px; font: 700 12px var(--body); cursor: pointer; }
+.x-btn { background: none; border: 0; color: var(--muted); font-size: 16px; cursor: pointer; }
+/* Datebook Home */
+.db-top { background: var(--teal); color: #fff; padding: 12px 16px; display: flex; justify-content: space-between;
+  align-items: center; font: 700 18px var(--display); }
+.db { flex: 1; padding: 14px; display: grid; align-content: start; gap: 10px; overflow-y: auto; background: var(--page); }
+.card { background: var(--phone); border: 1px solid var(--line); border-radius: 4px; padding: 12px; display: grid; gap: 6px; }
+.card.accent { border-left: 4px solid var(--teal); }
+.sec { font: 700 11px var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.changed { font-size: 12px; color: var(--warn); font-weight: 600; }
+.flash { animation: flash 1.2s ease; }
+@keyframes flash { 0% { background: var(--teal-tint); } 100% { background: var(--phone); } }
+.empty { color: var(--muted); font-size: 13px; }
+.caption { max-width: 330px; font-size: 13px; color: var(--muted); line-height: 1.4; text-align: center; min-height: 54px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Automatic mode: what you'd see</h1>
+  <p class="lede">Mockup for step 10. Left: a Messages-style chat with Sam (not the real app). Right: Datebook's Home.
+    Pick an on-screen option, then play the conversation: you suggest dinner, Sam agrees, then changes the time.</p>
+  <div class="tabs" role="group" aria-label="On-screen option">
+    <button class="tab" id="tab-float" aria-pressed="true">A · Floating Add button</button>
+    <button class="tab" id="tab-notif" aria-pressed="false">B · Quiet notification</button>
+    <button class="tab" id="tab-none" aria-pressed="false">C · Nothing on screen</button>
+  </div>
+  <div class="controls">
+    <button class="btn" id="next">Next message ▸</button>
+    <button class="btn secondary" id="reset">Start over</button>
+    <span class="note" id="step-note">Step 0 of 3: the chat is empty.</span>
+  </div>
+</header>
+<main>
+  <div class="col">
+    <span class="label">Messages (mockup)</span>
+    <div class="phone" id="chat-phone">
+      <div class="status"><span>6:42</span><span>5G ▮▮▮</span></div>
+      <div class="chat-top"><span>←</span><div class="avatar">S</div><strong>Sam</strong></div>
+      <div class="chat" id="chat"></div>
+      <div class="composer"><div class="field">Text message</div><div class="send">➤</div></div>
+      <button class="float" id="float" aria-label="Add this plan to calendar">📅<br>Add</button>
+      <div class="notif" id="notif">
+        <div class="app"><b></b> Datebook · now</div>
+        <div class="title" id="notif-title">Plan on screen</div>
+        <div class="body" id="notif-body">Dinner · Fri 7:00 PM · Luigi's</div>
+        <div class="actions"><button id="notif-add">ADD</button><button id="notif-no">NOT NOW</button></div>
+      </div>
+      <div class="scrim" id="scrim"></div>
+      <div class="sheet" id="sheet">
+        <div class="grab"></div>
+        <span class="eyebrow">Datebook</span>
+        <strong style="font-size:18px">Add to calendar</strong>
+        <div class="plan-row"><div class="what"><strong>Dinner</strong><span id="sheet-when">Fri Nov 13, 7:00 PM · Luigi's</span></div>
+          <button class="small-btn" id="sheet-add">ADD</button><button class="x-btn" id="sheet-x" aria-label="Ignore">✕</button></div>
+        <span class="note">Plans you don't add or ignore wait on Datebook's home screen.</span>
+      </div>
+    </div>
+    <p class="caption" id="chat-caption">Option A: a small teal button slides in at the edge while a message with a plan is on screen. Tap it.</p>
+  </div>
+  <div class="col">
+    <span class="label">Datebook</span>
+    <div class="phone">
+      <div class="status"><span>6:42</span><span>5G ▮▮▮</span></div>
+      <div class="db-top"><span>Datebook</span><span>⚙</span></div>
+      <div class="db">
+        <div class="card accent"><span class="sec">Next up</span><strong>Nothing coming up yet</strong>
+          <span class="empty">When you add a plan, the next one shows here.</span></div>
+        <span class="sec">Waiting for you (<span id="wait-count">0</span>)</span>
+        <div class="card" id="waiting"><span class="empty">No suggestions yet.</span></div>
+        <span class="sec">Coming up</span>
+        <div class="card" id="coming"><span class="empty">Other plans you add will be listed here.</span></div>
+      </div>
+    </div>
+    <p class="caption" id="db-caption">The waiting plan updates when the time changes in the chat, so you only see the latest version.</p>
+  </div>
+</main>
+<script>
+// The conversation, one message per step
+const script = [
+  { from: "out", text: "dinner fri 7pm at luigi's?", time: "6:41 PM" },
+  { from: "in", text: "yes! see you then 🙌", time: "6:42 PM" },
+  { from: "in", text: "actually 8 works better, is that ok?", time: "6:44 PM" }
+];
+let step = 0;
+let option = "float";
+let state = "none";  // the plan's state: none, waiting, added, ignored
+let time = "7:00 PM";
+let changed = false;
+const $ = id => document.getElementById(id);
+
+// Show which option is chosen and explain it
+function setOption(name) {
+  option = name;
+  for (const t of ["float", "notif", "none"]) $("tab-" + t).setAttribute("aria-pressed", String(t === name));
+  const captions = {
+    float: "Option A: a small teal button slides in at the edge while a message with a plan is on screen. Tap it.",
+    notif: "Option B: nothing covers the chat; a silent notification drops in while this chat is open.",
+    none: "Option C: the chat looks exactly as now; you just get Datebook's usual prompt a moment later."
+  };
+  $("chat-caption").textContent = captions[name];
+  reset();
+}
+
+// Put the plan in Datebook's lists the way its state says
+function renderDatebook(flash) {
+  const waiting = $("waiting"), coming = $("coming");
+  const row = `<div class="plan-row"><div class="what"><strong>Dinner</strong><span>Fri Nov 13, ${time} · Luigi's</span>` +
+    (changed ? `<span class="changed">Time changed in chat (was 7:00 PM)</span>` : "") + `</div>` +
+    (state === "waiting" ? `<button class="small-btn" data-act="add">ADD</button><button class="x-btn" data-act="x" aria-label="Ignore">✕</button>` : "") + `</div>`;
+  waiting.innerHTML = state === "waiting" ? row : `<span class="empty">No suggestions yet.</span>`;
+  coming.innerHTML = state === "added" ? row : `<span class="empty">Other plans you add will be listed here.</span>`;
+  $("wait-count").textContent = state === "waiting" ? "1" : "0";
+  if (flash) (state === "added" ? coming : waiting).classList.remove("flash"), void waiting.offsetWidth,
+    (state === "added" ? coming : waiting).classList.add("flash");
+}
+
+// Show the option's on-screen helper for the current plan
+function showHelper() {
+  const when = `Fri Nov 13, ${time} · Luigi's`;
+  $("sheet-when").textContent = when;
+  if (state !== "waiting") { hideHelpers(); return; }
+  if (option === "float") $("float").classList.add("show");
+  if (option === "notif") {
+    $("notif-title").textContent = changed ? "Plan changed on screen" : "Plan on screen";
+    $("notif-body").textContent = `Dinner · ${when}`;
+    $("notif").classList.add("show");
+  }
+  if (option === "none") {
+    $("notif-title").textContent = changed ? "Dinner moved to 8:00 PM?" : "Dinner";
+    $("notif-body").textContent = changed ? `From Sam: "actually 8 works better" · ${when}` :
+      `From you: "dinner fri 7pm at luigi's?" · ${when}`;
+    $("notif").classList.add("show");
+  }
+}
+
+// Hide every on-screen helper
+function hideHelpers() {
+  $("float").classList.remove("show");
+  $("notif").classList.remove("show");
+  $("sheet").classList.remove("show");
+  $("scrim").classList.remove("show");
+}
+
+// Add the next message and react the way Datebook would
+function next() {
+  if (step >= script.length) return;
+  const m = script[step];
+  const chat = $("chat");
+  chat.insertAdjacentHTML("beforeend", `<div class="bubble ${m.from}">${m.text}</div><div class="meta ${m.from}">${m.time}</div>`);
+  chat.scrollTop = chat.scrollHeight;
+  step += 1;
+  const notes = [
+    "Step 1 of 3: you sent a plan. Automatic mode saw it right away and Datebook made a waiting plan.",
+    "Step 2 of 3: Sam agreed. Nothing new to add; the plan keeps waiting for you.",
+    "Step 3 of 3: Sam changed the time. The waiting plan updates to 8:00 PM instead of making a second one."
+  ];
+  $("step-note").textContent = notes[step - 1];
+  if (step === 1 && state === "none") { state = "waiting"; renderDatebook(true); showHelper(); }
+  if (step === 3) {
+    time = "8:00 PM"; changed = true;
+    if (state === "waiting") { renderDatebook(true); hideHelpers(); showHelper(); }
+    if (state === "added") { $("db-caption").textContent = "Already added, so you'd get the step 7 prompt: \"Move Dinner to 8:00 PM? · OPEN EVENT\"."; }
+  }
+  $("next").disabled = step >= script.length;
+}
+
+// Add or ignore the plan from any helper or from Home
+function act(what) {
+  state = what === "add" ? "added" : "ignored";
+  hideHelpers();
+  renderDatebook(true);
+  $("db-caption").textContent = what === "add" ? "Added: your calendar app would open with it filled in." :
+    "Ignored: it won't come back.";
+}
+
+// Start the conversation again
+function reset() {
+  step = 0; state = "none"; time = "7:00 PM"; changed = false;
+  $("chat").innerHTML = "";
+  hideHelpers();
+  renderDatebook(false);
+  $("next").disabled = false;
+  $("step-note").textContent = "Step 0 of 3: the chat is empty.";
+  $("db-caption").textContent = "The waiting plan updates when the time changes in the chat, so you only see the latest version.";
+}
+
+$("tab-float").onclick = () => setOption("float");
+$("tab-notif").onclick = () => setOption("notif");
+$("tab-none").onclick = () => setOption("none");
+$("next").onclick = next;
+$("reset").onclick = reset;
+$("float").onclick = () => { $("scrim").classList.add("show"); $("sheet").classList.add("show"); };
+$("scrim").onclick = () => { $("sheet").classList.remove("show"); $("scrim").classList.remove("show"); };
+$("sheet-add").onclick = () => act("add");
+$("sheet-x").onclick = () => act("x");
+$("notif-add").onclick = () => act("add");
+$("notif-no").onclick = () => hideHelpers();
+document.addEventListener("click", e => {
+  const a = e.target.closest("[data-act]");
+  if (a) act(a.dataset.act);
+});
+reset();
+</script>
+</body>
+</html>

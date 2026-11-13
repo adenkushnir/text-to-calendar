@@ -388,6 +388,28 @@ private fun StationDialog(stations: List<Station>, onDismiss: () -> Unit, onPick
     )
 }
 
+// Automatic mode: whether it's on (turned on and off in Android's accessibility settings), what it reads, and the
+// apps it reads
+@Composable
+fun AutomaticPage(on: Boolean, apps: List<String>, openSettings: () -> Unit, onBack: () -> Unit) {
+    SettingsPage("Automatic mode", onBack) {
+        Muted("Automatic mode lets Datebook catch plans in texts you send, and in new messages while a chat is open " +
+            "(those don't send notifications).")
+        DatebookCard {
+            StatusRow("Automatic mode", on, openSettings)
+        }
+        SectionLabel("What it reads")
+        Muted("Only the apps switched on in Apps to watch: ${apps.joinToString(", ").ifBlank { "none yet" }}.")
+        Muted("Only new messages and texts you send, while one of those apps is open. Never what's already showing " +
+            "when you open a chat, never what you're typing, never other apps, and never screenshots.")
+        Muted("New messages with a date go to Claude one at a time, like notifications. Group chats need a clear " +
+            "date and send only the group's name.")
+        SectionLabel("Turning it on")
+        Muted("Tap TURN ON, then Installed apps (or Downloaded apps) → Datebook automatic mode → On. If Android says " +
+            "\"Restricted setting\": Settings → Apps → Datebook → ⋮ → Allow restricted settings, then try again.")
+    }
+}
+
 // A box to paste a new key, checked for free before it replaces the saved one
 @Composable
 private fun KeyReplaceBox(checkAndSaveKey: suspend (String) -> String?) {

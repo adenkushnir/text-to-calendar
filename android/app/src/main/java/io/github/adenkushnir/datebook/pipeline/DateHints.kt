@@ -19,7 +19,8 @@ private val PATTERNS = listOf(
 private val DATE_HINT = Regex(PATTERNS.joinToString("|"), RegexOption.IGNORE_CASE)
 
 private val CHANGE_WORDS = Regex("""\b(moved?|moving|cancel+(ed|ing)?|called off|push(ed|ing)? (back|to)|""" +
-    """postponed?|resched(uled?)?|instead|delayed|bumped|not happening|rained out|changed? to|now at)\b""",
+    """postponed?|resched(uled?)?|instead|delayed|bumped|not happening|rained out|changed? to|now at|actually|""" +
+    """works better|how about|can we do)\b""",
     RegexOption.IGNORE_CASE)
 
 // Return true if the text sounds like it changes or cancels a plan, like "dinner moved to 8" or "practice is cancelled"

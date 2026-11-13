@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.pipeline.summary
+import io.github.adenkushnir.datebook.prompts.changedNote
 import io.github.adenkushnir.datebook.prompts.fromLine
 import io.github.adenkushnir.datebook.trains.TrainBoard
 import io.github.adenkushnir.datebook.prompts.isChange
@@ -84,6 +85,7 @@ fun HomeScreen(
                         Column(Modifier.weight(1f).clickable { onOpen(suggestion.id) }) {
                             Text(promptTitle(suggestion), fontWeight = FontWeight.SemiBold)
                             Muted(whenAndWhere(suggestion))
+                            changedNote(suggestion)?.let { Muted(it) }  // only when it changed in the chat
                             ClashLine(suggestion.clash)
                         }
                         Button(onClick = { onAdd(suggestion.id) }) {

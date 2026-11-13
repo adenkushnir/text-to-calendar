@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.places.TRAVEL_MODES
+import io.github.adenkushnir.datebook.prompts.changedNote
 import io.github.adenkushnir.datebook.prompts.fromLine
 import io.github.adenkushnir.datebook.prompts.isChange
 import io.github.adenkushnir.datebook.prompts.promptTitle
@@ -70,6 +71,7 @@ fun SuggestionScreen(
                 Text(promptTitle(suggestion), fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
                 Muted(whenAndWhere(suggestion))
                 Muted("From ${fromLine(suggestion)}")
+                changedNote(suggestion)?.let { Muted(it) }  // only when it changed in the chat
                 ClashLine(suggestion.clash)
 
                 // Show the flight's live status when it's known

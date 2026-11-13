@@ -97,7 +97,7 @@ class DateHintsTest {
     @Test
     fun changes() {
         val changes = listOf("dinner moved to 8", "practice is cancelled", "game canceled", "pushed back an hour",
-            "rescheduled for next week", "lets do 8 instead", "meeting got postponed")
+            "rescheduled for next week", "lets do 8 instead", "meeting got postponed", "actually 8 works better")
         for (text in changes) {
             assertTrue(text, soundsLikeChange(text))
         }
