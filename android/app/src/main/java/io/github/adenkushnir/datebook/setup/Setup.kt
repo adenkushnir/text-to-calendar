@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.PowerManager
 import androidx.core.content.ContextCompat
 import io.github.adenkushnir.datebook.AppGraph
+import io.github.adenkushnir.datebook.automatic.isAutomaticOn
 import io.github.adenkushnir.datebook.places.hasBackgroundLocation
 import io.github.adenkushnir.datebook.places.hasLocationAccess
 import io.github.adenkushnir.datebook.capture.hasNotificationAccess
@@ -37,6 +38,7 @@ data class SetupStatus(
     val mapsKey: Boolean = false,
     val location: Boolean = false,
     val backgroundLocation: Boolean = false,
+    val automatic: Boolean = false,
 ) {
     val requiredDone = access && notifications && key
 }
@@ -54,6 +56,7 @@ fun readSetupStatus(context: Context, graph: AppGraph): SetupStatus {
         mapsKey = graph.mapsKeyStore.load() != null,
         location = hasLocationAccess(context),
         backgroundLocation = hasBackgroundLocation(context),
+        automatic = isAutomaticOn(context),
     )
 }
 

@@ -55,6 +55,24 @@
         <receiver
             android:name=".leaveby.LeaveByModeReceiver"
             android:exported="false" />
+        <!-- Handles Not now on a quiet "Plan on screen" notification -->
+        <receiver
+            android:name=".prompts.NotNowReceiver"
+            android:exported="false" />
+        <!-- Automatic mode: off until turned on in Android's accessibility settings; reads only the apps switched on in
+             Apps to watch -->
+        <service
+            android:name=".automatic.AutomaticModeService"
+            android:exported="false"
+            android:label="@string/automatic_mode_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/automatic_mode" />
+        </service>
         <!-- Handles the prompt's Ignore button in the background -->
         <receiver
             android:name=".prompts.IgnoreReceiver"

@@ -15,9 +15,17 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+// Version 6 marks the plans that came from texts you sent (automatic mode)
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    // Add the column, false for every saved suggestion
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE suggestions ADD COLUMN fromMe INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 // The database holding seen texts, suggestions, the retry queue and failure counts; from version 5 on, saved data is
 // converted when the database changes (older versions still start empty)
-@Database(entities = [SeenText::class, Suggestion::class, RetryText::class, FailureCount::class], version = 5,
+@Database(entities = [SeenText::class, Suggestion::class, RetryText::class, FailureCount::class], version = 6,
     exportSchema = false)
 abstract class DatebookDatabase : RoomDatabase() {
     // The queries for all four tables
@@ -32,7 +40,7 @@ abstract class DatebookDatabase : RoomDatabase() {
             return instance ?: synchronized(this) {
                 val appContext = context.applicationContext
                 instance ?: Room.databaseBuilder(appContext, DatebookDatabase::class.java, "datebook.db")
-                    .addMigrations(MIGRATION_4_5)
+                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6)
                     .fallbackToDestructiveMigration(true)
                     .build()
                     .also { instance = it }

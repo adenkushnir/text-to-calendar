@@ -3,6 +3,7 @@
 package io.github.adenkushnir.datebook
 import android.content.Context
 import com.anthropic.client.AnthropicClient
+import io.github.adenkushnir.datebook.automatic.GroupChats
 import io.github.adenkushnir.datebook.calendar.CalendarSwitches
 import io.github.adenkushnir.datebook.calendar.calendarEvents
 import io.github.adenkushnir.datebook.capture.AppSwitches
@@ -40,6 +41,7 @@ class AppGraph private constructor(context: Context) {
     private val njtTokenStore = ApiKeyStore(context, "njt-token")
     val trainSettings = TrainSettings(context)
     val trainStore = TrainStore(context)
+    val groupChats = GroupChats(context)
     val railData = RailDataClient({ njtUserStore.load() }, { njtPasswordStore.load() }, { njtTokenStore.load() },
         { njtTokenStore.save(it) })
     private var client: Pair<String, AnthropicClient>? = null
@@ -48,7 +50,9 @@ class AppGraph private constructor(context: Context) {
         apiKey = { keyStore.load() },
         extract = { key, incoming, zone -> extractEvents(clientFor(key), incoming, zone, modelChoice.get()) },
         onRetrySaved = { scheduleRetry(context, it) },
-        onSuggested = { suggestion, incoming -> notifier.show(suggestion, incoming.text) },
+        onSuggested = { suggestion, incoming ->
+            if (incoming.onScreen) notifier.showQuiet(suggestion) else notifier.show(suggestion, incoming.text)
+        },
         calendar = { from, to -> calendarEvents(context, from, to, calendarSwitches.switchedOff()) },
         findPlace = { place -> findPlace(context, mapsKeyStore.load(), travelSettings.home(), place) },
         lookupFlight = { flight, date -> lookupFlight(flightsKeyStore.load(), flight, date)?.also {

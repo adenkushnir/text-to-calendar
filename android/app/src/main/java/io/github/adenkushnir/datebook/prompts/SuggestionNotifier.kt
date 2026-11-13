@@ -20,9 +20,12 @@ const val SUGGESTIONS_CHANNEL = "suggestions"
 const val EXTRA_SUGGESTION_ID = "io.github.adenkushnir.datebook.SUGGESTION_ID"
 const val ACTION_ADD = "io.github.adenkushnir.datebook.ADD"
 const val ACTION_IGNORE = "io.github.adenkushnir.datebook.IGNORE"
+const val ON_SCREEN_CHANNEL = "on_screen"
 
 // Posts and removes suggestion notifications
 class SuggestionNotifier(private val context: Context) {
+    private val quietIds = mutableSetOf<Long>()
+
     // Create the "Plan suggestions" channel once (Android keeps it after that)
     init {
         val channel = NotificationChannel(SUGGESTIONS_CHANNEL, "Plan suggestions", NotificationManager.IMPORTANCE_HIGH)
@@ -56,6 +59,43 @@ class SuggestionNotifier(private val context: Context) {
             .addAction(0, "Ignore", ignoreAction(suggestion.id))
             .build()
         NotificationManagerCompat.from(context).notify(id, notification)
+    }
+
+    // Show the quiet "Plan on screen" notification for a plan found in the open chat by automatic mode, with Add and
+    // Not now; it's cleared when you leave the chat, and the plan keeps waiting on Home
+    fun showQuiet(suggestion: Suggestion) {
+        // Without notification permission there is nothing to show (the home screen still lists it)
+        if (!canNotify(context)) {
+            return
+        }
+        val channel = NotificationChannel(ON_SCREEN_CHANNEL, "Plans on screen", NotificationManager.IMPORTANCE_LOW)
+        channel.description = "Plans automatic mode finds in the chat you have open"
+        context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        val whenAndWhere = summary(suggestion.toEvent()).removePrefix("${suggestion.title} · ")
+        val title = if (suggestion.previousStart.isNotBlank()) "Plan changed on screen" else "Plan on screen"
+        val notNow = Intent(context, NotNowReceiver::class.java).putExtra(EXTRA_SUGGESTION_ID, suggestion.id)
+        val notification = NotificationCompat.Builder(context, ON_SCREEN_CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat_datebook)
+            .setColor(ContextCompat.getColor(context, R.color.brand_teal))
+            .setContentTitle(title)
+            .setContentText("${promptTitle(suggestion)} · $whenAndWhere")
+            .setSilent(true)
+            .setAutoCancel(true)
+            .setContentIntent(openCard(suggestion.id))
+            .addAction(0, if (isChange(suggestion)) "Open event" else "Add", addAction(suggestion.id))
+            .addAction(0, "Not now", PendingIntent.getBroadcast(context, requestCode(suggestion.id, 2), notNow, FLAGS))
+            .build()
+        NotificationManagerCompat.from(context).notify(suggestion.id.toInt(), notification)
+        quietIds.add(suggestion.id)
+    }
+
+    // Clear every quiet notification shown for the chat you just left
+    fun cancelQuiet() {
+        // Remove each one; the plans keep waiting on Home
+        for (id in quietIds) {
+            cancel(id)
+        }
+        quietIds.clear()
     }
 
     // Remove a suggestion's prompt

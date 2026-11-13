@@ -15,8 +15,8 @@ data class SeenText(
 
 // An event Datebook suggested, who from (and which group chat), whether it is waiting, added or ignored, the clash
 // warning shown with it, for a changed or cancelled plan which calendar event it changes, and its flight, package
-// and place coordinates, and its start before it changed in the chat while waiting (kept 1 year; never the message
-// text)
+// and place coordinates, its start before it changed in the chat while waiting, and whether you sent the text (kept 1
+// year; never the message text)
 @Entity(tableName = "suggestions")
 data class Suggestion(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -42,6 +42,7 @@ data class Suggestion(
     val placeLat: Double? = null,
     val placeLng: Double? = null,
     @ColumnInfo(defaultValue = "") val previousStart: String = "",
+    @ColumnInfo(defaultValue = "0") val fromMe: Boolean = false,
 ) {
     // Turn the saved row back into an event
     fun toEvent(): Event {
@@ -81,6 +82,7 @@ fun suggestionOf(event: Event, incoming: IncomingText, now: Long, clash: String 
         trackingNumber = event.trackingNumber,
         placeLat = event.placeLat,
         placeLng = event.placeLng,
+        fromMe = incoming.fromMe,
     )
 }
 

@@ -52,6 +52,7 @@ import io.github.adenkushnir.datebook.prompts.addSuggestion
 import io.github.adenkushnir.datebook.prompts.ignoreSuggestion
 import io.github.adenkushnir.datebook.settings.AboutPage
 import io.github.adenkushnir.datebook.settings.AppsPage
+import io.github.adenkushnir.datebook.settings.AutomaticPage
 import io.github.adenkushnir.datebook.settings.CalendarsPage
 import io.github.adenkushnir.datebook.settings.ClaudePage
 import io.github.adenkushnir.datebook.settings.FlightsPage
@@ -101,6 +102,7 @@ private val LOCATION_PERMISSIONS = arrayOf(Manifest.permission.ACCESS_FINE_LOCAT
 const val ROUTE_SETTINGS_NOTIFICATIONS = "settings/notifications"
 const val ROUTE_SETTINGS_PRIVACY = "settings/privacy"
 const val ROUTE_SETTINGS_ABOUT = "settings/about"
+const val ROUTE_SETTINGS_AUTOMATIC = "settings/automatic"
 
 // The activity Android starts when you tap the Datebook icon or a prompt
 class MainActivity : ComponentActivity() {
@@ -350,6 +352,12 @@ class MainActivity : ComponentActivity() {
             composable(ROUTE_SETTINGS_PRIVACY) {
                 PrivacyPage(clearHistory = { graph.pipeline.clearHistory() }, onBack = { nav.popBackStack() })
             }
+            composable(ROUTE_SETTINGS_AUTOMATIC) {
+                val apps = WATCHABLE_APPS.filter { graph.appSwitches.isOn(it.packageName) }.map { it.label }
+                AutomaticPage(status.automatic, apps,
+                    openSettings = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
+                    onBack = { nav.popBackStack() })
+            }
             composable(ROUTE_SETTINGS_ABOUT) {
                 val pretend: suspend (String, String) -> List<String> = { text, sender ->
                     pretendText(graph, text, sender)
@@ -401,6 +409,9 @@ class MainActivity : ComponentActivity() {
             },
             SettingsItem("🔒", "Privacy & history", "What's kept, and clearing history") {
                 open(ROUTE_SETTINGS_PRIVACY)
+            },
+            SettingsItem("⚡", "Automatic mode", "Catch plans in texts you send and open chats") {
+                open(ROUTE_SETTINGS_AUTOMATIC)
             },
             SettingsItem("i", "About Datebook", "Version, GitHub and privacy") { open(ROUTE_SETTINGS_ABOUT) },
         )
