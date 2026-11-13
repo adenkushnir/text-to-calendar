@@ -1,5 +1,6 @@
 // Creates the app's shared pieces once: database, key stores, app and calendar switches, summary and travel settings,
-// flight details, the NJ Transit account and trains, prompts, Claude client and the pipeline
+// flight details, the NJ Transit account and trains, prompts, Claude client, the offline date finder and the
+// pipeline
 package io.github.adenkushnir.datebook
 import android.content.Context
 import com.anthropic.client.AnthropicClient
@@ -10,6 +11,7 @@ import io.github.adenkushnir.datebook.capture.AppSwitches
 import io.github.adenkushnir.datebook.data.DatebookDatabase
 import io.github.adenkushnir.datebook.flights.FlightStore
 import io.github.adenkushnir.datebook.flights.lookupFlight
+import io.github.adenkushnir.datebook.offline.OfflineDates
 import io.github.adenkushnir.datebook.pipeline.ApiKeyStore
 import io.github.adenkushnir.datebook.pipeline.TextPipeline
 import io.github.adenkushnir.datebook.pipeline.extractEvents
@@ -22,6 +24,7 @@ import io.github.adenkushnir.datebook.trains.RailDataClient
 import io.github.adenkushnir.datebook.trains.TrainSettings
 import io.github.adenkushnir.datebook.trains.TrainStore
 import io.github.adenkushnir.datebook.summary.SummarySettings
+import java.time.ZoneId
 
 // Holds the shared pieces; get one with AppGraph.get(context)
 class AppGraph private constructor(context: Context) {
@@ -42,6 +45,7 @@ class AppGraph private constructor(context: Context) {
     val trainSettings = TrainSettings(context)
     val trainStore = TrainStore(context)
     val groupChats = GroupChats(context)
+    val offlineDates by lazy { OfflineDates() }
     val railData = RailDataClient({ njtUserStore.load() }, { njtPasswordStore.load() }, { njtTokenStore.load() },
         { njtTokenStore.save(it) })
     private var client: Pair<String, AnthropicClient>? = null
@@ -59,6 +63,7 @@ class AppGraph private constructor(context: Context) {
             flightStore.save(date, it)  // remembered for the card and the checks
         } },
         onWithdrawn = { notifier.cancel(it) },
+        guessTimes = { text, receivedAt, zone -> offlineDates.find(text, receivedAt, ZoneId.of(zone)) },
     )
 
     // Return a Claude client for the key, reusing it while the key stays the same

@@ -145,6 +145,8 @@ class MainActivity : ComponentActivity() {
         val addedFlow = remember { graph.dao.watchSuggestions(Suggestion.STATUS_ADDED) }
         val waiting by waitingFlow.collectAsState(initial = emptyList())
         val added by addedFlow.collectAsState(initial = emptyList())
+        val checkingFlow = remember { graph.dao.watchRetryIds() }
+        val checking by checkingFlow.collectAsState(initial = emptyList())
         var status by remember { mutableStateOf(readSetupStatus(applicationContext, graph)) }
         val refresh = { status = readSetupStatus(applicationContext, graph) }
         val askPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -163,6 +165,7 @@ class MainActivity : ComponentActivity() {
             scheduleLeaveBy(applicationContext)  // start planning leave-by alerts if it isn't already
             scheduleFlightChecks(applicationContext)  // start the flight checks if they aren't running
             scheduleTrains(applicationContext)  // start the NJ Transit train checks if they aren't running
+            graph.offlineDates.prepare()  // download the offline date model the first time there's internet
         }
         val actions = SetupActions(
             openAccess = { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
@@ -221,6 +224,7 @@ class MainActivity : ComponentActivity() {
                     onSettings = { nav.navigate(ROUTE_SETTINGS) },
                     fixes = fixesFor(status, actions, openKeySetup = { nav.navigate(ROUTE_SETUP) }),
                     trains = trains,
+                    checking = checking.toSet(),
                     onFlipTrains = {
                         val saved = trip
 
@@ -235,6 +239,10 @@ class MainActivity : ComponentActivity() {
             composable(ROUTE_SUGGESTION, arguments = listOf(navArgument("id") { type = NavType.LongType })) { entry ->
                 val id = entry.arguments?.getLong("id") ?: -1
                 val suggestion by produceState<Suggestion?>(null, id) { value = graph.dao.suggestion(id) }
+                val guessText by produceState<String?>(null, suggestion, checking) {
+                    val retryId = suggestion?.retryId ?: 0
+                    value = if (retryId == 0L) null else graph.dao.retryText(retryId)?.text  // guesses only
+                }
                 var travelMode by remember(suggestion) { mutableStateOf(suggestion?.let { modeFor(graph, it) }) }
                 var trainChoices by remember { mutableStateOf<TrainChoices?>(null) }
                 var trainRefresh by remember { mutableIntStateOf(0) }
@@ -257,6 +265,7 @@ class MainActivity : ComponentActivity() {
                     onTrack = { url -> openLink(url) },
                     flightStatus = suggestion?.let { flightStatusFor(graph, it) },
                     trains = trainChoices,
+                    guessText = guessText,
                     onPickTrain = { row ->
                         val plan = suggestion ?: return@SuggestionScreen
                         val key = eventKey(plan.title, planBegin(plan))

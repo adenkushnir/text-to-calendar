@@ -57,7 +57,9 @@ const val GITHUB_URL = "https://github.com/adenkushnir/text-to-calendar"
 const val PRIVACY_SUMMARY = "Datebook checks texts from the apps you switch on, on this phone. Texts without a date " +
     "are dropped straight away and leave no trace. Only a text with a date is sent to Claude, on its own, using your " +
     "API key (for group chats, with the group's name instead of the sender's). Datebook keeps the events it found " +
-    "for a year, never the message text, and nothing is shared anywhere else."
+    "for a year, never the message text, and nothing is shared anywhere else. The one exception: when Claude " +
+    "can't be reached, a text with a date waits on the phone (for up to a day) so Claude can check it later, and " +
+    "its offline guess shows it until then."
 
 // One item in the Settings menu: a short icon, its name, a one-line hint, and the page it opens
 class SettingsItem(val icon: String, val title: String, val hint: String, val open: () -> Unit)

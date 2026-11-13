@@ -9,6 +9,7 @@ import io.github.adenkushnir.datebook.data.DatebookDatabase
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.data.suggestionOf
 import io.github.adenkushnir.datebook.flights.FlightInfo
+import io.github.adenkushnir.datebook.offline.GuessedTime
 import io.github.adenkushnir.datebook.places.FoundPlace
 import java.time.Instant
 import java.time.LocalDateTime
@@ -57,10 +58,10 @@ class TextPipelineTest {
     }
 
     // Build a pipeline whose Claude returns the given events, or throws the given error, with the given calendar, the
-    // full addresses Google would find, and the flights the flight data knows
+    // full addresses Google would find, the flights the flight data knows, and the times found offline on the phone
     private fun pipeline(events: List<Event> = emptyList(), error: Exception? = null, key: String? = "sk-test",
         onCalendar: List<CalendarEvent> = emptyList(), places: Map<String, FoundPlace> = emptyMap(),
-        flights: Map<String, FlightInfo> = emptyMap()): TextPipeline {
+        flights: Map<String, FlightInfo> = emptyMap(), guesses: List<GuessedTime> = emptyList()): TextPipeline {
         return TextPipeline(
             dao = dao,
             apiKey = { key },
@@ -76,6 +77,7 @@ class TextPipelineTest {
             findPlace = { places[it] },
             lookupFlight = { flight, date -> flights["$flight|$date"] },
             onWithdrawn = { withdrawn.add(it) },
+            guessTimes = { _, _, _ -> guesses },
         )
     }
 
@@ -87,10 +89,12 @@ class TextPipelineTest {
         assertTrue(outcome.events.isEmpty())
     }
 
-    // Without an API key the date is found but nothing is sent
+    // Without an API key the date is found, nothing is sent, and the text is kept to try every hour
     @Test
     fun noKey() = runTest {
-        assertEquals(listOf("date found, no API key"), pipeline(listOf(dinner), key = null).handle(incoming).lines)
+        assertEquals(listOf("date found, no API key", "will try again every hour", "offline guesses: 0"),
+            pipeline(listOf(dinner), key = null).handle(incoming).lines)
+        assertEquals(listOf(clock + KEY_RETRY_MILLIS), retries)
     }
 
     // A found event is described, offered and saved as a waiting suggestion with the phone's zone
@@ -124,7 +128,8 @@ class TextPipelineTest {
     @Test
     fun offlineIsRetried() = runTest {
         val outcome = pipeline(error = AnthropicIoException("offline")).handle(incoming)
-        assertEquals(listOf("date found, no connection", "will try again every minute once online"), outcome.lines)
+        assertEquals(listOf("date found, no connection", "will try again every minute once online",
+            "offline guesses: 0"), outcome.lines)
         assertEquals(listOf(clock + RETRY_MILLIS), retries)
         assertEquals(1, dao.dueRetries(clock + RETRY_MILLIS).size)
         assertEquals(null, dao.failures(PROBLEM_API))
@@ -152,6 +157,74 @@ class TextPipelineTest {
         clock += GIVE_UP_MILLIS + RETRY_MILLIS
         assertEquals(listOf("gave up (date found, no connection)"), offline.retryDue().single().lines)
         assertTrue(dao.dueRetries(Long.MAX_VALUE).isEmpty())
+    }
+
+    // Offline, the times found on the phone wait on Home as quiet guesses ("Plan with Sam"), linked to the text
+    // Claude is still to check; times already over are left out
+    @Test
+    fun offlineGuessWaitsQuietly() = runTest {
+        val guesses = listOf(GuessedTime("2037-11-13T19:00", false), GuessedTime("2020-01-03", true))
+        val outcome = pipeline(error = AnthropicIoException("offline"), guesses = guesses).handle(incoming)
+        assertTrue(outcome.lines.contains("offline guesses: 1"))
+        val guess = dao.suggestion(outcome.suggestionIds.single())!!
+        assertEquals("Plan with Sam", guess.title)
+        assertEquals("2037-11-13T19:00", guess.start)
+        assertEquals(Suggestion.STATUS_WAITING, guess.status)
+        assertEquals("dinner fri 7pm at joes", dao.retryText(guess.retryId)!!.text)
+        assertTrue(prompts.isEmpty())
+    }
+
+    // Back online, Claude's plan quietly takes the place of a guess still waiting
+    @Test
+    fun claudeReplacesGuess() = runTest {
+        val guesses = listOf(GuessedTime("2037-11-13T19:00", false))
+        val guessId = pipeline(error = AnthropicIoException("offline"), guesses = guesses).handle(incoming)
+            .suggestionIds.single()
+        clock += RETRY_MILLIS
+        val result = pipeline(listOf(dinner)).retryDue().single()
+        assertEquals(null, dao.suggestion(guessId))
+        assertEquals("Dinner with Sam", dao.suggestion(result.suggestionIds.single())!!.title)
+        assertTrue(prompts.isEmpty())
+        assertEquals(null, dao.retryText(1))
+    }
+
+    // A guess you already added gets a "Move …?" prompt for its calendar event when Claude finds another time; one
+    // Claude agrees with (same time, no place) is left alone
+    @Test
+    fun addedGuessMoves() = runTest {
+        val guesses = listOf(GuessedTime("2037-11-13T19:00", false))
+        val guessId = pipeline(error = AnthropicIoException("offline"), guesses = guesses).handle(incoming)
+            .suggestionIds.single()
+        dao.setStatus(guessId, Suggestion.STATUS_ADDED)
+        val (begin, end) = eventTimes(Event("Plan with Sam", "2037-11-13T19:00", phoneTimezone = newYork))
+        val onCalendar = listOf(CalendarEvent(77, 1, "Plan with Sam", begin, end, false, ""))
+        clock += RETRY_MILLIS
+        val eight = Event("Dinner with Sam", "2037-11-13T20:00")
+        val result = pipeline(listOf(eight), onCalendar = onCalendar).retryDue().single()
+        val move = dao.suggestion(result.suggestionIds.single())!!
+        assertEquals(CHANGE_MOVED, move.change)
+        assertEquals(77L, move.calendarEventId)
+        assertEquals("2037-11-13T20:00", move.start)
+        assertEquals(listOf("Plan with Sam"), prompts.map { it.first })
+        assertEquals(Suggestion.STATUS_ADDED, dao.suggestion(guessId)!!.status)
+    }
+
+    // Key problems are retried every hour; after a day Datebook gives up and the guess stays, no longer linked to a
+    // waiting text (shown as not checked by Claude)
+    @Test
+    fun uncheckedGuessStays() = runTest {
+        val guesses = listOf(GuessedTime("2037-11-13T19:00", false))
+        val noKey = pipeline(key = null, guesses = guesses)
+        val guessId = noKey.handle(incoming).suggestionIds.single()
+        clock += KEY_RETRY_MILLIS
+        assertTrue(noKey.retryDue().isEmpty())
+        assertEquals(1, dao.dueRetries(clock + KEY_RETRY_MILLIS).size)
+        assertTrue(dao.dueRetries(clock + RETRY_MILLIS).isEmpty())
+        clock += GIVE_UP_MILLIS
+        assertEquals(listOf("gave up (date found, no API key)"), noKey.retryDue().single().lines)
+        val guess = dao.suggestion(guessId)!!
+        assertEquals(Suggestion.STATUS_WAITING, guess.status)
+        assertEquals(null, dao.retryText(guess.retryId))
     }
 
     // A key problem alerts at once, and the next good answer from Claude clears the alert and its count

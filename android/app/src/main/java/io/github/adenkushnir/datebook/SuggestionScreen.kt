@@ -27,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,6 +35,7 @@ import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.places.TRAVEL_MODES
 import io.github.adenkushnir.datebook.prompts.changedNote
 import io.github.adenkushnir.datebook.prompts.fromLine
+import io.github.adenkushnir.datebook.prompts.guessNote
 import io.github.adenkushnir.datebook.prompts.isChange
 import io.github.adenkushnir.datebook.prompts.promptTitle
 import io.github.adenkushnir.datebook.tracking.trackLinkFor
@@ -55,6 +57,7 @@ fun SuggestionScreen(
     trains: TrainChoices? = null,
     onPickTrain: (TrainRow) -> Unit = {},
     onSwitchOrigin: (String) -> Unit = {},
+    guessText: String? = null,
 ) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         TopBar("Suggestion", onBack = onBack)
@@ -72,6 +75,12 @@ fun SuggestionScreen(
                 Muted(whenAndWhere(suggestion))
                 Muted("From ${fromLine(suggestion)}")
                 changedNote(suggestion)?.let { Muted(it) }  // only when it changed in the chat
+                guessNote(suggestion, guessText != null)?.let { Muted(it) }  // offline guesses only
+
+                // Show the message a guess came from while Claude is still to check it (then it's deleted)
+                if (guessText != null) {
+                    Text("“$guessText”", fontStyle = FontStyle.Italic)
+                }
                 ClashLine(suggestion.clash)
 
                 // Show the flight's live status when it's known
