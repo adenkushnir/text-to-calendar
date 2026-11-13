@@ -9,9 +9,12 @@ private val TITLE_IDS = Regex("title|chat_name|conversation_name", RegexOption.I
 private val MESSAGE_IDS = Regex("message_text$", RegexOption.IGNORE_CASE)  // Google Messages and GroupMe
 private val SEPARATOR_IDS = Regex("separator", RegexOption.IGNORE_CASE)
 private const val TITLE_AREA = 0.2
+private val SENT_BY = Regex("""Message from (.+?)(\n|$)""")  // GroupMe's label on each message
+private const val YOUR_PICTURE = "View your profile"  // GroupMe's label on your own profile picture
 
 // One piece of the screen as the accessibility service describes it: its text, its view id, whether you can type in
-// it, where it is (left, top, right, bottom in pixels), what's inside it, and whether it scrolls (a list)
+// it, where it is (left, top, right, bottom in pixels), what's inside it, whether it scrolls (a list), and its
+// hidden label for screen readers
 data class ScreenNode(
     val text: String = "",
     val viewId: String = "",
@@ -22,13 +25,31 @@ data class ScreenNode(
     val bottom: Int = 0,
     val children: List<ScreenNode> = emptyList(),
     val scrollable: Boolean = false,
+    val description: String = "",
 )
 
-// One message bubble: its text and whether you sent it (it sits on the right)
+// One message bubble: its text and whether you sent it
 data class Bubble(val text: String, val mine: Boolean)
 
-// What a chat screen shows: the chat's name and its message bubbles, top to bottom
-data class ChatScreen(val title: String, val bubbles: List<Bubble>)
+// What a chat screen shows: the chat's name, its message bubbles top to bottom, and your name in the app when the
+// screen shows it (GroupMe), or ""
+data class ChatScreen(val title: String, val bubbles: List<Bubble>, val yourName: String = "")
+
+// Your name in apps that put everyone's messages on the left (GroupMe): the sender of a message that has your
+// profile picture next to it, or "" when none is showing
+private fun yourNameOn(root: ScreenNode): String {
+    return allNodes(root).firstNotNullOfOrNull { node ->
+        val sender = SENT_BY.find(node.description)?.groupValues?.get(1)
+        if (sender != null && allNodes(node).any { it.description == YOUR_PICTURE }) sender else null
+    }.orEmpty()
+}
+
+// Who sent the message a piece belongs to, from the label of the message around it ("" when there's none)
+private fun senderOf(piece: Piece): String {
+    return (piece.parents + piece.node).asReversed().firstNotNullOfOrNull { node ->
+        SENT_BY.find(node.description)?.groupValues?.get(1)
+    }.orEmpty()
+}
 
 // A piece of the screen with text, and the pieces it sits inside (outermost first)
 private class Piece(val node: ScreenNode, val parents: List<ScreenNode>)
@@ -58,8 +79,9 @@ fun isNoise(text: String): Boolean {
 // Read a chat from the screen; null when it doesn't look like a chat. The name is the top-most text near the top
 // that isn't in a scrolling list, preferring one labelled as a title; the bubbles are the texts in the biggest
 // scrolling list (only the message texts, in apps like GroupMe that label them, so sender names and polls are left
-// out) between the name and the typing box, yours on the right
-fun readChat(root: ScreenNode, screenWidth: Int, screenHeight: Int): ChatScreen? {
+// out) between the name and the typing box. Yours are the ones sent by your name in apps that label each message's
+// sender (GroupMe, where yourName is remembered from earlier screens), and otherwise the ones on the right
+fun readChat(root: ScreenNode, screenWidth: Int, screenHeight: Int, yourName: String = ""): ChatScreen? {
     val typingTop = allNodes(root).filter { it.editable }.minOfOrNull { it.top } ?: return null  // no typing box
     val pieces = withText(root).filter { !it.node.editable }
     val fixed = pieces.filter { piece ->
@@ -74,6 +96,7 @@ fun readChat(root: ScreenNode, screenWidth: Int, screenHeight: Int): ChatScreen?
     val inList = if (list == null) pieces else pieces.filter { piece -> piece.parents.any { it === list } }
     val labelsMessages = list != null && allNodes(list).any { it.viewId.contains("message", ignoreCase = true) }
     val messages = if (labelsMessages) inList.filter { MESSAGE_IDS.containsMatchIn(it.node.viewId) } else inList
+    val you = yourNameOn(root).ifEmpty { yourName }
     val bubbles = messages.filter { piece ->
         val node = piece.node
         node !== title && node.top >= title.bottom && node.bottom <= typingTop && !isNoise(node.text) &&
@@ -81,10 +104,12 @@ fun readChat(root: ScreenNode, screenWidth: Int, screenHeight: Int): ChatScreen?
     // Top to bottom, since Google Messages lists the newest message first
     }.sortedWith(compareBy({ it.node.top }, { it.node.left })).map { piece ->
         val node = piece.node
-        val mine = node.left > screenWidth * 0.2 && (node.left + node.right) / 2 > screenWidth / 2  // right side
+        val sender = senderOf(piece)
+        val onRight = node.left > screenWidth * 0.2 && (node.left + node.right) / 2 > screenWidth / 2
+        val mine = if (sender.isNotEmpty()) sender == you else onRight  // the label says who, else the side does
         Bubble(plain(node.text), mine)
     }
-    return ChatScreen(plain(title.text), bubbles)
+    return ChatScreen(plain(title.text), bubbles, you)
 }
 
 // How many bubbles at the bottom of the screen are new: line the screen up with the bottom of what was seen before,
@@ -125,7 +150,7 @@ class ChatTracker {
     // Look at the chat on screen and return its new bubbles (none the first time a chat is seen)
     fun update(app: String, screen: ChatScreen): List<Bubble> {
         val chat = "$app|${screen.title}"
-        val keys = screen.bubbles.map { "${it.mine}|${it.text}" }
+        val keys = screen.bubbles.map { it.text }  // by text only, so learning your name later can't lose track
 
         // A newly opened chat (or one still loading): what's showing is the starting point
         if (chat != openChat || newest.isEmpty()) {

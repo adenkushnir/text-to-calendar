@@ -42,6 +42,25 @@ class GroupChats(context: Context) {
     }
 }
 
+// Remembers your name in apps that show it on every message (GroupMe), learned from a message with your profile
+// picture, so your messages are known even when the picture isn't on screen; kept on the phone only
+class YourNames(context: Context) {
+    private val prefs = context.getSharedPreferences("datebook-your-names", Context.MODE_PRIVATE)
+
+    // Your name in an app, or "" when it hasn't been seen yet
+    fun get(app: String): String {
+        return prefs.getString(app, "").orEmpty()
+    }
+
+    // Remember your name in an app (when it changes)
+    fun set(app: String, name: String) {
+        // Only write when there's a new name
+        if (name.isNotBlank() && name != get(app)) {
+            prefs.edit().putString(app, name).apply()
+        }
+    }
+}
+
 // Return true if automatic mode is turned on in Android's accessibility settings
 fun isAutomaticOn(context: Context): Boolean {
     val enabled = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
@@ -61,6 +80,7 @@ fun incomingFrom(app: String, chatName: String, bubble: Bubble, isGroup: Boolean
 // and clears the quiet notifications when you leave the chat
 class AutomaticModeService : AccessibilityService() {
     private val tracker = ChatTracker()
+    private val yourNames by lazy { YourNames(this) }
     private val handler = Handler(Looper.getMainLooper())
     private var readPending = false
     private var leaveCheckOn = false
@@ -112,13 +132,15 @@ class AutomaticModeService : AccessibilityService() {
             return
         }
         val metrics = resources.displayMetrics
-        val chat = readChat(toScreenNode(root, 0, intArrayOf(0)), metrics.widthPixels, metrics.heightPixels)
+        val chat = readChat(toScreenNode(root, 0, intArrayOf(0)), metrics.widthPixels, metrics.heightPixels,
+            yourNames.get(app))
 
         // A screen without a typing box isn't a chat (like the conversation list)
         if (chat == null) {
             leaveChat()
             return
         }
+        yourNames.set(app, chat.yourName)
         val before = tracker.current
         val fresh = tracker.update(app, chat)
 
@@ -205,6 +227,7 @@ class AutomaticModeService : AccessibilityService() {
             children.add(toScreenNode(child, depth + 1, count))
         }
         return ScreenNode(node.text?.toString().orEmpty(), node.viewIdResourceName.orEmpty(), node.isEditable,
-            bounds.left, bounds.top, bounds.right, bounds.bottom, children, scrollable = node.isScrollable)
+            bounds.left, bounds.top, bounds.right, bounds.bottom, children, scrollable = node.isScrollable,
+            description = node.contentDescription?.toString().orEmpty())
     }
 }

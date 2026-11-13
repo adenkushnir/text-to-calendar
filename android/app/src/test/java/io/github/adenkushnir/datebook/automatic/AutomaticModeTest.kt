@@ -81,7 +81,7 @@ class AutomaticModeTest {
                 children = rows.reversed() + heading),
             ScreenNode(editable = true, left = 196, top = 2843, right = 852, bottom = 3039),
             ScreenNode(viewId = "top_app_bar", children = listOf(ScreenNode(viewId = "top_app_bar_title_row",
-                children = listOf(ScreenNode("Ryan Kushnir", left = 392, top = 219, right = 754, bottom = 303))))),
+                children = listOf(ScreenNode("Sam Rivera", left = 392, top = 219, right = 754, bottom = 303))))),
         ))
     }
 
@@ -90,7 +90,7 @@ class AutomaticModeTest {
     fun readsGoogleMessages() {
         val chat = readChat(googleChat("Run same back." to true, "k change of plans, dinner sat 7:30" to false,
             "Dinner 7pm friday at joes" to true), 1440, 3120)!!
-        assertEquals("Ryan Kushnir", chat.title)
+        assertEquals("Sam Rivera", chat.title)
         assertEquals(listOf(Bubble("k change of plans, dinner sat 7:30", false),
             Bubble("Dinner 7pm friday at joes", true)), chat.bubbles)
         val tracker = ChatTracker()
@@ -114,7 +114,7 @@ class AutomaticModeTest {
         val message = ScreenNode(viewId = "${id}list_item_chat_message", children = listOf(
             ScreenNode("Last read", "${id}last_read_marker_text", left = 624, top = 2219, right = 816, bottom = 2281),
             ScreenNode("Today", "${id}view_timestamp", left = 635, top = 2309, right = 805, bottom = 2380),
-            ScreenNode("Oleg Kokarev", "${id}view_sender_text", left = 182, top = 2454, right = 450, bottom = 2506),
+            ScreenNode("Jake Moore", "${id}view_sender_text", left = 182, top = 2454, right = 450, bottom = 2506),
             ScreenNode("Just now", "${id}view_message_timestamp", left = 450, top = 2454, right = 632, bottom = 2506),
             ScreenNode("practice moved to sat 4pm", "${id}view_message_text", left = 182, top = 2506, right = 1226,
                 bottom = 2710),
@@ -123,12 +123,12 @@ class AutomaticModeTest {
             ScreenNode(viewId = "android:id/list", scrollable = true, left = 0, top = 0, right = 1440, bottom = 3120,
                 children = listOf(poll, message)),
             ScreenNode(viewId = "${id}pills_container", scrollable = true, left = 0, top = 345, right = 1440,
-                bottom = 513, children = listOf(ScreenNode("Stephen Yu created a poll", "${id}pill_text",
+                bottom = 513, children = listOf(ScreenNode("Alex Chen created a poll", "${id}pill_text",
                     left = 1162, top = 398, right = 1440, bottom = 460))),
             ScreenNode(viewId = "${id}toolbar_title_container", children = listOf(
-                ScreenNode("RU Fencing Competitive Team 2025-26", "${id}toolbar_chat_name", left = 308, top = 212,
+                ScreenNode("Soccer Team 2025-26", "${id}toolbar_chat_name", left = 308, top = 212,
                     right = 978, bottom = 281))),
-            ScreenNode("Message RU Fencing Competitive Team 2025-26", "${id}input_chat_message", editable = true,
+            ScreenNode("Message Soccer Team 2025-26", "${id}input_chat_message", editable = true,
                 left = 210, top = 2885, right = 859, bottom = 3011),
         ))
     }
@@ -137,8 +137,53 @@ class AutomaticModeTest {
     @Test
     fun readsGroupMe() {
         val chat = readChat(groupMeChat(), 1440, 3120)!!
-        assertEquals("RU Fencing Competitive Team 2025-26", chat.title)
+        assertEquals("Soccer Team 2025-26", chat.title)
         assertEquals(listOf(Bubble("practice moved to sat 4pm", false)), chat.bubbles)
+    }
+
+    // A GroupMe chat with Jamie as the phone describes it: everyone's messages on the left, each labelled with its
+    // sender, and a profile picture only on the first of a run (yours says "View your profile")
+    private fun groupMeDirect(withYourPicture: Boolean): ScreenNode {
+        val id = "com.groupme.android:id/"
+
+        // One message: its label, its sender's picture (if any) and its text
+        fun message(sender: String, text: String, top: Int, picture: String?): ScreenNode {
+            val pictures = if (picture == null) emptyList() else listOf(ScreenNode(viewId = "${id}view_sender_avatar",
+                description = picture, left = 42, top = top, right = 154, bottom = top + 112))
+            val words = ScreenNode(text, "${id}view_message_text", left = 182, top = top + 50, right = 900,
+                bottom = top + 120)
+            return ScreenNode(viewId = "${id}view_chat_message_container",
+                description = "Tuesday, 9:46 PM\nMessage from $sender\n\n$text", children = pictures + words)
+        }
+        val yourPicture = if (withYourPicture) "View your profile" else null
+        return ScreenNode(children = listOf(
+            ScreenNode(viewId = "android:id/list", scrollable = true, left = 0, top = 0, right = 1440, bottom = 3120,
+                children = listOf(
+                    message("Jamie Fox", "dinner fri 7pm at joes?", 500, "View contact Jamie Fox"),
+                    message("Chris Park", "bowling tues 6pm", 800, yourPicture),
+                    message("Chris Park", "see you there", 1100, null),
+                )),
+            ScreenNode(viewId = "${id}toolbar_title_container", children = listOf(
+                ScreenNode("Jamie Fox", "${id}toolbar_chat_name", left = 308, top = 212, right = 978, bottom = 281))),
+            ScreenNode("Message Jamie Fox", "${id}input_chat_message", editable = true, left = 210, top = 2885,
+                right = 859, bottom = 3011),
+        ))
+    }
+
+    // GroupMe: your name comes from the message with your picture, and every message sent by that name is yours,
+    // even later when your picture isn't on screen; before it's known, none are
+    @Test
+    fun groupMeKnowsYours() {
+        val chat = readChat(groupMeDirect(true), 1440, 3120)!!
+        assertEquals("Chris Park", chat.yourName)
+        assertEquals(listOf(Bubble("dinner fri 7pm at joes?", false), Bubble("bowling tues 6pm", true),
+            Bubble("see you there", true)), chat.bubbles)
+        val later = readChat(groupMeDirect(false), 1440, 3120, yourName = "Chris Park")!!
+        assertEquals(listOf(false, true, true), later.bubbles.map { it.mine })
+        assertEquals(listOf(false, false, false), readChat(groupMeDirect(false), 1440, 3120)!!.bubbles.map { it.mine })
+        val names = YourNames(ApplicationProvider.getApplicationContext())
+        names.set("com.groupme.android", "Chris Park")
+        assertEquals("Chris Park", names.get("com.groupme.android"))
     }
 
     // Scrolling up to older messages and back down sends nothing; the same text sent twice counts again; a message
