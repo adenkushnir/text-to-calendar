@@ -1,5 +1,6 @@
 // The database tables: texts already seen, suggested events, texts waiting to be retried, and failure counts
 package io.github.adenkushnir.datebook.data
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import io.github.adenkushnir.datebook.pipeline.Event
@@ -14,7 +15,8 @@ data class SeenText(
 
 // An event Datebook suggested, who from (and which group chat), whether it is waiting, added or ignored, the clash
 // warning shown with it, for a changed or cancelled plan which calendar event it changes, and its flight, package
-// and place coordinates (kept 1 year; never the message text)
+// and place coordinates, and its start before it changed in the chat while waiting (kept 1 year; never the message
+// text)
 @Entity(tableName = "suggestions")
 data class Suggestion(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -39,6 +41,7 @@ data class Suggestion(
     val trackingNumber: String = "",
     val placeLat: Double? = null,
     val placeLng: Double? = null,
+    @ColumnInfo(defaultValue = "") val previousStart: String = "",
 ) {
     // Turn the saved row back into an event
     fun toEvent(): Event {

@@ -64,6 +64,7 @@ class TextPipeline(
     private val calendar: (fromMillis: Long, toMillis: Long) -> List<CalendarEvent> = { _, _ -> emptyList() },
     private val findPlace: (place: String) -> FoundPlace? = { null },
     private val lookupFlight: (flight: String, date: String) -> FlightInfo? = { _, _ -> null },
+    private val onWithdrawn: (suggestionId: Long) -> Unit = {},
 ) {
     private val health = Health(dao)
 
@@ -111,7 +112,7 @@ class TextPipeline(
         }
         val zone = phoneZone()
         val lines = mutableListOf<String>()
-        val upcoming = if (soundsLikeChange(incoming.text)) upcomingEvents() else emptyList()  // only for changes
+        val upcoming = if (soundsLikeChange(incoming.text)) upcomingEvents(incoming) else emptyList()  // changes only
         val asked = incoming.copy(upcoming = upcoming)
 
         // Ask Claude off the main thread, and turn errors into a log line, a retry and an alert count
@@ -262,6 +263,11 @@ class TextPipeline(
 
         // Save and announce each event
         for (event in events) {
+            // A change to a plan that's still waiting updates that plan instead of making a new one
+            if (event.calendarEventId < 0) {
+                updateWaiting(-event.calendarEventId, event, incoming)?.let { ids.add(it) }
+                continue
+            }
             val others = calendarAround(event).filter { it.eventId != event.calendarEventId }  // not the one it moves
             val clashes = if (event.change == CHANGE_CANCELLED) emptyList() else clashesFor(event, others)
             val clash = clashText(clashes, event.phoneTimezone)
@@ -284,7 +290,7 @@ class TextPipeline(
         if (passesDateCheck(incoming)) {
             return true
         }
-        return incoming.group.isBlank() && soundsLikeChange(incoming.text) && upcomingEvents().isNotEmpty()
+        return incoming.group.isBlank() && soundsLikeChange(incoming.text) && upcomingEvents(incoming).isNotEmpty()
     }
 
     // Fill a flight plan in from live flight data: its title with the route, its departure and arrival in the
@@ -314,10 +320,49 @@ class TextPipeline(
         return event.copy(location = found.line, placeLat = found.lat, placeLng = found.lng)
     }
 
-    // Read the calendar events of the next 2 weeks (at most 40) that a change could refer to, off the main thread
-    private suspend fun upcomingEvents(): List<CalendarEvent> {
+    // List what a change could refer to: this chat's waiting plans first (as negative ids), then the calendar events
+    // of the next 2 weeks, at most 40 in all, read off the main thread
+    private suspend fun upcomingEvents(incoming: IncomingText): List<CalendarEvent> {
         val from = now()
-        return withContext(Dispatchers.IO) { calendar(from, from + CHANGE_WINDOW).take(MAX_LISTED) }
+        val waiting = waitingInChat(incoming).map { plan ->
+            val (begin, end) = eventTimes(plan.toEvent())
+            CalendarEvent(-plan.id, 0, plan.title, begin, end, plan.allDay, plan.location)
+        }
+        return withContext(Dispatchers.IO) { (waiting + calendar(from, from + CHANGE_WINDOW)).take(MAX_LISTED) }
+    }
+
+    // The new plans still waiting from the same chat (the same app and group, or the same person one-to-one) made in
+    // the last week and not started yet (calendar-change prompts don't count); shared things have no chat
+    private suspend fun waitingInChat(incoming: IncomingText): List<Suggestion> {
+        // Shared things don't belong to a chat
+        if (isShared(incoming.app)) {
+            return emptyList()
+        }
+        val since = now() - 7 * DAY
+        return dao.suggestionsWithStatus(Suggestion.STATUS_WAITING).filter {
+            it.change.isBlank() && it.app == incoming.app && it.conversation == incoming.group &&
+                it.createdAt >= since && (incoming.group.isNotBlank() || it.sender == incoming.sender) &&
+                !hasStarted(it.toEvent(), now())
+        }
+    }
+
+    // Update a waiting plan that changed in the chat: a move gets the new times (remembering the old start, once), a
+    // cancellation takes it off the waiting list; returns the plan's id when it's still waiting
+    private suspend fun updateWaiting(id: Long, event: Event, incoming: IncomingText): Long? {
+        val plan = dao.suggestion(id) ?: return null  // already gone
+
+        // A cancelled plan stops waiting and its prompt goes away
+        if (event.change == CHANGE_CANCELLED) {
+            dao.setStatus(id, Suggestion.STATUS_IGNORED)
+            onWithdrawn(id)
+            return null
+        }
+        val clash = clashText(clashesFor(event, calendarAround(event)), event.phoneTimezone)
+        val moved = plan.copy(start = event.start, end = event.end, allDay = event.allDay, timezone = event.timezone,
+            clash = clash, previousStart = plan.previousStart.ifBlank { plan.start })
+        dao.updateSuggestion(moved)
+        onSuggested(moved, incoming)  // replaces its prompt
+        return id
     }
 
     // Read the calendar events from a day before a plan to a day after it, off the main thread (a day either side

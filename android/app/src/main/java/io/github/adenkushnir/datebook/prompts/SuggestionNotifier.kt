@@ -39,7 +39,8 @@ class SuggestionNotifier(private val context: Context) {
         val id = suggestion.id.toInt()
         val whenAndWhere = summary(suggestion.toEvent()).removePrefix("${suggestion.title} · ")
         val clash = if (suggestion.clash.isNotBlank()) "\n⚠ ${suggestion.clash}" else ""  // only when it clashes
-        val details = "From ${fromLine(suggestion)}: \"$quote\"\n$whenAndWhere$clash"
+        val changed = changedNote(suggestion)?.let { "\n$it" }.orEmpty()  // only when it changed in the chat
+        val details = "From ${fromLine(suggestion)}: \"$quote\"\n$whenAndWhere$changed$clash"
         val notification = NotificationCompat.Builder(context, SUGGESTIONS_CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_datebook)
             .setColor(ContextCompat.getColor(context, R.color.brand_teal))

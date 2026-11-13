@@ -54,6 +54,17 @@ fun promptTitle(suggestion: Suggestion): String {
     }
 }
 
+// The note for a waiting plan whose time changed in the chat, like "Changed in chat (was Fri Nov 13, 7:00 PM)", or
+// null when it didn't change
+fun changedNote(suggestion: Suggestion): String? {
+    // Only plans that changed get a note
+    if (suggestion.previousStart.isBlank()) {
+        return null
+    }
+    val before = suggestion.toEvent().copy(start = suggestion.previousStart, location = "", repeat = "")
+    return "Changed in chat (was ${summary(before).removePrefix("${before.title} · ")})"
+}
+
 // Return true if a suggestion changes or cancels an event already on the calendar
 fun isChange(suggestion: Suggestion): Boolean {
     return suggestion.change.isNotBlank()

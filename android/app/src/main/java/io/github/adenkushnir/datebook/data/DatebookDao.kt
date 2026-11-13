@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 // Reads and writes the seen texts, suggestions, retry queue and failure counts
@@ -76,6 +77,10 @@ interface DatebookDao {
     // Delete one suggestion
     @Query("DELETE FROM suggestions WHERE id = :id")
     suspend fun deleteSuggestion(id: Long)
+
+    // Save a changed suggestion over its old version
+    @Update
+    suspend fun updateSuggestion(suggestion: Suggestion)
 
     // Return the flight plans that aren't ignored, for the flight checks
     @Query("SELECT * FROM suggestions WHERE flight != '' AND status != 'ignored'")

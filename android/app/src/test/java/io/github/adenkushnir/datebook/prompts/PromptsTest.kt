@@ -128,4 +128,12 @@ class PromptsTest {
             notesWithTrackLink(delivery))
         assertEquals("Sam (Messages)", notesWithTrackLink(dinner))
     }
+
+    // A plan whose time changed in the chat says what it was before
+    @Test
+    fun changedInChatNote() {
+        assertEquals(null, changedNote(dinner))
+        val moved = dinner.copy(start = "2037-11-13T20:00", previousStart = "2037-11-13T19:00")
+        assertEquals("Changed in chat (was Fri Nov 13, 7:00 PM)", changedNote(moved))
+    }
 }

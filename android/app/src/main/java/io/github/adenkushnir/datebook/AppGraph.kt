@@ -54,6 +54,7 @@ class AppGraph private constructor(context: Context) {
         lookupFlight = { flight, date -> lookupFlight(flightsKeyStore.load(), flight, date)?.also {
             flightStore.save(date, it)  // remembered for the card and the checks
         } },
+        onWithdrawn = { notifier.cancel(it) },
     )
 
     // Return a Claude client for the key, reusing it while the key stays the same

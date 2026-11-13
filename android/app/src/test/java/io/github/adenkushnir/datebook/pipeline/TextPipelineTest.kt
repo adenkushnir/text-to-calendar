@@ -40,6 +40,7 @@ class TextPipelineTest {
     private val retries = mutableListOf<Long>()
     private val prompts = mutableListOf<Pair<String, String>>()
     private val asked = mutableListOf<IncomingText>()
+    private val withdrawn = mutableListOf<Long>()
 
     // Open a fresh in-memory database before each test
     @Before
@@ -74,6 +75,7 @@ class TextPipelineTest {
             calendar = { from, to -> onCalendar.filter { it.begin < to && from < it.end } },
             findPlace = { places[it] },
             lookupFlight = { flight, date -> flights["$flight|$date"] },
+            onWithdrawn = { withdrawn.add(it) },
         )
     }
 
@@ -396,5 +398,28 @@ class TextPipelineTest {
         assertEquals("2037-11-14T01:40", lateSaved.end)
         val unknown = pipeline(listOf(flight.copy(flight = "ZZ9"))).handle(incoming)
         assertTrue(dao.suggestion(unknown.suggestionIds.single())!!.allDay)
+    }
+
+    // A change in the same chat updates the plan still waiting from it (even without a date), keeping the old start for
+    // its note; a cancellation takes it off the waiting list
+    @Test
+    fun waitingPlanChanges() = runTest {
+        val id = pipeline(listOf(dinner)).handle(incoming).suggestionIds.single()
+        val later = Event("Dinner", "2037-11-13T20:00", change = CHANGE_MOVED, calendarRef = 1)
+        val change = incoming.copy(text = "actually 8 works better")
+        val outcome = pipeline(listOf(later)).receive(change)!!
+        assertEquals(-id, asked.last().upcoming.first().eventId)
+        assertEquals(listOf(id), outcome.suggestionIds)
+        val moved = dao.suggestion(id)!!
+        assertEquals("2037-11-13T20:00", moved.start)
+        assertEquals("2037-11-13T19:00", moved.previousStart)
+        assertEquals(Suggestion.STATUS_WAITING, moved.status)
+        assertEquals(1, dao.suggestionsWithStatus(Suggestion.STATUS_WAITING).size)
+        val off = Event("Dinner", "2037-11-13T20:00", change = CHANGE_CANCELLED, calendarRef = 1)
+        pipeline(listOf(off)).receive(incoming.copy(text = "dinner is cancelled sorry"))
+        assertEquals(Suggestion.STATUS_IGNORED, dao.suggestion(id)!!.status)
+        assertEquals(listOf(id), withdrawn)
+        val otherChat = incoming.copy(sender = "Alex", text = "actually 8 works better")
+        assertEquals(null, pipeline(listOf(later)).receive(otherChat))  // no waiting plan from Alex
     }
 }
