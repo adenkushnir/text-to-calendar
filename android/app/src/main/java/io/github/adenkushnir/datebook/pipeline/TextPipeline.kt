@@ -1,4 +1,5 @@
-// Runs a text through Datebook: date check, Claude, already-started check, then saves suggestions or a retry
+// Runs a text through Datebook: date check, Claude, already-started check, then saves suggestions, or when Claude
+// can't read it, a retry and an offline guess that Claude refines later
 package io.github.adenkushnir.datebook.pipeline
 import io.github.adenkushnir.datebook.calendar.CalendarEvent
 import io.github.adenkushnir.datebook.calendar.alreadyOnCalendar
@@ -12,6 +13,8 @@ import io.github.adenkushnir.datebook.data.suggestionOf
 import io.github.adenkushnir.datebook.flights.FlightInfo
 import io.github.adenkushnir.datebook.flights.flightTitle
 import io.github.adenkushnir.datebook.flights.zonedText
+import io.github.adenkushnir.datebook.offline.GuessedTime
+import io.github.adenkushnir.datebook.offline.guessTitle
 import io.github.adenkushnir.datebook.places.FoundPlace
 import java.security.MessageDigest
 import java.time.Duration
@@ -20,26 +23,30 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import kotlin.math.abs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 const val RETRY_MILLIS = 60L * 1000
 const val GIVE_UP_MILLIS = 24L * 60 * 60 * 1000
+const val KEY_RETRY_MILLIS = 60L * 60 * 1000  // key, credit and other problems that don't clear up by themselves
 const val REPEAT_MILLIS = 60L * 60 * 1000
 const val KEEP_SEEN_MILLIS = 7L * 24 * 60 * 60 * 1000
 const val KEEP_SUGGESTIONS_MILLIS = 365L * 24 * 60 * 60 * 1000
 private const val DAY = 24L * 60 * 60 * 1000
 private const val CHANGE_WINDOW = 14 * DAY
 private const val MAX_LISTED = 40
+private const val MAX_GUESSES = 3
 private val LOCAL_MINUTES = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
 
-// One text's result: events to offer, their saved suggestion ids, the lines describing what happened, retry, and what
-// went wrong asking Claude (null when nothing did)
+// One text's result: events to offer, their saved suggestion ids, the lines describing what happened, retry, what
+// went wrong asking Claude (null when nothing did), and whether Claude couldn't read it at all (any failure, or no key)
 data class Outcome(
     val events: List<Event>,
     val lines: List<String>,
     val retry: Boolean,
     val suggestionIds: List<Long> = emptyList(),
     val failure: Failure? = null,
+    val unread: Boolean = false,
 )
 
 // What sharing something to Datebook found: the saved suggestions, or a note saying why there are none, whether
@@ -51,8 +58,8 @@ data class ShareResult(
     val needsKey: Boolean = false,
 )
 
-// The text pipeline; the Claude call, key, zone, clock, calendar, place lookup and flight lookup are passed in so tests
-// can replace them
+// The text pipeline; the Claude call, key, zone, clock, calendar, place lookup, flight lookup and offline date finder
+// are passed in so tests can replace them
 class TextPipeline(
     private val dao: DatebookDao,
     private val apiKey: () -> String?,
@@ -65,6 +72,8 @@ class TextPipeline(
     private val findPlace: (place: String) -> FoundPlace? = { null },
     private val lookupFlight: (flight: String, date: String) -> FlightInfo? = { _, _ -> null },
     private val onWithdrawn: (suggestionId: Long) -> Unit = {},
+    private val guessTimes: (text: String, receivedAt: LocalDateTime, zone: String) -> List<GuessedTime> =
+        { _, _, _ -> emptyList() },
 ) {
     private val health = Health(dao)
 
@@ -108,7 +117,7 @@ class TextPipeline(
 
         // Without an API key we can only say a date was found
         if (key.isNullOrBlank()) {
-            return Outcome(emptyList(), listOf("date found, no API key"), false)
+            return Outcome(emptyList(), listOf("date found, no API key"), false, unread = true)
         }
         val zone = phoneZone()
         val lines = mutableListOf<String>()
@@ -125,7 +134,8 @@ class TextPipeline(
             if (failure.problem != null && health.failed(failure.problem)) {
                 lines.add("alert: ${ALERT_TITLES.getValue(failure.problem)}")
             }
-            return Outcome(emptyList(), listOf(failure.line) + lines, failure.retry, failure = failure)
+            return Outcome(emptyList(), listOf(failure.line) + lines, failure.retry, failure = failure,
+                unread = true)
         }
         clearApiAlerts(lines)
 
@@ -162,19 +172,24 @@ class TextPipeline(
         return Outcome(toOffer, lines, false)
     }
 
-    // Handle a new text: describe it, then save its suggestions, or save it to try again when the phone is online
+    // Handle a new text: describe it, then save its suggestions; when Claude couldn't read it, save it to try again
+    // (every minute once online, or every hour for key and other problems) and leave quiet guesses waiting on Home
     suspend fun handle(incoming: IncomingText): Outcome {
         val outcome = describe(incoming)
 
-        // Save texts that failed for a reason that may clear up, like no internet
-        if (outcome.retry) {
+        // Keep texts Claude couldn't read, and guess their plans on the phone meanwhile
+        if (outcome.unread) {
             val time = now()
-            dao.saveRetry(RetryText(sender = incoming.sender, text = incoming.text,
+            val wait = if (outcome.retry) RETRY_MILLIS else KEY_RETRY_MILLIS  // no internet clears up soonest
+            val retryId = dao.saveRetry(RetryText(sender = incoming.sender, text = incoming.text,
                 receivedAt = incoming.receivedAt.toString(), app = incoming.app, conversation = incoming.group,
                 savedAt = time,
-                nextTry = time + RETRY_MILLIS))
-            onRetrySaved(time + RETRY_MILLIS)
-            return outcome.copy(lines = outcome.lines + "will try again every minute once online")
+                nextTry = time + wait))
+            onRetrySaved(time + wait)
+            val guesses = saveGuesses(incoming, retryId)
+            val again = if (outcome.retry) "will try again every minute once online" else "will try again every hour"
+            val guessed = "offline guesses: ${guesses.size}"
+            return outcome.copy(lines = outcome.lines + again + guessed, suggestionIds = guesses)
         }
         return outcome.copy(suggestionIds = saveSuggestions(outcome.events, incoming))
     }
@@ -213,7 +228,8 @@ class TextPipeline(
         return ShareResult(ids.mapNotNull { dao.suggestion(it) })
     }
 
-    // Try the saved texts that are due, giving up on any saved over a day ago; returns what happened to each
+    // Try the saved texts that are due, giving up on any saved over a day ago (their guesses stay, unchecked); when
+    // Claude reads one, its guesses are replaced; returns what happened to each
     suspend fun retryDue(): List<Outcome> {
         val results = mutableListOf<Outcome>()
 
@@ -224,13 +240,18 @@ class TextPipeline(
             val outcome = describe(incoming)
 
             // Wait for the next round if it still fails and isn't too old yet
-            if (outcome.retry && now() - retry.savedAt < GIVE_UP_MILLIS) {
-                dao.rescheduleRetry(retry.id, now() + RETRY_MILLIS)
+            if (outcome.unread && now() - retry.savedAt < GIVE_UP_MILLIS) {
+                dao.rescheduleRetry(retry.id, now() + if (outcome.retry) RETRY_MILLIS else KEY_RETRY_MILLIS)
                 continue
             }
             dao.deleteRetry(retry.id)
-            val lines = if (outcome.retry) outcome.lines.map { "gave up ($it)" } else outcome.lines  // still failing
-            results.add(outcome.copy(lines = lines, suggestionIds = saveSuggestions(outcome.events, incoming)))
+
+            // Give up on a text that still can't be read; its guesses stay on Home as not checked
+            if (outcome.unread) {
+                results.add(outcome.copy(lines = outcome.lines.map { "gave up ($it)" }))
+                continue
+            }
+            results.add(outcome.copy(suggestionIds = refineGuesses(retry.id, outcome.events, incoming)))
         }
         return results
     }
@@ -281,6 +302,69 @@ class TextPipeline(
             ids.add(id)
         }
         return ids
+    }
+
+    // Save quiet guesses for a text Claude couldn't read: "Plan with Sam" at each date or time found on the phone (at
+    // most 3, none already started), linked to its retry so Claude can replace them later; returns their ids
+    private suspend fun saveGuesses(incoming: IncomingText, retryId: Long): List<Long> {
+        val zone = phoneZone()
+        val times = withContext(Dispatchers.IO) { guessTimes(incoming.text, incoming.receivedAt, zone) }
+        val ids = mutableListOf<Long>()
+
+        // Save each time found as a waiting guess, with no prompt
+        for (time in times.take(MAX_GUESSES)) {
+            val event = Event(guessTitle(incoming), time.start, allDay = time.allDay, phoneTimezone = zone)
+
+            // Skip times that are already over
+            if (hasStarted(event, now())) {
+                continue
+            }
+            val clash = clashText(clashesFor(event, calendarAround(event)), zone)
+            ids.add(dao.saveSuggestion(suggestionOf(event, incoming, now(), clash).copy(retryId = retryId)))
+        }
+        return ids
+    }
+
+    // Once Claude has read a text: its waiting guesses are replaced quietly by Claude's plans; a guess you already
+    // added gets a "Move …?" prompt only when Claude found another time or a place; with no guesses, Claude's plans
+    // are announced as usual; returns the ids of the plans saved
+    private suspend fun refineGuesses(retryId: Long, events: List<Event>, incoming: IncomingText): List<Long> {
+        val guesses = dao.guessesFor(retryId)
+
+        // Without guesses, the plans are announced like any new plan
+        if (guesses.isEmpty()) {
+            return saveSuggestions(events, incoming)
+        }
+        val left = events.toMutableList()
+        val ids = mutableListOf<Long>()
+
+        // Swap each guess for Claude's version
+        for (guess in guesses) {
+            // A guess still waiting just goes; Claude's plans take its place below
+            if (guess.status == Suggestion.STATUS_WAITING) {
+                dao.deleteSuggestion(guess.id)
+                continue
+            }
+
+            // Only guesses you added need their calendar event updated
+            if (guess.status != Suggestion.STATUS_ADDED) {
+                continue
+            }
+            val guessBegin = eventTimes(guess.toEvent()).first
+            val event = left.minByOrNull { abs(eventTimes(it).first - guessBegin) } ?: continue  // Claude found none
+            left.remove(event)
+            val sameTime = event.start == guess.start && event.allDay == guess.allDay
+            val onCalendar = calendarAround(guess.toEvent()).firstOrNull {
+                it.title == guess.title && abs(it.begin - guessBegin) < 60_000
+            }
+
+            // Ask to update the calendar event when the time differs or Claude found a place (and it's still there)
+            if ((!sameTime || event.location.isNotBlank()) && onCalendar != null) {
+                val move = event.copy(title = guess.title, change = CHANGE_MOVED, calendarEventId = onCalendar.eventId)
+                ids.addAll(saveSuggestions(listOf(move), incoming))
+            }
+        }
+        return ids + saveSuggestions(left, incoming, announce = false)
     }
 
     // Return true if a text should go to Claude: it passes the date check, or (outside group chats, which always need a

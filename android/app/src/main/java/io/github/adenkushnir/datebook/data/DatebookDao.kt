@@ -89,4 +89,16 @@ interface DatebookDao {
     // Delete suggestions created before the cutoff
     @Query("DELETE FROM suggestions WHERE createdAt < :cutoff")
     suspend fun deleteSuggestionsBefore(cutoff: Long)
+
+    // Return the offline guesses made for a text in the retry queue
+    @Query("SELECT * FROM suggestions WHERE retryId = :retryId")
+    suspend fun guessesFor(retryId: Long): List<Suggestion>
+
+    // Return a text in the retry queue, or null once it's been checked or given up on
+    @Query("SELECT * FROM retry WHERE id = :id")
+    suspend fun retryText(id: Long): RetryText?
+
+    // Watch which texts are still in the retry queue, so guesses show whether Claude is still to check them
+    @Query("SELECT id FROM retry")
+    fun watchRetryIds(): Flow<List<Long>>
 }

@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.pipeline.summary
 import io.github.adenkushnir.datebook.prompts.changedNote
+import io.github.adenkushnir.datebook.prompts.guessNote
 import io.github.adenkushnir.datebook.prompts.fromLine
 import io.github.adenkushnir.datebook.trains.TrainBoard
 import io.github.adenkushnir.datebook.prompts.isChange
@@ -55,6 +56,7 @@ fun HomeScreen(
     fixes: List<Pair<String, () -> Unit>> = emptyList(),
     trains: TrainBoard? = null,
     onFlipTrains: () -> Unit = {},
+    checking: Set<Long> = emptySet(),
 ) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         TopBar("Datebook", onSettings = onSettings)
@@ -86,6 +88,7 @@ fun HomeScreen(
                             Text(promptTitle(suggestion), fontWeight = FontWeight.SemiBold)
                             Muted(whenAndWhere(suggestion))
                             changedNote(suggestion)?.let { Muted(it) }  // only when it changed in the chat
+                            guessNote(suggestion, suggestion.retryId in checking)?.let { Muted(it) }  // guesses only
                             ClashLine(suggestion.clash)
                         }
                         Button(onClick = { onAdd(suggestion.id) }) {

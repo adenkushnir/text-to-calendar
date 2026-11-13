@@ -71,6 +71,16 @@ fun changedNote(suggestion: Suggestion): String? {
     return "Changed in chat (was ${summary(before).removePrefix("${before.title} · ")})"
 }
 
+// The note for an offline guess: "Offline guess · waiting for Claude" while Claude is still to check the text, "Not
+// checked by Claude" once Datebook gave up trying, or null for plans Claude read
+fun guessNote(suggestion: Suggestion, checking: Boolean): String? {
+    // Only guesses get a note
+    if (suggestion.retryId == 0L) {
+        return null
+    }
+    return if (checking) "Offline guess · waiting for Claude" else "Not checked by Claude"
+}
+
 // Return true if a suggestion changes or cancels an event already on the calendar
 fun isChange(suggestion: Suggestion): Boolean {
     return suggestion.change.isNotBlank()
