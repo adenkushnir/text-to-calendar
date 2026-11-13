@@ -287,17 +287,18 @@ class TextPipeline(
         return incoming.group.isBlank() && soundsLikeChange(incoming.text) && upcomingEvents().isNotEmpty()
     }
 
-    // Fill a flight plan in from live flight data: its title with the route, its scheduled departure and arrival in
-    // the departure airport's time, and the airport as its place; it stays as Claude wrote it without data
+    // Fill a flight plan in from live flight data: its title with the route, its departure and arrival in the
+    // departure airport's time (the delayed times when it's already delayed, else the scheduled ones), and the airport
+    // as its place; it stays as Claude wrote it without data
     private suspend fun withFlightTimes(event: Event): Event {
         // Only flights are looked up
         if (event.flight.isBlank()) {
             return event
         }
         val info = withContext(Dispatchers.IO) { lookupFlight(event.flight, event.start.take(10)) } ?: return event
-        val departs = info.departScheduled ?: return event  // no times to fill in
+        val departs = info.departBest ?: info.departScheduled ?: return event  // no times to fill in
         val zone = zoneOf(info.fromZone) ?: zoneOf(event.phoneTimezone) ?: ZoneId.systemDefault()
-        val end = info.arriveScheduled?.let { zonedText(it, zone) }.orEmpty()  // empty when unknown
+        val end = (info.arriveBest ?: info.arriveScheduled)?.let { zonedText(it, zone) }.orEmpty()  // empty if unknown
         return event.copy(title = flightTitle(info), start = zonedText(departs, zone), end = end, allDay = false,
             timezone = zone.id, location = info.fromName.ifBlank { event.location })
     }

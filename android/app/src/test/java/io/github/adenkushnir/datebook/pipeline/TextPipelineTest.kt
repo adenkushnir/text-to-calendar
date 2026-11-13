@@ -372,8 +372,8 @@ class TextPipelineTest {
         assertEquals(null, saved[1].placeLat)
     }
 
-    // A flight plan is filled in from the flight data: route title, scheduled times in the departure airport's zone,
-    // and the airport as its place; flights the data doesn't know stay as Claude wrote them
+    // A flight plan is filled in from the flight data: route title, times (delayed ones when it's late) in the
+    // departure airport's zone, and the airport as its place; flights the data doesn't know stay as Claude wrote them
     @Test
     fun flightFilledIn() = runTest {
         val info = FlightInfo("UA1234", "Expected", "EWR", "Newark", "Newark Liberty International",
@@ -388,6 +388,12 @@ class TextPipelineTest {
         assertFalse(saved.allDay)
         assertEquals("America/New_York", saved.timezone)
         assertEquals("Newark Liberty International", saved.location)
+        val delayed = info.copy(departBest = Instant.parse("2037-11-14T00:30:00Z"),
+            arriveBest = Instant.parse("2037-11-14T06:40:00Z"))
+        val late = pipeline(listOf(flight), flights = mapOf("UA1234|2037-11-13" to delayed)).handle(incoming)
+        val lateSaved = dao.suggestion(late.suggestionIds.single())!!
+        assertEquals("2037-11-13T19:30", lateSaved.start)  // the delayed time, not 6:45 PM
+        assertEquals("2037-11-14T01:40", lateSaved.end)
         val unknown = pipeline(listOf(flight.copy(flight = "ZZ9"))).handle(incoming)
         assertTrue(dao.suggestion(unknown.suggestionIds.single())!!.allDay)
     }
