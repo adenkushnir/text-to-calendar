@@ -148,6 +148,12 @@ object DatebookIcons {
         "M14.2 16a3.8 3.8 0 1 0 7.6 0a3.8 3.8 0 1 0 -7.6 0",
         "M6 16l4-7.5h5.5L18 16M10 8.5L13 16H6M13.5 5.5h3",
     )
+    // A framed picture of hills and a sun, for the Look page
+    val Picture = icon("picture", filled = false,
+        "M6 5h12a2.5 2.5 0 0 1 2.5 2.5v9a2.5 2.5 0 0 1 -2.5 2.5h-12a2.5 2.5 0 0 1 -2.5 -2.5v-9a2.5 2.5 0 0 1 2.5 -2.5z",
+        "M6 16.5l4-4.5 3 3.5 2.5-2.5 3 3.5",
+        "M13.9 9a1.6 1.6 0 1 0 3.2 0a1.6 1.6 0 1 0 -3.2 0",
+    )
     // A warning triangle
     val Warn = icon("warn", filled = false,
         "M12 3.5l9.5 16.5h-19z",

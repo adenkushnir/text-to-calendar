@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Brand colours used by the start-up window and the app icon (the screens use Color.kt) -->
+<!-- Brand colours used by the start-up window and the notifications (the screens use Color.kt) -->
 <resources>
-    <color name="brand_teal">#00897B</color>
+    <color name="brand_aqua">#0E86C4</color>  <!-- Aero aqua: the notification accent -->
     <color name="brand_teal_dark">#26A69A</color>
     <color name="background_light">#F4F7F6</color>
     <color name="background_dark">#101816</color>
-    <color name="icon_background">#FFFFFF</color>
 </resources>

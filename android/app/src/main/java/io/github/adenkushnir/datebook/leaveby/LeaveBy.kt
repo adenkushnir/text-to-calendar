@@ -189,7 +189,7 @@ fun showLeaveBy(context: Context, event: CalendarEvent, minutes: Int, mode: Stri
     val text = "${event.title.ifBlank { "Event" }} · ${tripText(minutes, mode)}"
     val builder = NotificationCompat.Builder(context, LEAVE_BY_CHANNEL)
         .setSmallIcon(R.drawable.ic_stat_datebook)
-        .setColor(ContextCompat.getColor(context, R.color.brand_teal))
+        .setColor(ContextCompat.getColor(context, R.color.brand_aqua))
         .setContentTitle(leaveByTitle(event.begin, minutes, ZoneId.systemDefault()))
         .setContentText(text)
         .setStyle(NotificationCompat.BigTextStyle().bigText(listOfNotNull(text, trainLine?.let { "🚆 $it" },

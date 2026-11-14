@@ -85,7 +85,7 @@ fun showFlightChange(context: Context, plan: Suggestion, change: String, status:
     val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     val notification = NotificationCompat.Builder(context, CHANGES_CHANNEL)
         .setSmallIcon(R.drawable.ic_stat_datebook)
-        .setColor(ContextCompat.getColor(context, R.color.brand_teal))
+        .setColor(ContextCompat.getColor(context, R.color.brand_aqua))
         .setContentTitle(change)
         .setContentText(status)
         .setCategory(NotificationCompat.CATEGORY_STATUS)

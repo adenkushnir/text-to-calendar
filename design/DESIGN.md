@@ -82,20 +82,27 @@ All movement bends the photo's own pixels, or moves photo-real cutouts, so it lo
 
 | Scene | Water | Sway | Flow | Bob | Caustics | Glints | Lens bubbles |
 |---|---|---|---|---|---|---|---|
-| Lakeside city | 0.0035 | 0.0022 | | | | 0.9 | |
+| Lakeside city | 0.0035 | 0.006 | | | | 0.9 | |
 | Aquarium | 0.005 | | | | 0.45 | 0.5 | 8 (below the surface) |
 | Light ribbons | | | 0.006 | | | 0.9 | 3 |
 | Dewdrop close-up | | | | | | 1.2 | |
 | Bubble field | | | | 0.006 | | 0.9 | 9 |
 | Tropical beach | 0.0035 | 0.004 | | | | 0.9 | |
 
-- **Lens bubbles:** each one bends the picture behind it like a lens, with a rainbow rim and a shine.
+- **Wind:** sway comes in slow gusts that roll across the grass (and the palm) about every 11 seconds; the blades
+  bend, flutter and catch a little more light as each gust passes.
+- **Lens bubbles:** each one bends the picture behind it like a lens, with a rainbow rim and a shine. They rise
+  from below the screen and leave off the top; in the Aquarium they pop at the water's surface.
 - **Fish:** goldfish, clownfish, blue tang and yellow tang cutouts, drawn in thin strips so the tail swings as they
   swim. They're tinted bluer and darker as night falls.
 - **Surprises:** about every 3 minutes, a giant soap bubble drifts across the screen for 14 seconds. In the Aquarium a
   big goldfish swims by up close instead.
 - **Battery:** motion runs only while Datebook is on screen. It stops in battery saver and when Android's "remove
-  animations" setting is on, and it's capped at 30 frames a second.
+  animations" setting is on (both checked every 5 seconds), and it's capped at 30 frames a second.
+- **Moving backgrounds switch:** Settings → Look, on to start. Switched off, the scenes stand still but still change
+  with the time of day.
+- **Share sheet:** its beach moves too. It's framed on the open water, with stronger waves (0.008) and 6 lens bubbles
+  rising behind the glass, so the motion shows through the wash.
 
 ## Glass
 
@@ -142,7 +149,9 @@ The app is always dark, so all the glass is dark glass with light text.
   - **Foreground layer:** the bubble, sized to 56% of the 108dp layer so every launcher shape shows it whole. The two
     layers move apart a little when the launcher animates them.
 - **Themed icon (Android 13+):** a one-colour vector of a bubble outline with a shine and a small calendar inside.
-- **Play Store:** a 512 × 512 picture; Google Play shows it as a rounded square.
+- **Play Store:** a 512 × 512 picture ([icon/play-store.png](icon/play-store.png)); Google Play shows it as a rounded
+  square.
+- **Splash screen (Android 12+):** Android shows the adaptive icon on the dark start-up background by itself.
 
 ## Notifications
 
@@ -168,11 +177,13 @@ and stops at a spending cap. It reads the API key from the environment and never
 **Picked masters:** lake midday version 2, and version 1 of every other scene. **Picked fish:** version 1 of each.
 Making every picture cost about $14 at the script's estimate of $0.15 per image.
 
-[make_app_scenes.py](make_app_scenes.py) turns the picked masters and their relights into the app's 36 scene
-pictures: 1080-wide WebP files in `android/app/src/main/res/drawable-nodpi`, 5.8 MB in total.
+[make_app_scenes.py](make_app_scenes.py) turns the picked masters and their relights into the app's pictures in
+`android/app/src/main/res/drawable-nodpi`: the 36 scene pictures (1080-wide WebP), the six packed effect masks
+(`mask_*.png`, 384 × 688) and the four fish cutouts (`fish_*.png`, 420 wide, white cut away), 6.6 MB in total.
 
-The workshop also packed the masks, cut the white off the fish, and split the icon into its layers. Those helper
-scripts move into this folder with the build steps that use them.
+[make_icon.py](make_icon.py) splits the picked icon into its two 432-pixel layers (`ic_launcher_background.webp` and
+`ic_launcher_bubble.webp` in the same drawables folder) and makes the Play Store icon. The themed icon and the
+notification icon are hand-drawn vectors (`ic_launcher_monochrome.xml`, `ic_stat_datebook.xml`).
 
 ## Building it
 
@@ -180,6 +191,7 @@ Planned in steps, each tested on a real phone:
 
 1. The pictures and the time-of-day light (still pictures with eased fades; works on every Android version). Done.
 2. The glass: Haze cards, tints, the clear top bar, Selawik, and glass tile icons. Done.
-3. The motion: the AGSL shader with masks, the fish, lens bubbles and surprises, and the battery rules.
-4. Dark mode and late-night dimming.
-5. The app icon and notifications.
+3. The motion: the AGSL shader with masks, the fish, lens bubbles and surprises, and the battery rules. Done.
+4. Dark mode and late-night dimming. Done as part of steps 1 to 3 (the app is always dark; the late dimming is in
+   both the still and the moving scenes).
+5. The app icon and notifications. Done.
