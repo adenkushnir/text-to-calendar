@@ -6,6 +6,9 @@ import com.anthropic.errors.AnthropicIoException
 import io.github.adenkushnir.datebook.calendar.CalendarEvent
 import io.github.adenkushnir.datebook.data.DatebookDao
 import io.github.adenkushnir.datebook.data.DatebookDatabase
+import io.github.adenkushnir.datebook.data.FollowUp
+import io.github.adenkushnir.datebook.data.KIND_DUE
+import io.github.adenkushnir.datebook.data.KIND_LOOSE
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.data.suggestionOf
 import io.github.adenkushnir.datebook.flights.FlightInfo
@@ -236,6 +239,49 @@ class TextPipelineTest {
         assertEquals(listOf("already waiting, skipped: Dinner with Sam | 2037-11-13T19:00 to ? | Joe's"), again.lines)
         assertTrue(again.suggestionIds.isEmpty())
         assertEquals(1, prompts.size)
+    }
+
+    // A loose plan and a bill become follow-ups with no prompt; the same one open twice, or a bill already past, isn't
+    // saved again
+    @Test
+    fun followUpsSaved() = runTest {
+        val lunch = Event("Lunch with Sam", "2037-11-16", allDay = true, kind = KIND_LOOSE)
+        val bill = Event("Phone bill", "2037-11-20", allDay = true, kind = KIND_DUE, amount = "$45")
+        val oldBill = Event("Old bill", "2020-01-01", allDay = true, kind = KIND_DUE)
+        val outcome = pipeline(listOf(lunch, bill, oldBill)).handle(incoming)
+        assertEquals(listOf("loose: Lunch with Sam | 2037-11-16 to ? | no location",
+            "due: Phone bill | 2037-11-20 to ? | no location", "due: Old bill | 2020-01-01 to ? | no location"),
+            outcome.lines)
+        assertTrue(outcome.suggestionIds.isEmpty())
+        assertTrue(prompts.isEmpty())
+        assertEquals(listOf("Lunch with Sam"), dao.openFollowUps(KIND_LOOSE).map { it.title })
+        val saved = dao.openFollowUps(KIND_DUE).single()
+        assertEquals("$45", saved.amount)
+        assertEquals("Sam", saved.sender)
+        assertTrue(saved.nextNudge > 0)
+        pipeline(listOf(bill)).handle(incoming.copy(text = "reminder: phone bill due fri"))
+        assertEquals(1, dao.openFollowUps(KIND_DUE).size)
+    }
+
+    // A real plan from the same chat that shares a word ("Lunch at Luigi's") closes the loose plan ("Lunch with Sam")
+    @Test
+    fun loosePlanClosesWhenPinnedDown() = runTest {
+        pipeline(listOf(Event("Lunch with Sam", "", allDay = true, kind = KIND_LOOSE))).handle(incoming)
+        assertEquals(1, dao.openFollowUps(KIND_LOOSE).size)
+        pipeline(listOf(Event("Dinner at Joe's", "2037-11-13T19:00"))).handle(incoming.copy(text = "dinner fri 7?"))
+        assertEquals(1, dao.openFollowUps(KIND_LOOSE).size)  // a different plan leaves it open
+        pipeline(listOf(Event("Lunch at Luigi's", "2037-11-14T12:00"))).handle(incoming.copy(text = "lunch sat noon"))
+        assertTrue(dao.openFollowUps(KIND_LOOSE).isEmpty())
+    }
+
+    // Sharing something with only a bill in it says where it was saved
+    @Test
+    fun sharedBillSaved() = runTest {
+        val bill = Event("Rent", "2037-12-01", allDay = true, kind = KIND_DUE, amount = "$1,200")
+        val shared = incoming.copy(sender = "you", text = "rent due dec 1", app = SHARED_TEXT_APP)
+        val result = pipeline(listOf(bill)).share(shared)
+        assertEquals("Saved on Datebook's home screen, under Bills due or Loose plans.", result.note)
+        assertEquals(FollowUp.OPEN, dao.openFollowUps(KIND_DUE).single().status)
     }
 
     // A key problem alerts at once, and the next good answer from Claude clears the alert and its count

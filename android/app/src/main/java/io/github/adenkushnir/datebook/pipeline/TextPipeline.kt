@@ -6,6 +6,9 @@ import io.github.adenkushnir.datebook.calendar.alreadyOnCalendar
 import io.github.adenkushnir.datebook.calendar.clashText
 import io.github.adenkushnir.datebook.calendar.clashesFor
 import io.github.adenkushnir.datebook.data.DatebookDao
+import io.github.adenkushnir.datebook.data.FollowUp
+import io.github.adenkushnir.datebook.data.KIND_LOOSE
+import io.github.adenkushnir.datebook.data.firstNudge
 import io.github.adenkushnir.datebook.data.RetryText
 import io.github.adenkushnir.datebook.data.SeenText
 import io.github.adenkushnir.datebook.data.Suggestion
@@ -19,6 +22,7 @@ import io.github.adenkushnir.datebook.places.FoundPlace
 import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.ZoneOffset
@@ -36,10 +40,13 @@ private const val DAY = 24L * 60 * 60 * 1000
 private const val CHANGE_WINDOW = 14 * DAY
 private const val MAX_LISTED = 40
 private const val MAX_GUESSES = 3
+private val TITLE_WORDS = Regex("[a-z]{4,}")
+private val COMMON_WORDS = setOf("with", "plan", "plans", "about", "some", "time", "sometime")
 private val LOCAL_MINUTES = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
 
 // One text's result: events to offer, their saved suggestion ids, the lines describing what happened, retry, what
-// went wrong asking Claude (null when nothing did), and whether Claude couldn't read it at all (any failure, or no key)
+// went wrong asking Claude (null when nothing did), whether Claude couldn't read it at all (any failure, or no key),
+// and the loose plans and bills it found, which become follow-ups instead of plans
 data class Outcome(
     val events: List<Event>,
     val lines: List<String>,
@@ -47,6 +54,7 @@ data class Outcome(
     val suggestionIds: List<Long> = emptyList(),
     val failure: Failure? = null,
     val unread: Boolean = false,
+    val followUps: List<Event> = emptyList(),
 )
 
 // What sharing something to Datebook found: the saved suggestions, or a note saying why there are none, whether
@@ -144,9 +152,16 @@ class TextPipeline(
             return Outcome(emptyList(), listOf("date found, no event") + lines, false)
         }
         val toOffer = mutableListOf<Event>()
+        val followUps = mutableListOf<Event>()
 
         // Keep each event that hasn't started yet, and describe every one
         for (claudeEvent in found) {
+            // Loose plans and bills become follow-ups, not plans
+            if (claudeEvent.kind != KIND_EVENT) {
+                followUps.add(claudeEvent)
+                lines.add("${claudeEvent.kind}: ${eventDetails(claudeEvent)}")
+                continue
+            }
             val (matched, changed) = matchChange(nameGroupBirthday(claudeEvent, incoming), upcoming)
             val event = withFlightTimes(matched)
 
@@ -173,7 +188,7 @@ class TextPipeline(
             val kind = placed.change.ifBlank { "event" }  // "moved" or "cancelled" for changes
             lines.add("$kind: ${eventDetails(placed)}")
         }
-        return Outcome(toOffer, lines, false)
+        return Outcome(toOffer, lines, false, followUps = followUps)
     }
 
     // Handle a new text: describe it, then save its suggestions; when Claude couldn't read it, save it to try again
@@ -195,6 +210,7 @@ class TextPipeline(
             val guessed = "offline guesses: ${guesses.size}"
             return outcome.copy(lines = outcome.lines + again + guessed, suggestionIds = guesses)
         }
+        saveFollowUps(outcome.followUps, incoming)
         return outcome.copy(suggestionIds = saveSuggestions(outcome.events, incoming))
     }
 
@@ -219,10 +235,12 @@ class TextPipeline(
             }
         }
         val ids = saveSuggestions(outcome.events, incoming, announce = false)
+        val saved = saveFollowUps(outcome.followUps, incoming)
 
         // Say why nothing was found: the plans are already on the calendar, are over, or there were none
         if (ids.isEmpty()) {
             val note = when {
+                saved > 0 -> "Saved on Datebook's home screen, under Bills due or Loose plans."
                 outcome.lines.any { it.startsWith("already on calendar") } -> "That's already on your calendar."
                 outcome.lines.any { it.startsWith("already waiting") } -> "That's already waiting for you in Datebook."
                 outcome.lines.any { it.startsWith("already started") } -> "That plan has already started."
@@ -256,6 +274,7 @@ class TextPipeline(
                 results.add(outcome.copy(lines = outcome.lines.map { "gave up ($it)" }))
                 continue
             }
+            saveFollowUps(outcome.followUps, incoming)
             results.add(outcome.copy(suggestionIds = refineGuesses(retry.id, outcome.events, incoming)))
         }
         return results
@@ -299,6 +318,7 @@ class TextPipeline(
             val clash = clashText(clashes, event.phoneTimezone)
             val suggestion = suggestionOf(event, incoming, now(), clash)
             val id = dao.saveSuggestion(suggestion)
+            closeLoosePlans(event, incoming)
 
             // Show a prompt for it, except for shared things
             if (announce) {
@@ -307,6 +327,52 @@ class TextPipeline(
             ids.add(id)
         }
         return ids
+    }
+
+    // Save loose plans and bills as follow-ups (not the same one twice while it's open, and no bill already past due),
+    // with their first nudge or reminder booked; returns how many were saved
+    private suspend fun saveFollowUps(found: List<Event>, incoming: IncomingText): Int {
+        val zone = zoneOf(phoneZone()) ?: ZoneId.systemDefault()
+        val today = Instant.ofEpochMilli(now()).atZone(zone).toLocalDate()
+        var saved = 0
+
+        // Save each one that's new and not over
+        for (event in found) {
+            val day = event.start.take(10)
+            val past = runCatching { LocalDate.parse(day) < today }.getOrDefault(false)
+            val open = dao.openFollowUps(event.kind).any {
+                it.title.equals(event.title, ignoreCase = true) && it.date == day
+            }
+
+            // Skip repeats and bills already past due
+            if (open || (past && event.kind != KIND_LOOSE)) {
+                continue
+            }
+            dao.saveFollowUp(FollowUp(kind = event.kind, title = event.title, date = day, amount = event.amount,
+                sender = incoming.sender, app = incoming.app, conversation = incoming.group,
+                status = FollowUp.OPEN, createdAt = now(), nextNudge = firstNudge(event.kind, day, now(), zone),
+                nudges = 0))
+            saved += 1
+        }
+        return saved
+    }
+
+    // Close the open loose plans from a chat once a real plan about the same thing arrives from it ("Lunch with Sam"
+    // closes when "Lunch at Luigi's" comes in): they share a word of 4 letters or more
+    private suspend fun closeLoosePlans(plan: Event, incoming: IncomingText) {
+        val words = TITLE_WORDS.findAll(plan.title.lowercase()).map { it.value }.toSet() - COMMON_WORDS
+
+        // Check each open loose plan from the same chat
+        for (loose in dao.openFollowUps(KIND_LOOSE)) {
+            val sameChat = loose.app == incoming.app && loose.conversation == incoming.group &&
+                (incoming.group.isNotBlank() || loose.sender == incoming.sender)
+            val shared = TITLE_WORDS.findAll(loose.title.lowercase()).any { it.value in words }
+
+            // Pinned down: the loose plan is done
+            if (sameChat && shared) {
+                dao.setFollowUpStatus(loose.id, FollowUp.DONE)
+            }
+        }
     }
 
     // Save quiet guesses for a text Claude couldn't read: "Plan with Sam" at each date or time found on the phone (at

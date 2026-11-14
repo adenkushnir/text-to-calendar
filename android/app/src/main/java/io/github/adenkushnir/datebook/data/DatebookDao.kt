@@ -101,4 +101,32 @@ interface DatebookDao {
     // Watch which texts are still in the retry queue, so guesses show whether Claude is still to check them
     @Query("SELECT id FROM retry")
     fun watchRetryIds(): Flow<List<Long>>
+
+    // Save a new follow-up and return its id
+    @Insert
+    suspend fun saveFollowUp(followUp: FollowUp): Long
+
+    // Return a follow-up by id, or null if it's gone
+    @Query("SELECT * FROM followups WHERE id = :id")
+    suspend fun followUp(id: Long): FollowUp?
+
+    // Save a changed follow-up over its old version
+    @Update
+    suspend fun updateFollowUp(followUp: FollowUp)
+
+    // Return the open follow-ups of a kind
+    @Query("SELECT * FROM followups WHERE kind = :kind AND status = 'open' ORDER BY date, createdAt")
+    suspend fun openFollowUps(kind: String): List<FollowUp>
+
+    // Watch the open follow-ups of a kind, soonest day first, for Home
+    @Query("SELECT * FROM followups WHERE kind = :kind AND status = 'open' ORDER BY date, createdAt")
+    fun watchOpenFollowUps(kind: String): Flow<List<FollowUp>>
+
+    // Return the open follow-ups whose next nudge or reminder is due
+    @Query("SELECT * FROM followups WHERE status = 'open' AND nextNudge > 0 AND nextNudge <= :now")
+    suspend fun followUpsDue(now: Long): List<FollowUp>
+
+    // Mark a follow-up done, dropped or open again
+    @Query("UPDATE followups SET status = :status WHERE id = :id")
+    suspend fun setFollowUpStatus(id: Long, status: String)
 }

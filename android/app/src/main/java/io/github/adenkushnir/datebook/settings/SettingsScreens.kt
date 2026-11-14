@@ -63,7 +63,8 @@ const val PRIVACY_SUMMARY = "Datebook checks texts from the apps you switch on, 
     "API key (for group chats, with the group's name instead of the sender's). Datebook keeps the events it found " +
     "for a year, never the message text, and nothing is shared anywhere else. The one exception: when Claude " +
     "can't be reached, a text with a date waits on the phone (for up to a day) so Claude can check it later, and " +
-    "its offline guess shows it until then."
+    "its offline guess shows it until then. On Fridays, next week's event titles and times also go to Claude, " +
+    "so it can write your week ahead."
 
 // One item in the Settings menu: its glass tile icon and the icon's colour, its name, a one-line hint, and the page it
 // opens
@@ -526,11 +527,18 @@ fun NotificationsPage(
     summaryMinute: Int,
     setSummary: (on: Boolean, hour: Int, minute: Int) -> Unit,
     onBack: () -> Unit,
+    weekOn: Boolean = true,
+    weekHour: Int = 18,
+    weekMinute: Int = 0,
+    setWeekAhead: (on: Boolean, hour: Int, minute: Int) -> Unit = { _, _, _ -> },
 ) {
     var on by remember { mutableStateOf(summaryOn) }
     var hour by remember { mutableIntStateOf(summaryHour) }
     var minute by remember { mutableIntStateOf(summaryMinute) }
     var picking by remember { mutableStateOf(false) }
+    var weekIsOn by remember { mutableStateOf(weekOn) }
+    var weekAt by remember { mutableStateOf(Pair(weekHour, weekMinute)) }
+    var pickingWeek by remember { mutableStateOf(false) }
     SettingsPage("Notifications & alerts", onBack) {
         DatebookCard {
             StatusRow("Reading texts (notification access)", access, openAccess)
@@ -551,7 +559,31 @@ fun NotificationsPage(
         }
         Muted("A silent notification with the day's events, only on days that have any. It stays until you swipe " +
             "it away.")
+        SectionLabel("Friday week ahead")
+        DatebookCard {
+            SwitchRow("Week ahead on Fridays", weekIsOn) { checked ->
+                weekIsOn = checked
+                setWeekAhead(weekIsOn, weekAt.first, weekAt.second)
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Time", modifier = Modifier.weight(1f))
+                PlainButton(onClick = { pickingWeek = true }, enabled = weekIsOn) {
+                    Text(timeLabel(weekAt.first, weekAt.second))
+                }
+            }
+        }
+        Muted("A quiet look at the next 7 days and the bills due, every Friday evening. Loose plans and bills are " +
+            "nudged on their own, and plans still waiting get a \"Still on?\" the evening before.")
         Muted("Alerts for problems (like a rejected key) arrive in a later update.")
+    }
+
+    // Show the clock to pick the week ahead's time
+    if (pickingWeek) {
+        TimeDialog(weekAt.first, weekAt.second, onDismiss = { pickingWeek = false }) { pickedHour, pickedMinute ->
+            weekAt = Pair(pickedHour, pickedMinute)
+            pickingWeek = false
+            setWeekAhead(weekIsOn, pickedHour, pickedMinute)
+        }
     }
 
     // Show the clock to pick a new time

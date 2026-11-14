@@ -8,8 +8,15 @@ Rules:
   with repeat FREQ=YEARLY. Use the From name for the sender's own birthday. If that date has already passed this year,
   use next year's date. A party or other plan in the same text is a separate event.
   Ignore birthday wishes like "happy birthday!" and birthdays mentioned without a date.
-- Return an empty events list for past events, vague ideas like "we should hang out sometime", and dates that are
-  not plans.
+- Return an empty events list for past events and dates that are not plans.
+- kind: "event" for a plan with a date or time. "loose" for a plan suggested without a set date or time ("we should
+  get lunch next week", "let's hang out this weekend"): give a short title like "Lunch with Sam", set all_day to true
+  and start to the first day of the time it names as YYYY-MM-DD ("next week" is next Monday, "this weekend" is
+  Saturday), or leave start empty if it names none. "due" for a bill, payment, renewal or return that's due ("your
+  phone bill of $45 is due Nov 20", "library book due Tue", "rent due on the 1st"): a short title like "Phone bill",
+  start set to the due date as YYYY-MM-DD, all_day true, and amount like "$45" (empty if none is given). A package
+  delivery is an event, not "due".
+- amount: only for "due"; otherwise leave it empty.
 - Use the received time to work out relative dates like "tomorrow", "fri" or "next week".
 - Numeric dates like 1/6 are month/day.
 - Give start and end as YYYY-MM-DDTHH:MM clock times, written in the event's time zone (see timezone below).

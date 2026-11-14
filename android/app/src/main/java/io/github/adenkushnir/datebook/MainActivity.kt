@@ -69,8 +69,16 @@ import io.github.adenkushnir.datebook.email.gmailAddress
 import io.github.adenkushnir.datebook.email.gmailRequest
 import io.github.adenkushnir.datebook.email.scheduleGmailChecks
 import io.github.adenkushnir.datebook.email.stopGmailChecks
+import io.github.adenkushnir.datebook.data.FollowUp
+import io.github.adenkushnir.datebook.data.KIND_DUE
+import io.github.adenkushnir.datebook.data.KIND_LOOSE
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.flights.scheduleFlightChecks
+import io.github.adenkushnir.datebook.followups.ROUTE_WEEK
+import io.github.adenkushnir.datebook.followups.WeekAheadScreen
+import io.github.adenkushnir.datebook.followups.WeekAheadSettings
+import io.github.adenkushnir.datebook.followups.weekDays
+import io.github.adenkushnir.datebook.followups.scheduleFollowUps
 import io.github.adenkushnir.datebook.flights.statusLine
 import io.github.adenkushnir.datebook.leaveby.LeaveByStore
 import io.github.adenkushnir.datebook.leaveby.eventKey
@@ -216,6 +224,10 @@ class MainActivity : ComponentActivity() {
         val addedFlow = remember { graph.dao.watchSuggestions(Suggestion.STATUS_ADDED) }
         val waiting by waitingFlow.collectAsState(initial = emptyList())
         val added by addedFlow.collectAsState(initial = emptyList())
+        val billsFlow = remember { graph.dao.watchOpenFollowUps(KIND_DUE) }
+        val looseFlow = remember { graph.dao.watchOpenFollowUps(KIND_LOOSE) }
+        val bills by billsFlow.collectAsState(initial = emptyList())
+        val loosePlans by looseFlow.collectAsState(initial = emptyList())
         val checkingFlow = remember { graph.dao.watchRetryIds() }
         val checking by checkingFlow.collectAsState(initial = emptyList())
         var status by remember { mutableStateOf(readSetupStatus(applicationContext, graph)) }
@@ -236,6 +248,7 @@ class MainActivity : ComponentActivity() {
             scheduleLeaveBy(applicationContext)  // start planning leave-by alerts if it isn't already
             scheduleFlightChecks(applicationContext)  // start the flight checks if they aren't running
             scheduleTrains(applicationContext)  // start the NJ Transit train checks if they aren't running
+            scheduleFollowUps(applicationContext)  // start the follow-up nudges and reminders if they aren't running
             graph.offlineDates.prepare()  // download the offline date model the first time there's internet
 
             // Keep checking Gmail while you're signed in
@@ -326,6 +339,11 @@ class MainActivity : ComponentActivity() {
                     fixes = fixesFor(status, actions, openKeySetup = { nav.navigate(ROUTE_SETUP) }),
                     trains = trains,
                     checking = checking.toSet(),
+                    bills = bills,
+                    loosePlans = loosePlans,
+                    onPaid = { id -> scope.launch { graph.dao.setFollowUpStatus(id, FollowUp.DONE) } },
+                    onDropLoose = { id -> scope.launch { graph.dao.setFollowUpStatus(id, FollowUp.DROPPED) } },
+                    onOpenChat = { loose -> openApp(loose.app) },
                     onFlipTrains = {
                         val saved = trip
 
@@ -358,6 +376,18 @@ class MainActivity : ComponentActivity() {
                 }
                 PlanCard(graph, plan, onBack = { nav.popBackStack() }, onAdd = {}, onIgnore = {},
                     onOpenCalendar = { plan?.let { openCalendarEvent(it) } })
+            }
+            composable(ROUTE_WEEK) {
+                val week = remember { WeekAheadSettings(applicationContext) }
+                val now = remember { System.currentTimeMillis() }
+                val zone = ZoneId.systemDefault()
+                val events by produceState(emptyList<HomeEvent>(), added) {
+                    value = withContext(Dispatchers.IO) { homeEvents(graph, added, now) }
+                }
+                WeekAheadScreen(week.brief(), weekDays(events, LocalDate.now(zone), zone), bills, loosePlans, zone,
+                    onBack = { nav.popBackStack() },
+                    onOpenEvent = { event -> openEvent(nav::navigate, event) },
+                    onOpenChat = { loose -> openApp(loose.app) })
             }
             composable(ROUTE_SETTINGS) {
                 SettingsMenu(items = settingsItems(nav::navigate), onBack = { nav.popBackStack() })
@@ -470,6 +500,7 @@ class MainActivity : ComponentActivity() {
             }
             composable(ROUTE_SETTINGS_NOTIFICATIONS) {
                 val summary = graph.summarySettings
+                val week = remember { WeekAheadSettings(applicationContext) }
                 NotificationsPage(status.access, status.notifications, actions.openAccess,
                     openNotifications = { startActivity(appNotificationSettings()) },
                     summaryOn = summary.isOn(), summaryHour = summary.hour(), summaryMinute = summary.minute(),
@@ -477,6 +508,8 @@ class MainActivity : ComponentActivity() {
                         summary.set(on, hour, minute)
                         scheduleSummary(applicationContext, ExistingWorkPolicy.REPLACE)  // re-book at the new time
                     },
+                    weekOn = week.isOn(), weekHour = week.hour(), weekMinute = week.minute(),
+                    setWeekAhead = { on, hour, minute -> week.set(on, hour, minute) },
                     onBack = { nav.popBackStack() })
             }
             composable(ROUTE_SETTINGS_LOOK) {
@@ -755,6 +788,18 @@ class MainActivity : ComponentActivity() {
             askMany(LOCATION_PERMISSIONS)
         } else {
             askOne(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        }
+    }
+
+    // Open the app a loose plan came from (its chat list), telling you if it isn't installed
+    private fun openApp(app: String) {
+        val launch = packageManager.getLaunchIntentForPackage(app)
+
+        // Open the app, or say it can't be opened
+        if (launch != null) {
+            startActivity(launch)
+        } else {
+            Toast.makeText(this, "Can't open that app", Toast.LENGTH_LONG).show()
         }
     }
 

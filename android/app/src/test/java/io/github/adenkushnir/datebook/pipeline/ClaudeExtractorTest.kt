@@ -75,6 +75,26 @@ class ClaudeExtractorTest {
         assertTrue(SYSTEM_PROMPT.contains("give it as one repeating event with BYDAY"))
     }
 
+    // Loose plans may come without a day; plans and bills without one are dropped; kind and amount are read
+    @Test
+    fun parseKinds() {
+        val json = """{"events": [
+            {"title": "Lunch with Sam", "start": "", "end": "", "all_day": true, "location": "", "repeat": "",
+             "timezone": "", "change": "", "calendar_event": 0, "flight": "", "package_carrier": "",
+             "tracking_number": "", "confirmation_code": "", "kind": "loose", "amount": ""},
+            {"title": "Phone bill", "start": "2037-11-20", "end": "", "all_day": true, "location": "", "repeat": "",
+             "timezone": "", "change": "", "calendar_event": 0, "flight": "", "package_carrier": "",
+             "tracking_number": "", "confirmation_code": "", "kind": "due", "amount": "$45"},
+            {"title": "No day", "start": "", "end": "", "all_day": true, "location": "", "repeat": "",
+             "timezone": "", "change": "", "calendar_event": 0, "flight": "", "package_carrier": "",
+             "tracking_number": "", "confirmation_code": "", "kind": "due", "amount": ""}]}"""
+        val events = parseResponse(false, json, newYork)
+        assertEquals(listOf("Lunch with Sam", "Phone bill"), events.map { it.title })
+        assertEquals(listOf("loose", "due"), events.map { it.kind })
+        assertEquals("$45", events[1].amount)
+        assertTrue(SYSTEM_PROMPT.contains("\"loose\" for a plan suggested without a set date"))
+    }
+
     // Claude's instructions are the Python version's, including the plan, fallback, birthday and zone rules
     @Test
     fun systemPromptRules() {

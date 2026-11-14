@@ -100,7 +100,7 @@ class MorningSummaryTest {
             }
         }
         compose.onNodeWithText("8:00 AM").assertExists()
-        compose.onNode(isToggleable()).performScrollTo().performClick()
+        compose.onAllNodes(isToggleable())[0].performScrollTo().performClick()  // the morning summary's switch
         assertEquals(listOf(Triple(false, 8, 0)), saved)
     }
 }

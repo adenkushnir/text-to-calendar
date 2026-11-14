@@ -39,9 +39,21 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
     }
 }
 
+// Version 9 adds the follow-ups: loose plans to pin down, and bills and due dates to be reminded about
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    // Create the new table, empty
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS `followups` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+            "`kind` TEXT NOT NULL, `title` TEXT NOT NULL, `date` TEXT NOT NULL, `amount` TEXT NOT NULL, " +
+            "`sender` TEXT NOT NULL, `app` TEXT NOT NULL, `conversation` TEXT NOT NULL, `status` TEXT NOT NULL, " +
+            "`createdAt` INTEGER NOT NULL, `nextNudge` INTEGER NOT NULL, `nudges` INTEGER NOT NULL)")
+    }
+}
+
 // The database holding seen texts, suggestions, the retry queue and failure counts; from version 5 on, saved data is
 // converted when the database changes (older versions still start empty)
-@Database(entities = [SeenText::class, Suggestion::class, RetryText::class, FailureCount::class], version = 8,
+@Database(entities = [SeenText::class, Suggestion::class, RetryText::class, FailureCount::class, FollowUp::class],
+    version = 9,
     exportSchema = false)
 abstract class DatebookDatabase : RoomDatabase() {
     // The queries for all four tables
@@ -56,7 +68,7 @@ abstract class DatebookDatabase : RoomDatabase() {
             return instance ?: synchronized(this) {
                 val appContext = context.applicationContext
                 instance ?: Room.databaseBuilder(appContext, DatebookDatabase::class.java, "datebook.db")
-                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                     .fallbackToDestructiveMigration(true)
                     .build()
                     .also { instance = it }

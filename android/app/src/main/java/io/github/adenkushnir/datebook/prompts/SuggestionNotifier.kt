@@ -103,6 +103,31 @@ class SuggestionNotifier(private val context: Context) {
         NotificationManagerCompat.from(context).cancel(suggestionId.toInt())
     }
 
+    // The "Still on?" reminder the day before a plan you never added or ignored: tomorrow's time and place, with Add
+    // and Ignore; it takes the place of the plan's first prompt
+    fun showStillOn(suggestion: Suggestion) {
+        // Without notification permission the plan still waits on Home
+        if (!canNotify(context)) {
+            return
+        }
+        val id = suggestion.id.toInt()
+        val whenAndWhere = summary(suggestion.toEvent()).removePrefix("${suggestion.title} · ")
+        val notification = NotificationCompat.Builder(context, SUGGESTIONS_CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat_datebook)
+            .setColor(ContextCompat.getColor(context, R.color.brand_aqua))
+            .setSubText("Still on?")
+            .setContentTitle("Still on? ${suggestion.title}")
+            .setContentText("Tomorrow · $whenAndWhere")
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .setContentIntent(openCard(suggestion.id))
+            .addAction(0, "Add", addAction(suggestion.id))
+            .addAction(0, "Ignore", ignoreAction(suggestion.id))
+            .build()
+        NotificationManagerCompat.from(context).notify(id, notification)
+    }
+
     // Tapping the prompt opens Datebook's suggestion card
     private fun openCard(suggestionId: Long): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).putExtra(EXTRA_SUGGESTION_ID, suggestionId)
