@@ -16,8 +16,8 @@ data class SeenText(
 // An event Datebook suggested, who from (and which group chat), whether it is waiting, added or ignored, the clash
 // warning shown with it, for a changed or cancelled plan which calendar event it changes, and its flight, package
 // and place coordinates, its start before it changed in the chat while waiting, whether you sent the text, and for an
-// offline guess the retry-queue text Claude is still to check (0 for plans Claude read) (kept 1 year; never the
-// message text)
+// offline guess the retry-queue text Claude is still to check (0 for plans Claude read), and its confirmation code
+// (kept 1 year; never the message text)
 @Entity(tableName = "suggestions")
 data class Suggestion(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -45,11 +45,13 @@ data class Suggestion(
     @ColumnInfo(defaultValue = "") val previousStart: String = "",
     @ColumnInfo(defaultValue = "0") val fromMe: Boolean = false,
     @ColumnInfo(defaultValue = "0") val retryId: Long = 0,
+    @ColumnInfo(defaultValue = "") val confirmation: String = "",
 ) {
     // Turn the saved row back into an event
     fun toEvent(): Event {
         return Event(title, start, end, allDay, location, repeat, timezone, phoneTimezone, flight = flight,
-            packageCarrier = packageCarrier, trackingNumber = trackingNumber, placeLat = placeLat, placeLng = placeLng)
+            packageCarrier = packageCarrier, trackingNumber = trackingNumber, placeLat = placeLat, placeLng = placeLng,
+            confirmation = confirmation)
     }
 
     // Names for the three states a suggestion can be in, plus the one for a calendar event shown on its card (never
@@ -87,6 +89,7 @@ fun suggestionOf(event: Event, incoming: IncomingText, now: Long, clash: String 
         placeLat = event.placeLat,
         placeLng = event.placeLng,
         fromMe = incoming.fromMe,
+        confirmation = event.confirmation,
     )
 }
 

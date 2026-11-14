@@ -9,6 +9,7 @@ import io.github.adenkushnir.datebook.calendar.CalendarSwitches
 import io.github.adenkushnir.datebook.calendar.calendarEvents
 import io.github.adenkushnir.datebook.capture.AppSwitches
 import io.github.adenkushnir.datebook.data.DatebookDatabase
+import io.github.adenkushnir.datebook.email.promptQuote
 import io.github.adenkushnir.datebook.flights.FlightStore
 import io.github.adenkushnir.datebook.flights.lookupFlight
 import io.github.adenkushnir.datebook.offline.OfflineDates
@@ -55,7 +56,7 @@ class AppGraph private constructor(context: Context) {
         extract = { key, incoming, zone -> extractEvents(clientFor(key), incoming, zone, modelChoice.get()) },
         onRetrySaved = { scheduleRetry(context, it) },
         onSuggested = { suggestion, incoming ->
-            if (incoming.onScreen) notifier.showQuiet(suggestion) else notifier.show(suggestion, incoming.text)
+            if (incoming.onScreen) notifier.showQuiet(suggestion) else notifier.show(suggestion, promptQuote(incoming))
         },
         calendar = { from, to -> calendarEvents(context, from, to, calendarSwitches.switchedOff()) },
         findPlace = { place -> findPlace(context, mapsKeyStore.load(), travelSettings.home(), place) },

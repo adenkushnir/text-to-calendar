@@ -1,4 +1,5 @@
-// Reads what was long-pressed or shared to Datebook, and shrinks shared pictures before they are sent to Claude
+// Reads what was long-pressed or shared to Datebook (text, a picture or a PDF), and shrinks shared pictures before
+// they are sent to Claude
 package io.github.adenkushnir.datebook.share
 import android.content.Context
 import android.content.Intent
@@ -11,9 +12,10 @@ import java.util.Base64
 import kotlin.math.roundToInt
 const val MAX_IMAGE_SIDE = 1568
 private const val JPEG_QUALITY = 85
+const val MAX_PDF_BYTES = 20 * 1024 * 1024  // bigger PDFs are refused
 
-// What was shared: its words (maybe empty for a picture) and, for a picture, where to read it from
-data class SharedItem(val text: String, val imageUri: Uri? = null)
+// What was shared: its words (maybe empty for a picture or PDF) and, for a picture or a PDF, where to read it from
+data class SharedItem(val text: String, val imageUri: Uri? = null, val pdfUri: Uri? = null)
 
 // Read the long-pressed text, or the shared text and picture, from the intent; null when there's nothing to use
 fun sharedItemFrom(intent: Intent): SharedItem? {
@@ -26,15 +28,15 @@ fun sharedItemFrom(intent: Intent): SharedItem? {
             val body = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString().orEmpty()
             val text = listOf(subject, body).filter { it.isNotBlank() }.joinToString("\n")  // a subject goes first
             val isImage = intent.type?.startsWith("image/") == true
+            val isPdf = intent.type == "application/pdf"
             val stream = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
-            val uri = if (isImage) stream else null  // only pictures are read
-            SharedItem(text.trim(), uri)
+            SharedItem(text.trim(), if (isImage) stream else null, if (isPdf) stream else null)  // only these are read
         }
         else -> null
     }
 
-    // Ignore shares with no words and no picture
-    if (item == null || (item.text.isBlank() && item.imageUri == null)) {
+    // Ignore shares with no words, picture or PDF
+    if (item == null || (item.text.isBlank() && item.imageUri == null && item.pdfUri == null)) {
         return null
     }
     return item
@@ -64,4 +66,15 @@ fun loadImageBase64(context: Context, uri: Uri): String {
     bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, bytes)
     bitmap.recycle()
     return Base64.getEncoder().encodeToString(bytes.toByteArray())
+}
+
+// Read a shared PDF as base64 for Claude; throws when it can't be read or is too big
+fun loadPdfBase64(context: Context, uri: Uri): String {
+    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error("PDF can't be opened")
+
+    // Refuse PDFs too big to send
+    if (bytes.size > MAX_PDF_BYTES) {
+        error("PDF is too big")
+    }
+    return Base64.getEncoder().encodeToString(bytes)
 }

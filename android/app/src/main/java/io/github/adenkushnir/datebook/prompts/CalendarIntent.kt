@@ -6,9 +6,11 @@ import android.content.Intent
 import android.provider.CalendarContract
 import io.github.adenkushnir.datebook.capture.WATCHABLE_APPS
 import io.github.adenkushnir.datebook.data.Suggestion
+import io.github.adenkushnir.datebook.email.GMAIL_APP
 import io.github.adenkushnir.datebook.pipeline.CHANGE_CANCELLED
 import io.github.adenkushnir.datebook.pipeline.CHANGE_MOVED
 import io.github.adenkushnir.datebook.pipeline.SHARED_IMAGE_APP
+import io.github.adenkushnir.datebook.pipeline.SHARED_PDF_APP
 import io.github.adenkushnir.datebook.pipeline.SHARED_TEXT_APP
 import io.github.adenkushnir.datebook.pipeline.eventTimes
 import io.github.adenkushnir.datebook.pipeline.eventZone
@@ -24,6 +26,7 @@ fun fromLine(suggestion: Suggestion): String {
         isShared(suggestion.app) -> "you (shared to Datebook)"
         suggestion.fromMe -> "you, to ${suggestion.conversation.ifBlank { suggestion.sender }}"
         suggestion.conversation.isNotBlank() -> "${suggestion.sender} in ${suggestion.conversation}"
+        suggestion.app == GMAIL_APP -> "${suggestion.sender} (Gmail)"
         else -> suggestion.sender  // one-to-one
     }
 }
@@ -34,6 +37,7 @@ fun calendarNotes(suggestion: Suggestion): String {
     when (suggestion.app) {
         SHARED_TEXT_APP -> return "Shared to Datebook"
         SHARED_IMAGE_APP -> return "Image shared to Datebook"
+        SHARED_PDF_APP -> return "PDF shared to Datebook"
     }
     val app = WATCHABLE_APPS.firstOrNull { it.packageName == suggestion.app }?.shortName  // the app's name, if known
     val group = if (suggestion.conversation.isNotBlank()) " · ${suggestion.conversation}" else ""  // group chats only
@@ -92,10 +96,12 @@ fun calendarEventIntent(suggestion: Suggestion): Intent {
     return Intent(Intent.ACTION_VIEW, uri)
 }
 
-// The calendar notes plus the Track link on its own line for packages and flights, so it's in the event too
+// The calendar notes, then the confirmation code and the Track link (packages and flights) on their own lines, so
+// they're in the event too
 fun notesWithTrackLink(suggestion: Suggestion): String {
     val link = trackLinkFor(suggestion.flight, suggestion.packageCarrier, suggestion.trackingNumber)
-    return if (link != null) "${calendarNotes(suggestion)}\nTrack: ${link.url}" else calendarNotes(suggestion)
+    val code = if (suggestion.confirmation.isNotBlank()) "\nConfirmation: ${suggestion.confirmation}" else ""
+    return calendarNotes(suggestion) + code + (link?.let { "\nTrack: ${it.url}" } ?: "")
 }
 
 // The intent for the calendar app's new-event screen: title, start and end, all-day, place, repeat, zone and notes

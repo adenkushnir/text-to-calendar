@@ -1,5 +1,7 @@
-// The bottom sheet shown over the app you long-pressed or shared from: the plans Claude found, each with Add and Ignore
+// The bottom sheet shown over the app you long-pressed or shared from: the plans Claude found, each with Add and
+// Ignore, or for a schedule (3 or more plans) a ticked review list whose plans are then added one at a time
 package io.github.adenkushnir.datebook.share
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LocalTextStyle
@@ -32,11 +35,17 @@ import io.github.adenkushnir.datebook.ui.DatebookIcons
 import io.github.adenkushnir.datebook.ui.GelButton
 import io.github.adenkushnir.datebook.ui.GlassButton
 import io.github.adenkushnir.datebook.ui.GlassIconButton
+import io.github.adenkushnir.datebook.ui.PlainButton
 import io.github.adenkushnir.datebook.ui.TEXT_SHADOW
 import io.github.adenkushnir.datebook.whenAndWhere
+const val SCHEDULE_SIZE = 3  // this many plans or more is treated as a schedule
+
+// Adding a schedule's ticked plans one at a time: their ids in order, and which one is next
+data class AddQueue(val ids: List<Long>, val next: Int = 0)
 
 // Show the sheet's contents: a spinner while Claude reads it, then the plans found or why there are none; added and
-// ignored hold the ids already handled here
+// ignored hold the ids already handled here; for a schedule, ticked holds the plans to add and queue how far the
+// adding has got (null until it starts)
 @Composable
 fun ShareSheet(
     result: ShareResult?,
@@ -47,6 +56,12 @@ fun ShareSheet(
     onRetry: () -> Unit,
     onOpenDatebook: () -> Unit,
     onClose: () -> Unit,
+    ticked: Set<Long> = emptySet(),
+    queue: AddQueue? = null,
+    onTick: (Long, Boolean) -> Unit = { _, _ -> },
+    onAddTicked: () -> Unit = {},
+    onAddNext: () -> Unit = {},
+    onSkip: () -> Unit = {},
 ) {
     Column(
         Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding()
@@ -85,6 +100,8 @@ fun ShareSheet(
                     Text("Close")
                 }
             }
+        } else if (result.suggestions.size >= SCHEDULE_SIZE) {
+            ScheduleSteps(result.suggestions, ticked, queue, added, onTick, onAddTicked, onAddNext, onSkip, onClose)
         } else {
             DatebookCard {
                 // Show each plan with Add and Ignore, or what you already did with it, with a line between plans
@@ -102,6 +119,79 @@ fun ShareSheet(
             }
         }
     }
+}
+
+// A schedule: first the review list (all ticked; untick what you don't want), then one plan at a time with Add next,
+// Skip and Stop, then a closing line once every ticked plan has had its turn
+@Composable
+private fun ScheduleSteps(plans: List<Suggestion>, ticked: Set<Long>, queue: AddQueue?, added: Set<Long>,
+    onTick: (Long, Boolean) -> Unit, onAddTicked: () -> Unit, onAddNext: () -> Unit, onSkip: () -> Unit,
+    onClose: () -> Unit) {
+    // Before adding starts: the list to tick
+    if (queue == null) {
+        Muted("Found ${plans.size} dates. Untick any you don't want, then add the rest one at a time in your " +
+            "calendar app.")
+        DatebookCard {
+            // One row per plan, a line between them; tapping the row ticks or unticks it
+            plans.forEachIndexed { index, plan ->
+                // A line above every plan but the first
+                if (index > 0) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                }
+                val on = plan.id in ticked
+                Row(Modifier.fillMaxWidth().clickable { onTick(plan.id, !on) },
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = on, onCheckedChange = { onTick(plan.id, it) })
+                    Column(Modifier.weight(1f)) {
+                        Text(promptTitle(plan), fontWeight = FontWeight.SemiBold)
+                        Muted(whenAndWhere(plan))
+                        ClashLine(plan.clash)
+                    }
+                }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            GelButton(onClick = onAddTicked, enabled = ticked.isNotEmpty(), green = true) {
+                Text("Add ${ticked.size} ticked")
+            }
+            GlassButton(onClick = onClose) {
+                Text("Close")
+            }
+        }
+        Muted("Unticked dates are ignored. Closing now leaves them all waiting on Datebook's home screen.")
+        return
+    }
+    val done = queue.ids.count { it in added }
+
+    // Every ticked plan has had its turn
+    if (queue.next >= queue.ids.size) {
+        DatebookCard {
+            Text("All done: $done of ${queue.ids.size} added", fontWeight = FontWeight.SemiBold)
+        }
+        GlassButton(onClick = onClose) {
+            Text("Done")
+        }
+        return
+    }
+    val next = plans.first { it.id == queue.ids[queue.next] }
+    DatebookCard {
+        SectionLabel("$done of ${queue.ids.size} added")
+        Text("Next: ${promptTitle(next)}", fontWeight = FontWeight.SemiBold)
+        Muted(whenAndWhere(next))
+        ClashLine(next.clash)
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        GelButton(onClick = onAddNext, green = true) {
+            Text("Add next")
+        }
+        GlassButton(onClick = onSkip) {
+            Text("Skip")
+        }
+        PlainButton(onClick = onClose) {
+            Text("Stop")
+        }
+    }
+    Muted("Dates you skip or don't get to wait on Datebook's home screen.")
 }
 
 // One plan in the sheet: its title, when and where, then Add (Open for a change) and Ignore, or "Added ✓",

@@ -34,6 +34,7 @@ import io.github.adenkushnir.datebook.AppGraph
 import io.github.adenkushnir.datebook.MainActivity
 import io.github.adenkushnir.datebook.pipeline.IncomingText
 import io.github.adenkushnir.datebook.pipeline.SHARED_IMAGE_APP
+import io.github.adenkushnir.datebook.pipeline.SHARED_PDF_APP
 import io.github.adenkushnir.datebook.pipeline.SHARED_TEXT_APP
 import io.github.adenkushnir.datebook.pipeline.ShareResult
 import io.github.adenkushnir.datebook.prompts.addSuggestion
@@ -59,6 +60,8 @@ class ShareModel(application: Application) : AndroidViewModel(application) {
         private set
     var added by mutableStateOf(emptySet<Long>())
     var ignored by mutableStateOf(emptySet<Long>())
+    var ticked by mutableStateOf(emptySet<Long>())
+    var queue by mutableStateOf<AddQueue?>(null)
     private var started = false
 
     // Ask Claude about the shared item the first time (or again after a failure)
@@ -70,7 +73,9 @@ class ShareModel(application: Application) : AndroidViewModel(application) {
         started = true
         result = null
         viewModelScope.launch {
-            result = ask(item)
+            val found = ask(item)
+            ticked = found.suggestions.map { it.id }.toSet()  // a schedule starts with every date ticked
+            result = found
         }
     }
 
@@ -84,8 +89,21 @@ class ShareModel(application: Application) : AndroidViewModel(application) {
         } catch (error: Exception) {  // a missing file, no permission, or not really a picture
             return ShareResult(emptyList(), "Couldn't read that picture.")
         }
-        val app = if (image.isNotBlank()) SHARED_IMAGE_APP else SHARED_TEXT_APP  // pictures get "Image shared" notes
-        val incoming = IncomingText("you", item.text, LocalDateTime.now(), app = app, image = image)
+
+        // Read the PDF off the main thread, saying so if it can't be read or is too big
+        val pdf = try {
+            item.pdfUri?.let { withContext(Dispatchers.IO) { loadPdfBase64(context, it) } } ?: ""
+        } catch (error: Exception) {  // a missing file, no permission, or over 20 MB
+            return ShareResult(emptyList(), "Couldn't read that PDF (it has to be under 20 MB).")
+        }
+
+        // The notes say whether a picture or a PDF was shared
+        val app = when {
+            pdf.isNotBlank() -> SHARED_PDF_APP
+            image.isNotBlank() -> SHARED_IMAGE_APP
+            else -> SHARED_TEXT_APP
+        }
+        val incoming = IncomingText("you", item.text, LocalDateTime.now(), app = app, image = image, pdf = pdf)
         return AppGraph.get(context).pipeline.share(incoming)
     }
 }
@@ -137,6 +155,30 @@ class ShareActivity : ComponentActivity() {
         }
     }
 
+    // Start adding a schedule: unticked plans are ignored, then the first ticked one opens in the calendar app
+    private fun startAdding() {
+        val plans = model.result?.suggestions.orEmpty()
+        val unticked = plans.map { it.id }.filter { it !in model.ticked }
+        model.ignored += unticked
+        lifecycleScope.launch {
+            // Ignore each unticked plan
+            for (id in unticked) {
+                ignoreSuggestion(applicationContext, id)
+            }
+        }
+        model.queue = AddQueue(plans.map { it.id }.filter { it in model.ticked })
+        addNext()
+    }
+
+    // Open the schedule's next plan in the calendar app and move on to the one after it
+    private fun addNext() {
+        val queue = model.queue ?: return
+        val id = queue.ids.getOrNull(queue.next) ?: return  // nothing left
+        model.added += id
+        model.queue = queue.copy(next = queue.next + 1)
+        lifecycleScope.launch { addSuggestion(this@ShareActivity, id) }
+    }
+
     // The plans in the sheet, with what each button does
     @Composable
     private fun SheetContents(item: SharedItem) {
@@ -150,6 +192,12 @@ class ShareActivity : ComponentActivity() {
                 lifecycleScope.launch { ignoreSuggestion(applicationContext, id) }
             },
             onRetry = { model.start(item, again = true) },
+            ticked = model.ticked,
+            queue = model.queue,
+            onTick = { id, on -> model.ticked = if (on) model.ticked + id else model.ticked - id },
+            onAddTicked = { startAdding() },
+            onAddNext = { addNext() },
+            onSkip = { model.queue = model.queue?.let { it.copy(next = it.next + 1) } },
             onOpenDatebook = {
                 startActivity(Intent(this@ShareActivity, MainActivity::class.java))
                 finish()

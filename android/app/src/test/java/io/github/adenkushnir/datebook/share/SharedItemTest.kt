@@ -36,6 +36,14 @@ class SharedItemTest {
         assertEquals(SharedItem("", uri), sharedItemFrom(intent))
     }
 
+    // A shared PDF brings its address as a PDF, not as a picture
+    @Test
+    fun sharedPdf() {
+        val uri = Uri.parse("content://downloads/syllabus.pdf")
+        val intent = Intent(Intent.ACTION_SEND).setType("application/pdf").putExtra(Intent.EXTRA_STREAM, uri)
+        assertEquals(SharedItem("", null, uri), sharedItemFrom(intent))
+    }
+
     // Shares with nothing in them, and other actions, are ignored
     @Test
     fun nothingShared() {

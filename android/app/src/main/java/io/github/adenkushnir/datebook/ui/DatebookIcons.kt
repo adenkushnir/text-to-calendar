@@ -113,6 +113,11 @@ object DatebookIcons {
             "a2.2 2.2 0 0 1 2.2 -2.2z",
         "M8 10.5V8a4 4 0 0 1 8 0v2.5",
     )
+    // An envelope, for Gmail
+    val Mail = icon("mail", filled = false,
+        "M5.5 5.5h13a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-13a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2z",
+        "M4 7l8 6 8-6",
+    )
     // An i in a circle, for About
     val Info = icon("info", filled = false,
         "M3.5 12a8.5 8.5 0 1 0 17 0a8.5 8.5 0 1 0 -17 0",

@@ -50,6 +50,7 @@ dependencies {
     ksp(libs.androidx.room.compiler)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.mlkit.entity.extraction)
+    implementation(libs.play.services.auth)
     implementation(libs.haze)
     implementation(libs.haze.blur)
     debugImplementation(libs.androidx.compose.ui.tooling)

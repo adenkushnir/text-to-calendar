@@ -58,7 +58,8 @@ import io.github.adenkushnir.datebook.ui.travelIcon
 import kotlinx.coroutines.launch
 const val GITHUB_URL = "https://github.com/adenkushnir/text-to-calendar"
 const val PRIVACY_SUMMARY = "Datebook checks texts from the apps you switch on, on this phone. Texts without a date " +
-    "are dropped straight away and leave no trace. Only a text with a date is sent to Claude, on its own, using your " +
+    "are dropped straight away and leave no trace. If you sign in to Gmail, new emails in Primary and Updates are " +
+    "checked the same way. Only a text with a date is sent to Claude, on its own, using your " +
     "API key (for group chats, with the group's name instead of the sender's). Datebook keeps the events it found " +
     "for a year, never the message text, and nothing is shared anywhere else. The one exception: when Claude " +
     "can't be reached, a text with a date waits on the phone (for up to a day) so Claude can check it later, and " +
@@ -429,6 +430,60 @@ fun AutomaticPage(on: Boolean, apps: List<String>, openSettings: () -> Unit, onB
         SectionLabel("Turning it on")
         Muted("Tap TURN ON, then Installed apps (or Downloaded apps) → Datebook automatic mode → On. If Android says " +
             "\"Restricted setting\": Settings → Apps → Datebook → ⋮ → Allow restricted settings, then try again.")
+    }
+}
+
+// Gmail: whether Datebook is signed in (and as which address), signing in or out, what it reads, and the weekly
+// sign-in Google asks for; problem is what went wrong with the last sign-in ("" when nothing did)
+@Composable
+fun GmailPage(signedIn: Boolean, address: String, lapsed: Boolean, problem: String, gmailWatched: Boolean,
+    onSignIn: () -> Unit, onSignOut: () -> Unit, onBack: () -> Unit) {
+    SettingsPage("Gmail", onBack) {
+        Muted("Datebook reads new emails for plans, like reservations, appointments, tickets, pickups and " +
+            "deliveries, and offers each one like a text, with any confirmation code in the event's notes.")
+        DatebookCard {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Gmail")
+                    val state = when {
+                        !signedIn -> "Not signed in"
+                        lapsed -> "Sign-in ended: sign in again"
+                        address.isNotBlank() -> "Signed in as $address"
+                        else -> "Signed in"
+                    }
+                    Muted(state)
+                }
+
+                // Offer to sign in (or again, once it lapsed), or to sign out
+                if (!signedIn || lapsed) {
+                    GelButton(onClick = onSignIn, small = true) {
+                        Text("Sign in")
+                    }
+                } else {
+                    GlassButton(onClick = onSignOut, small = true) {
+                        Text("Sign out")
+                    }
+                }
+            }
+
+            // Say what went wrong with the last sign-in
+            if (problem.isNotBlank()) {
+                Muted(problem)
+            }
+        }
+
+        // New emails are checked the moment they arrive only when Gmail's notifications are watched
+        if (signedIn && !gmailWatched) {
+            Muted("Turn on Gmail in Apps to watch so new emails are checked as soon as they arrive. Until then " +
+                "they're checked every 15 minutes.")
+        }
+        SectionLabel("What it reads")
+        Muted("Only new emails in Primary and Updates, never Promotions or Social, and never mail from before you " +
+            "signed in. Only emails with a date go to Claude, one at a time. Datebook never keeps an email's text " +
+            "and never sends, changes or deletes mail.")
+        SectionLabel("Every week or so")
+        Muted("Google ends the sign-in about every 7 days for apps like this one. Datebook then shows a quiet \"Sign " +
+            "in to Gmail again\" notification; emails that arrived meanwhile are checked once you're back.")
     }
 }
 

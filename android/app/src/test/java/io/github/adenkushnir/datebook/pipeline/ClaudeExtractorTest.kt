@@ -63,6 +63,18 @@ class ClaudeExtractorTest {
         assertTrue(buildRequest(incoming, newYork).messages().single().content().get().isString())
     }
 
+    // A shared PDF goes to Claude as a document before the words, and counts as shared
+    @Test
+    fun pdfRequest() {
+        val pdf = incoming.copy(text = "", app = SHARED_PDF_APP, pdf = "JVBERi0x")
+        val blocks = buildRequest(pdf, newYork).messages().single().content().get().asContentBlockParams()
+        assertEquals(2, blocks.size)
+        assertTrue(blocks[0].isDocument())
+        assertTrue(blocks[1].asText().text().contains("(see the attached PDF)"))
+        assertTrue(isShared(SHARED_PDF_APP))
+        assertTrue(SYSTEM_PROMPT.contains("give it as one repeating event with BYDAY"))
+    }
+
     // Claude's instructions are the Python version's, including the plan, fallback, birthday and zone rules
     @Test
     fun systemPromptRules() {
