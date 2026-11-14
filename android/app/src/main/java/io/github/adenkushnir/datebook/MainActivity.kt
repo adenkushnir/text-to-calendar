@@ -15,6 +15,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -25,12 +28,16 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.work.ExistingWorkPolicy
@@ -47,6 +54,9 @@ import io.github.adenkushnir.datebook.pipeline.eventTimes
 import io.github.adenkushnir.datebook.pipeline.maskKey
 import io.github.adenkushnir.datebook.pipeline.summary
 import io.github.adenkushnir.datebook.places.mapsIntent
+import io.github.adenkushnir.datebook.scenery.SceneBackdrop
+import io.github.adenkushnir.datebook.scenery.rememberSceneLight
+import io.github.adenkushnir.datebook.scenery.sceneForRoute
 import io.github.adenkushnir.datebook.prompts.EXTRA_SUGGESTION_ID
 import io.github.adenkushnir.datebook.prompts.addSuggestion
 import io.github.adenkushnir.datebook.prompts.ignoreSuggestion
@@ -107,6 +117,7 @@ const val ROUTE_SETTINGS_AUTOMATIC = "settings/automatic"
 // The activity Android starts when you tap the Datebook icon or a prompt
 class MainActivity : ComponentActivity() {
     private var promptSuggestion by mutableStateOf<Long?>(null)
+    private var screenRoute by mutableStateOf<String?>(null)  // the open screen, so the scene behind can follow it
 
     // Draw edge to edge and show the app, opening the suggestion a prompt asked for
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -115,9 +126,16 @@ class MainActivity : ComponentActivity() {
         promptSuggestion = suggestionIn(intent)
         setContent {
             DatebookTheme {
-                // The theme's background and text colours for every screen, so text is readable in light and dark
-                Surface(color = MaterialTheme.colorScheme.background) {
-                    DatebookApp()
+                val light = rememberSceneLight()
+                Box(Modifier.fillMaxSize()) {
+                    // The scene behind the open screen, fading to the next scene when you move between screens
+                    Crossfade(sceneForRoute(screenRoute), label = "scene") { scene ->
+                        SceneBackdrop(scene, light, Modifier.fillMaxSize())
+                    }
+                    // The screens over the scene, in the theme's text colour so they're readable in light and dark
+                    Surface(color = Color.Transparent, contentColor = MaterialTheme.colorScheme.onBackground) {
+                        DatebookApp()
+                    }
                 }
             }
         }
@@ -140,6 +158,8 @@ class MainActivity : ComponentActivity() {
     private fun DatebookApp() {
         val graph = remember { AppGraph.get(applicationContext) }
         val nav = rememberNavController()
+        val entry by nav.currentBackStackEntryAsState()
+        SideEffect { screenRoute = entry?.destination?.route }  // tell the scene behind which screen is open
         val scope = rememberCoroutineScope()
         val waitingFlow = remember { graph.dao.watchSuggestions(Suggestion.STATUS_WAITING) }
         val addedFlow = remember { graph.dao.watchSuggestions(Suggestion.STATUS_ADDED) }

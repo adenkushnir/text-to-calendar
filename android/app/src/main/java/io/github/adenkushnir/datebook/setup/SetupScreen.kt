@@ -82,7 +82,7 @@ private val PAGES = listOf(
 fun SetupScreen(status: SetupStatus, actions: SetupActions, onSample: () -> Unit, onFinish: () -> Unit) {
     var index by rememberSaveable { mutableIntStateOf(0) }
     Column(
-        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding()
+        Modifier.fillMaxSize().statusBarsPadding()  // see-through, so the scene behind shows
             .navigationBarsPadding().verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {

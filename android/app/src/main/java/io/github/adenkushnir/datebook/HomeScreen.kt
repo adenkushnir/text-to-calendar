@@ -58,7 +58,7 @@ fun HomeScreen(
     onFlipTrains: () -> Unit = {},
     checking: Set<Long> = emptySet(),
 ) {
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Column(Modifier.fillMaxSize()) {  // see-through, so the scene behind shows
         TopBar("Datebook", onSettings = onSettings)
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(16.dp),

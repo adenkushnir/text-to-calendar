@@ -634,7 +634,7 @@ private fun StatusRow(label: String, on: Boolean, open: () -> Unit) {
 // A Settings page: the teal bar with a back arrow, then the page's content in a scrolling column
 @Composable
 private fun SettingsPage(title: String, onBack: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Column(Modifier.fillMaxSize()) {  // see-through, so the scene behind shows
         TopBar(title, onBack = onBack)
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(16.dp),
