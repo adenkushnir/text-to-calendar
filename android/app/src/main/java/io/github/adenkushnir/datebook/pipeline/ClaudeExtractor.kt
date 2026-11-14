@@ -4,6 +4,7 @@ import com.anthropic.client.AnthropicClient
 import com.anthropic.client.okhttp.AnthropicOkHttpClient
 import com.anthropic.core.JsonValue
 import com.anthropic.models.beta.messages.BetaBase64ImageSource
+import com.anthropic.models.beta.messages.BetaBase64PdfSource
 import com.anthropic.models.beta.messages.BetaContentBlockParam
 import com.anthropic.models.beta.messages.BetaJsonOutputFormat
 import com.anthropic.models.beta.messages.BetaOutputConfig
@@ -22,6 +23,7 @@ const val DEFAULT_MODEL = "claude-opus-5-5"
 private const val FALLBACK_BETA = "server-side-fallback-2026-07-01"
 const val SHARED_TEXT_APP = "datebook.shared.text"
 const val SHARED_IMAGE_APP = "datebook.shared.image"
+const val SHARED_PDF_APP = "datebook.shared.pdf"
 private val RECEIVED_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.US)
 private val WEEKDAY_FORMAT = DateTimeFormatter.ofPattern("EEEE", Locale.US)
 private val DAY_FORMAT = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US)
@@ -65,9 +67,9 @@ val EVENTS_SCHEMA = mapOf(
 
 // A text to ask Claude about: who sent it, what it says, when it arrived in the phone's time, which app, and which
 // group chat it came from (empty for one-to-one); exactTime means receivedAt is the message's own timestamp, and
-// image is a shared picture as base64 JPEG (empty for texts), and upcoming holds the calendar events Claude may match a
-// change against (empty unless the text sounds like a change); fromMe marks a text you sent and onScreen one read from
-// an open chat by automatic mode
+// image is a shared picture as base64 JPEG and pdf a shared PDF as base64 (both empty for texts), and upcoming holds
+// the calendar events Claude may match a change against (empty unless the text sounds like a change); fromMe marks a
+// text you sent and onScreen one read from an open chat by automatic mode
 data class IncomingText(
     val sender: String,
     val text: String,
@@ -79,11 +81,12 @@ data class IncomingText(
     val upcoming: List<CalendarEvent> = emptyList(),
     val fromMe: Boolean = false,
     val onScreen: Boolean = false,
+    val pdf: String = "",
 )
 
 // Return true if something came from long-press or Share rather than a notification
 fun isShared(app: String): Boolean {
-    return app == SHARED_TEXT_APP || app == SHARED_IMAGE_APP
+    return app == SHARED_TEXT_APP || app == SHARED_IMAGE_APP || app == SHARED_PDF_APP
 }
 
 // Read Claude's instructions, shared word for word with the Python version, from the app's resources
@@ -116,6 +119,8 @@ fun buildPrompt(incoming: IncomingText, phoneZone: String): String {
 
     // Point Claude at the picture when one was shared
     val text = when {
+        incoming.pdf.isNotBlank() && incoming.text.isBlank() -> "(see the attached PDF)"
+        incoming.pdf.isNotBlank() -> "${incoming.text}\n(and the attached PDF)"
         incoming.image.isBlank() -> incoming.text
         incoming.text.isBlank() -> "(see the attached image)"
         else -> "${incoming.text}\n(and the attached image)"
@@ -167,8 +172,12 @@ fun buildRequest(incoming: IncomingText, phoneZone: String, model: String = DEFA
         .system(SYSTEM_PROMPT)
     val prompt = buildPrompt(incoming, phoneZone)
 
-    // Send a shared picture before the words, or just the words for a text
-    if (incoming.image.isNotBlank()) {
+    // Send a shared PDF or picture before the words, or just the words for a text
+    if (incoming.pdf.isNotBlank()) {
+        val pdf = BetaBase64PdfSource.builder().data(incoming.pdf).build()
+        request.addUserMessageOfContentBlockParams(listOf(BetaContentBlockParam.ofDocument(pdf),
+            BetaContentBlockParam.ofText(prompt)))
+    } else if (incoming.image.isNotBlank()) {
         val image = BetaBase64ImageSource.builder().data(incoming.image)
             .mediaType(BetaBase64ImageSource.MediaType.IMAGE_JPEG).build()
         request.addUserMessageOfContentBlockParams(listOf(BetaContentBlockParam.ofImage(image),

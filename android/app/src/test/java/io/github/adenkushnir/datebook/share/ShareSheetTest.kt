@@ -1,9 +1,12 @@
-// Tests for the share sheet: the spinner, the plans with Add and ✕, and the notes with their buttons
+// Tests for the share sheet: the spinner, the plans with Add and ✕, the notes with their buttons, and schedules
 package io.github.adenkushnir.datebook.share
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.pipeline.SHARED_TEXT_APP
 import io.github.adenkushnir.datebook.pipeline.ShareResult
@@ -35,6 +38,48 @@ class ShareSheetTest {
                     onOpenDatebook = { pressed.add("open") }, onClose = { pressed.add("close") })
             }
         }
+    }
+
+    // Three or more plans are a schedule: a ticked list with "Add 3 ticked", where tapping a row unticks it
+    @Test
+    fun scheduleReview() {
+        val plans = listOf(game, game.copy(id = 4, title = "Game 2"), game.copy(id = 5, title = "Game 3"))
+        val ticks = mutableListOf<String>()
+        var starts = 0
+        compose.setContent {
+            DatebookTheme {
+                ShareSheet(ShareResult(plans), emptySet(), emptySet(), onAdd = {}, onIgnore = {}, onRetry = {},
+                    onOpenDatebook = {}, onClose = {}, ticked = setOf(3L, 4L, 5L),
+                    onTick = { id, on -> ticks.add("$id $on") }, onAddTicked = { starts += 1 })
+            }
+        }
+        compose.onNodeWithText("Found 3 dates", substring = true).assertExists()
+        compose.onNodeWithText("Game 2").performClick()
+        assertEquals(listOf("4 false"), ticks)
+        compose.onNodeWithText("Add 3 ticked").performClick()
+        assertEquals(1, starts)
+    }
+
+    // While adding a schedule: how many are added, the next plan, and Add next / Skip / Stop; then "All done"
+    @Test
+    fun scheduleAdding() {
+        val plans = listOf(game, game.copy(id = 4, title = "Game 2"), game.copy(id = 5, title = "Game 3"))
+        var queue by mutableStateOf<AddQueue?>(AddQueue(listOf(3L, 4L, 5L), next = 1))
+        compose.setContent {
+            DatebookTheme {
+                ShareSheet(ShareResult(plans), setOf(3L), emptySet(), onAdd = {}, onIgnore = {}, onRetry = {},
+                    onOpenDatebook = {}, onClose = { pressed.add("stop") }, queue = queue,
+                    onAddNext = { pressed.add("next") }, onSkip = { pressed.add("skip") })
+            }
+        }
+        compose.onNodeWithText("1 OF 3 ADDED").assertExists()
+        compose.onNodeWithText("Next: Game 2").assertExists()
+        compose.onNodeWithText("Add next").performClick()
+        compose.onNodeWithText("Skip").performClick()
+        compose.onNodeWithText("Stop").performClick()
+        assertEquals(listOf("next", "skip", "stop"), pressed)
+        queue = AddQueue(listOf(3L, 4L, 5L), next = 3)
+        compose.onNodeWithText("All done: 1 of 3 added").assertExists()
     }
 
     // While Claude is reading, the sheet says so
