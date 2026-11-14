@@ -120,7 +120,16 @@ The app is always dark, so all the glass is dark glass with light text.
 - **Section labels:** small uppercase text on a tinted pill (no blur, since labels can sit on cards).
 - **Text:** #EEF5FF; secondary text #B4C6E0 with a soft shadow so it reads straight on the scene; links #9FD8FF;
   warnings #FFBE6A; label text #D6E8FF.
-- **Buttons:** sky blue (#2EA8F0); buttons that add a plan are leaf green (#4FB82E).
+- **Buttons:** glossy gel pills with a soft highlight across the top half and a light edge, 38dp tall (32dp in lists),
+  with bold 14 labels in normal case ("Add", "Ignore"). Sky-blue gel for main actions, leaf-green gel for adding a
+  plan, glass pills with light-blue text for secondary actions, and plain light-blue text for small ones.
+- **Switches:** glossy gel: a leaf-green track when on, a dark glass track when off, a shiny white knob.
+- **Text fields:** glass tinted by the light, 12dp corners, a faint light edge that turns light blue with focus.
+- **Setup progress:** a Vista-style bar of green gel in a dark glass track.
+- **Loose text:** supporting text that sits straight on the scene gets its own small frosted backing (inside cards it
+  doesn't need one).
+- **Type:** Selawik with no added letter spacing; card text 15, supporting text 13.5, card titles 18 on Next up.
+- **Share sheet:** a 55% wash of the light's glass colour over the beach, with the plans on a glass card.
 - **Top bar:** clear. The scene runs to the top of the screen and the title floats over it with a soft shadow, with
   glass tile buttons for Back and Settings.
 - **Scene veil:** a faint 12% dark wash over the scene, so the brightest midday spots never glare behind loose text.

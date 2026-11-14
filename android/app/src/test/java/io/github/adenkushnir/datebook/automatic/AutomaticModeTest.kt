@@ -262,7 +262,7 @@ class AutomaticModeTest {
         }
         compose.onNodeWithText("Only the apps switched on in Apps to watch: Messages (Samsung), GroupMe.")
             .assertExists()
-        compose.onNodeWithText("TURN ON").performScrollTo().performClick()
+        compose.onNodeWithText("Turn on").performScrollTo().performClick()
         assertEquals(1, opened)
     }
 }

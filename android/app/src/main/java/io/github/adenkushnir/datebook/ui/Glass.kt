@@ -1,13 +1,12 @@
 // Datebook's glass look (see design/DESIGN.md): dark glass tinted by the light that frosts the scene behind it, glass
-// tile icons, the glossy Next up colours, green Add buttons, and a soft shadow that keeps loose text readable
+// tile icons, the glossy Next up colours, and a soft shadow that keeps loose text readable
 package io.github.adenkushnir.datebook.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ButtonColors
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
@@ -32,7 +31,6 @@ import dev.chrisbanes.haze.blur.HazeColorEffect
 import dev.chrisbanes.haze.blur.hazeBlur
 import io.github.adenkushnir.datebook.scenery.Light
 import io.github.adenkushnir.datebook.scenery.SceneLight
-import io.github.adenkushnir.datebook.ui.theme.Leaf
 // The dark glass colour in each light: navy at night, indigo at blue hour, dusky lilac in the morning, deep sky blue
 // at midday, amber at golden hour, plum at sunset
 private val GLASS_COLOURS = mapOf(
@@ -47,6 +45,13 @@ private const val GLASS_ALPHA = 0.66f  // medium frost
 private const val SCRIM_ALPHA = 0.86f  // the tint is all there is where blur isn't available
 private val BLUR_RADIUS = 18.dp
 private val GLASS_EDGE = Color.White.copy(alpha = 0.18f)
+// The soft highlight across the top of glass, as if lit from above
+val CARD_GLOSS = Brush.verticalGradient(0f to Color.White.copy(alpha = 0.12f), 0.4f to Color.Transparent)
+val HERO_GLOSS = Brush.verticalGradient(0f to Color.White.copy(alpha = 0.3f), 0.5f to Color.Transparent)
+// True inside the glossy blue Next up card, where labels use a light pill instead of a dark one
+val LocalOnHero = compositionLocalOf { false }
+// True inside a glass card; text outside cards gets its own small frosted backing instead
+val LocalInCard = compositionLocalOf { false }
 val TILE_BLUE = Color(0xFF0A6FC0)
 val TILE_LEAF = Color(0xFF3A961C)
 val TILE_AQUA = Color(0xFF0A98B0)
@@ -87,14 +92,15 @@ fun Modifier.glass(shape: Shape, strength: Float = 1f): Modifier {
     val haze = glass.haze
     val frosted = if (haze != null) clip(shape).hazeBlur(HazeInput.Sources(haze), style)
         else clip(shape).background(tint)
-    return frosted.border(1.dp, GLASS_EDGE, shape)
+    return frosted.background(CARD_GLOSS).border(1.dp, GLASS_EDGE, shape)
 }
 
-// A light tinted pill behind a small label, without blur (labels can sit on glass cards, where blur would cut a hole)
+// A tinted pill behind a small label, without blur (labels can sit on glass cards, where blur would cut a hole); on the
+// blue Next up card the pill is see-through white instead
 @Composable
 fun Modifier.labelPill(): Modifier {
-    val tint = LocalGlass.current.tint
-    return clip(RoundedCornerShape(50)).background(tint.copy(alpha = 0.55f))
+    val fill = if (LocalOnHero.current) Color.White.copy(alpha = 0.22f) else LocalGlass.current.tint.copy(alpha = 0.55f)
+    return clip(RoundedCornerShape(50)).background(fill)
 }
 
 // A glass tile icon: a rounded glass square with a split highlight and the icon in colour
@@ -116,8 +122,13 @@ fun GlassIconButton(icon: ImageVector, description: String, onClick: () -> Unit,
     }
 }
 
-// The leaf-green colours of a button that adds a plan
+// The small frosted backing behind supporting text that sits straight on the scene (none inside cards)
 @Composable
-fun addButtonColors(): ButtonColors {
-    return ButtonDefaults.buttonColors(containerColor = Leaf, contentColor = Color.White)
+fun Modifier.looseBacking(): Modifier {
+    // Text inside a card already has the card's glass behind it
+    if (LocalInCard.current) {
+        return this
+    }
+    return clip(RoundedCornerShape(12.dp)).background(LocalGlass.current.tint.copy(alpha = 0.6f))
+        .padding(horizontal = 11.dp, vertical = 7.dp)
 }

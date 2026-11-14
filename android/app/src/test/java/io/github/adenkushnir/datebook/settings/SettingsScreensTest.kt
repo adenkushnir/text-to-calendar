@@ -89,9 +89,9 @@ class SettingsScreensTest {
                 PrivacyPage(clearHistory = { cleared += 1; 3 }, onBack = {})
             }
         }
-        compose.onNodeWithText("CLEAR HISTORY").performScrollTo().performClick()
+        compose.onNodeWithText("Clear history").performScrollTo().performClick()
         compose.onNodeWithText("Clear history?").assertExists()
-        compose.onNodeWithText("CLEAR").performClick()
+        compose.onNodeWithText("Clear").performClick()
         compose.onNodeWithText("Deleted 3 old suggestion(s).").assertExists()
         assertEquals(1, cleared)
     }
@@ -121,7 +121,7 @@ class SettingsScreensTest {
                     askAccess = { asked += 1 }, onBack = {})
             }
         }
-        compose.onNodeWithText("ALLOW").performScrollTo().performClick()
+        compose.onNodeWithText("Allow").performScrollTo().performClick()
         assertEquals(1, asked)
         access = true
         compose.onNodeWithText("Personal").assertExists()

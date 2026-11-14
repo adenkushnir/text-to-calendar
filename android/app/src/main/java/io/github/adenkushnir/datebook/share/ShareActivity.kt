@@ -8,10 +8,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -84,6 +86,8 @@ class ShareModel(application: Application) : AndroidViewModel(application) {
     }
 }
 
+private const val SHEET_WASH = 0.55f  // the glass-coloured wash over the beach that keeps the sheet readable
+
 // Shows the bottom sheet over the app you shared from, and closes when the sheet does
 class ShareActivity : ComponentActivity() {
     private val model: ShareModel by viewModels()
@@ -107,11 +111,13 @@ class ShareActivity : ComponentActivity() {
                 val light = rememberSceneLight()
                 val haze = rememberHazeState()
                 ModalBottomSheet(onDismissRequest = { finish() }, sheetState = sheet,
-                    containerColor = Color.Transparent, dragHandle = null) {
+                    containerColor = Color.Transparent, contentColor = MaterialTheme.colorScheme.onSurface,
+                    dragHandle = null) {
                     // The beach scene fills the sheet behind its handle and contents, showing the picture's bottom
                     Box {
                         SceneBackdrop(Scene.BEACH, light, Modifier.matchParentSize().hazeSource(haze),
                             alignment = Alignment.BottomCenter)
+                        Box(Modifier.matchParentSize().background(glassTint(light).copy(alpha = SHEET_WASH)))
                         CompositionLocalProvider(LocalGlass provides Glass(haze, glassTint(light))) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 BottomSheetDefaults.DragHandle()

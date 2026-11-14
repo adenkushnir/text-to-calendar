@@ -18,14 +18,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
@@ -46,12 +45,17 @@ import io.github.adenkushnir.datebook.trains.TrainBoard
 import io.github.adenkushnir.datebook.prompts.isChange
 import io.github.adenkushnir.datebook.prompts.promptTitle
 import io.github.adenkushnir.datebook.ui.DatebookIcons
+import io.github.adenkushnir.datebook.ui.GelButton
 import io.github.adenkushnir.datebook.ui.GlassIconButton
 import io.github.adenkushnir.datebook.ui.HERO_BRUSH
+import io.github.adenkushnir.datebook.ui.HERO_GLOSS
+import io.github.adenkushnir.datebook.ui.LocalInCard
+import io.github.adenkushnir.datebook.ui.LocalOnHero
+import io.github.adenkushnir.datebook.ui.PlainButton
 import io.github.adenkushnir.datebook.ui.TEXT_SHADOW
-import io.github.adenkushnir.datebook.ui.addButtonColors
 import io.github.adenkushnir.datebook.ui.glass
 import io.github.adenkushnir.datebook.ui.labelPill
+import io.github.adenkushnir.datebook.ui.looseBacking
 import io.github.adenkushnir.datebook.ui.theme.DatebookTheme
 private val LABEL_INK = Color(0xFFD6E8FF)
 private val HERO_EDGE = Color.White.copy(alpha = 0.5f)
@@ -94,8 +98,12 @@ fun HomeScreen(
                     Muted("No suggestions yet. They appear here when a text mentions a plan.")
                 }
 
-                // Show each waiting suggestion with Add and Ignore; tapping the text opens its card
-                for (suggestion in waiting) {
+                // Show each waiting suggestion with Add and Ignore, a line between them; tapping the text opens it
+                waiting.forEachIndexed { index, suggestion ->
+                    // A line above every suggestion but the first
+                    if (index > 0) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f).clickable { onOpen(suggestion.id) }) {
                             Text(promptTitle(suggestion), fontWeight = FontWeight.SemiBold)
@@ -105,9 +113,8 @@ fun HomeScreen(
                             ClashLine(suggestion.clash)
                         }
                         val change = isChange(suggestion)  // changes open the event instead
-                        Button(onClick = { onAdd(suggestion.id) },
-                            colors = if (change) ButtonDefaults.buttonColors() else addButtonColors()) {
-                            Text(if (change) "OPEN" else "ADD")
+                        GelButton(onClick = { onAdd(suggestion.id) }, green = !change, small = true) {
+                            Text(if (change) "Open" else "Add")
                         }
                         GlassIconButton(DatebookIcons.Close, "Ignore", onClick = { onIgnore(suggestion.id) })
                     }
@@ -122,8 +129,12 @@ fun HomeScreen(
                     Muted("Other plans you add will be listed here.")
                 }
 
-                // Show each later plan; tapping one opens its card
-                for (suggestion in later) {
+                // Show each later plan, a line between them; tapping one opens its card
+                later.forEachIndexed { index, suggestion ->
+                    // A line above every plan but the first
+                    if (index > 0) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                    }
                     Column(Modifier.fillMaxWidth().clickable { onOpen(suggestion.id) }) {
                         Text(suggestion.title, fontWeight = FontWeight.SemiBold)
                         Muted(whenAndWhere(suggestion))
@@ -142,8 +153,8 @@ private fun FixBanner(problem: String, fix: () -> Unit) {
         Row(Modifier.padding(start = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(problem, color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f))
-            TextButton(onClick = fix) {
-                Text("FIX", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
+            PlainButton(onClick = fix) {
+                Text("Fix", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -156,14 +167,14 @@ private fun NextUpCard(next: Suggestion?, nowMillis: Long, onOpen: (Long) -> Uni
         // Show a message until a plan has been added
         if (next == null) {
             SectionLabel("Next up")
-            Text("Nothing coming up yet", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+            Text("Nothing coming up yet", fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
             Muted("When you add a plan, the next one shows here with a countdown.")
             return@DatebookCard
         }
         val spacing = Arrangement.spacedBy(6.dp)
         Column(Modifier.fillMaxWidth().clickable { onOpen(next.id) }, verticalArrangement = spacing) {
             SectionLabel("Next up · ${countdownFor(next, nowMillis)}")
-            Text(next.title, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+            Text(next.title, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
             Muted(whenAndWhere(next))
             Muted("From ${fromLine(next)}")
         }
@@ -220,8 +231,9 @@ fun TopBar(title: String, onBack: (() -> Unit)? = null, onSettings: (() -> Unit)
         if (onBack != null) {
             GlassIconButton(DatebookIcons.Back, "Back", onClick = onBack)
         }
-        Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp,
-            style = TextStyle(shadow = TEXT_SHADOW), modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
+        Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 21.sp,
+            style = LocalTextStyle.current.copy(shadow = TEXT_SHADOW),
+            modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
 
         // The Settings button on Home
         if (onSettings != null) {
@@ -235,7 +247,7 @@ fun TopBar(title: String, onBack: (() -> Unit)? = null, onSettings: (() -> Unit)
 fun SectionLabel(text: String) {
     Text(
         text.uppercase(),
-        color = LABEL_INK,
+        color = if (LocalOnHero.current) Color.White else LABEL_INK,
         fontWeight = FontWeight.Bold,
         fontSize = 11.sp,
         letterSpacing = 1.sp,
@@ -243,21 +255,23 @@ fun SectionLabel(text: String) {
     )
 }
 
-// Supporting text in the muted colour, with a soft shadow so it stays readable straight on the scene
+// Supporting text in the muted colour (white-ish on the Next up card), with a soft shadow, and a small frosted backing
+// when it sits straight on the scene
 @Composable
 fun Muted(text: String) {
-    Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp,
-        style = TextStyle(shadow = TEXT_SHADOW))
+    val color = if (LocalOnHero.current) Color.White.copy(alpha = 0.92f) else MaterialTheme.colorScheme.onSurfaceVariant
+    Text(text, color = color, fontSize = 13.5.sp, lineHeight = 19.sp,
+        style = LocalTextStyle.current.copy(shadow = TEXT_SHADOW), modifier = Modifier.looseBacking())
 }
 
 // A card of dark glass tinted by the light, or the glossy blue Next up card when it's the highlighted one
 @Composable
 fun DatebookCard(accent: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
     val shape = MaterialTheme.shapes.large
-    val surface = if (accent) Modifier.clip(shape).background(HERO_BRUSH).border(1.dp, HERO_EDGE, shape)
-        else Modifier.glass(shape)
+    val surface = if (accent) Modifier.clip(shape).background(HERO_BRUSH).background(HERO_GLOSS)
+        .border(1.dp, HERO_EDGE, shape) else Modifier.glass(shape)
     val ink = if (accent) Color.White else MaterialTheme.colorScheme.onSurface
-    CompositionLocalProvider(LocalContentColor provides ink) {
+    CompositionLocalProvider(LocalContentColor provides ink, LocalOnHero provides accent, LocalInCard provides true) {
         Column(Modifier.fillMaxWidth().then(surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp),
             content = content)
     }

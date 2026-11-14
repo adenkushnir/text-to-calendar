@@ -12,16 +12,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,7 +40,9 @@ import io.github.adenkushnir.datebook.tracking.trackLinkFor
 import io.github.adenkushnir.datebook.trains.TrainChoices
 import io.github.adenkushnir.datebook.trains.TrainRow
 import io.github.adenkushnir.datebook.ui.DatebookIcons
-import io.github.adenkushnir.datebook.ui.addButtonColors
+import io.github.adenkushnir.datebook.ui.GelButton
+import io.github.adenkushnir.datebook.ui.GlassButton
+import io.github.adenkushnir.datebook.ui.PlainButton
 import io.github.adenkushnir.datebook.ui.travelIcon
 
 // Show one suggestion; null while it is loading or after it was deleted
@@ -126,15 +124,15 @@ fun SuggestionScreen(
 
             // Offer the package's tracking page or the flight's status
             if (track != null) {
-                OutlinedButton(onClick = { onTrack(track.url) }) {
+                GlassButton(onClick = { onTrack(track.url) }) {
                     Text(track.label)
                 }
             }
 
             // Offer directions when the plan has a place
             if (suggestion.location.isNotBlank()) {
-                OutlinedButton(onClick = { onOpenMaps(suggestion.location) }) {
-                    Text("OPEN IN MAPS")
+                GlassButton(onClick = { onOpenMaps(suggestion.location) }) {
+                    Text("Open in Maps")
                 }
             }
 
@@ -142,11 +140,11 @@ fun SuggestionScreen(
             if (suggestion.status == Suggestion.STATUS_WAITING) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     val change = isChange(suggestion)  // changes open the event instead
-                    Button(onClick = onAdd, colors = if (change) ButtonDefaults.buttonColors() else addButtonColors()) {
-                        Text(if (change) "OPEN EVENT" else "ADD")
+                    GelButton(onClick = onAdd, green = !change) {
+                        Text(if (change) "Open event" else "Add")
                     }
-                    OutlinedButton(onClick = onIgnore) {
-                        Text("IGNORE")
+                    GlassButton(onClick = onIgnore) {
+                        Text("Ignore")
                     }
                 }
                 val help = if (isChange(suggestion)) "Open event shows it in your calendar app, where you can " +
@@ -170,7 +168,7 @@ private fun TrainList(choices: TrainChoices, onPick: (TrainRow) -> Unit, onSwitc
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("From:")
             Box {
-                TextButton(onClick = { switching = true }) {
+                PlainButton(onClick = { switching = true }) {
                     Text("${choices.from.name} ▾")
                 }
                 DropdownMenu(expanded = switching, onDismissRequest = { switching = false }) {
