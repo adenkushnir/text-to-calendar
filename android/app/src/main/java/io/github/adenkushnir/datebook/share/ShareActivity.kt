@@ -8,13 +8,16 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -24,6 +27,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewModelScope
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import io.github.adenkushnir.datebook.AppGraph
 import io.github.adenkushnir.datebook.MainActivity
 import io.github.adenkushnir.datebook.pipeline.IncomingText
@@ -35,6 +40,9 @@ import io.github.adenkushnir.datebook.prompts.ignoreSuggestion
 import io.github.adenkushnir.datebook.scenery.Scene
 import io.github.adenkushnir.datebook.scenery.SceneBackdrop
 import io.github.adenkushnir.datebook.scenery.rememberSceneLight
+import io.github.adenkushnir.datebook.ui.Glass
+import io.github.adenkushnir.datebook.ui.LocalGlass
+import io.github.adenkushnir.datebook.ui.glassTint
 import io.github.adenkushnir.datebook.ui.theme.DatebookTheme
 import java.time.LocalDateTime
 import kotlinx.coroutines.Dispatchers
@@ -78,6 +86,8 @@ class ShareModel(application: Application) : AndroidViewModel(application) {
     }
 }
 
+private const val SHEET_WASH = 0.55f  // the glass-coloured wash over the beach that keeps the sheet readable
+
 // Shows the bottom sheet over the app you shared from, and closes when the sheet does
 class ShareActivity : ComponentActivity() {
     private val model: ShareModel by viewModels()
@@ -99,14 +109,20 @@ class ShareActivity : ComponentActivity() {
             DatebookTheme {
                 val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
                 val light = rememberSceneLight()
-                ModalBottomSheet(onDismissRequest = { finish() }, sheetState = sheet, containerColor = Color.Transparent,
+                val haze = rememberHazeState()
+                ModalBottomSheet(onDismissRequest = { finish() }, sheetState = sheet,
+                    containerColor = Color.Transparent, contentColor = MaterialTheme.colorScheme.onSurface,
                     dragHandle = null) {
                     // The beach scene fills the sheet behind its handle and contents, showing the picture's bottom
                     Box {
-                        SceneBackdrop(Scene.BEACH, light, Modifier.matchParentSize(), alignment = Alignment.BottomCenter)
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            BottomSheetDefaults.DragHandle()
-                            SheetContents(item)
+                        SceneBackdrop(Scene.BEACH, light, Modifier.matchParentSize().hazeSource(haze),
+                            alignment = Alignment.BottomCenter)
+                        Box(Modifier.matchParentSize().background(glassTint(light).copy(alpha = SHEET_WASH)))
+                        CompositionLocalProvider(LocalGlass provides Glass(haze, glassTint(light))) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                BottomSheetDefaults.DragHandle()
+                                SheetContents(item)
+                            }
                         }
                     }
                 }

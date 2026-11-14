@@ -44,12 +44,12 @@ fun packageLink(carrier: String, number: String): TrackLink? {
         CARRIER_DHL -> "https://www.dhl.com/us-en/home/tracking/tracking-express.html?submit=1&tracking-id=$clean"
         else -> return null
     }
-    return TrackLink("TRACK PACKAGE", url)
+    return TrackLink("Track package", url)
 }
 
 // A flight's live status page (a web search, which shows the airline's status card), until part B shows it in the app
 fun flightLink(flight: String): TrackLink {
-    return TrackLink("FLIGHT STATUS", "https://www.google.com/search?q=${Uri.encode("$flight flight status")}")
+    return TrackLink("Flight status", "https://www.google.com/search?q=${Uri.encode("$flight flight status")}")
 }
 
 // The Track button for a plan: its package's tracking page, or its flight's status page; null for other plans

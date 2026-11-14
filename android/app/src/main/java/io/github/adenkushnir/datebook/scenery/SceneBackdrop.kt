@@ -25,8 +25,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 private const val TICK_MILLIS = 10_000L
 private const val LATE_DIM = 0.3f
-// Until the glass arrives (step 2), a see-through dark wash keeps the light text outside the cards readable
-private val VEIL = Color(0xFF0A1420).copy(alpha = 0.35f)
+// A faint dark wash so the brightest midday spots never glare behind the light text outside the glass cards
+private val VEIL = Color(0xFF0A1420).copy(alpha = 0.12f)
 
 // The light right now, from the real sun where the phone is; work it out once for the whole app so every scene
 // shares it
@@ -41,8 +41,8 @@ fun rememberSceneLight(): SceneLight {
 fun SceneBackdrop(scene: Scene, light: SceneLight, modifier: Modifier = Modifier,
     alignment: Alignment = Alignment.Center) {
     Box(modifier) {
-        Image(painterResource(pictureFor(scene, light.from)), contentDescription = null, modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop, alignment = alignment)
+        Image(painterResource(pictureFor(scene, light.from)), contentDescription = null,
+            modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, alignment = alignment)
 
         // During a fade, the next light shows through on top
         if (light.mix > 0f) {

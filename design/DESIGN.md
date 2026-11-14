@@ -99,32 +99,40 @@ All movement bends the photo's own pixels, or moves photo-real cutouts, so it lo
 
 ## Glass
 
-**To redo in step 2:** with the UI always dark, the glass becomes dark glass with light text all day. The tints
-below were designed for light glass by day and get re-decided then.
+The app is always dark, so all the glass is dark glass with light text.
 
-- **Cards:** medium frost, glass at 66% opacity with an 18px blur behind it. The blur is live over the moving scene, so
-  the build uses the Haze library.
-- **Tint:** the glass takes on the light, cross-fading with the scene.
+- **Cards:** medium frost: glass at 66% opacity over an 18dp blur of the moving scene behind, made with the Haze
+  library (2.0.1). Android 12 and later blurs; older phones get the tint as a solid scrim. Cards have 22dp corners and
+  a faint light edge.
+- **Tint:** the glass takes on the light, blending with the scene as it fades (Compose blends the colours in the
+  perceptual Oklab space).
 
 | Light | Glass colour (RGB) |
 |---|---|
-| Midday | 255, 255, 255 |
-| Morning | 255, 249, 238 |
-| Golden hour | 255, 238, 208 |
-| Sunset | 255, 226, 220 |
-| Blue hour | 214, 224, 255 |
-| Night | 16, 32, 70 |
+| Night | 12, 24, 54 (navy) |
+| Blue hour | 26, 30, 70 (indigo) |
+| Morning | 46, 40, 58 (dusky lilac) |
+| Midday | 16, 44, 72 (deep sky blue) |
+| Golden hour | 62, 44, 28 (amber) |
+| Sunset | 64, 30, 50 (plum) |
 
-- **Text** switches to light colours when the glass gets dark (brightness below 45%):
-
-| | Day | Night |
-|---|---|---|
-| Text | #0E2A3D | #EEF5FF |
-| Secondary text | #3F6178 | #B4C6E0 |
-| Links and glass buttons | #0B6FB8 | #9FD8FF |
-| Warnings | #B25F00 | #FFBE6A |
-
-- **Top bar:** clear. The scene runs to the top of the screen and the title floats over it with a soft shadow.
+- **Next up card:** a glossy blue gradient (sky blue to aqua) with white text, instead of glass.
+- **Section labels:** small uppercase text on a tinted pill (no blur, since labels can sit on cards).
+- **Text:** #EEF5FF; secondary text #B4C6E0 with a soft shadow so it reads straight on the scene; links #9FD8FF;
+  warnings #FFBE6A; label text #D6E8FF.
+- **Buttons:** glossy gel pills with a soft highlight across the top half and a light edge, 38dp tall (32dp in lists),
+  with bold 14 labels in normal case ("Add", "Ignore"). Sky-blue gel for main actions, leaf-green gel for adding a
+  plan, glass pills with light-blue text for secondary actions, and plain light-blue text for small ones.
+- **Switches:** glossy gel: a leaf-green track when on, a dark glass track when off, a shiny white knob.
+- **Text fields:** glass tinted by the light, 12dp corners, a faint light edge that turns light blue with focus.
+- **Setup progress:** a Vista-style bar of green gel in a dark glass track.
+- **Loose text:** supporting text that sits straight on the scene gets its own small frosted backing (inside cards it
+  doesn't need one).
+- **Type:** Selawik with no added letter spacing; card text 15, supporting text 13.5, card titles 18 on Next up.
+- **Share sheet:** a 55% wash of the light's glass colour over the beach, with the plans on a glass card.
+- **Top bar:** clear. The scene runs to the top of the screen and the title floats over it with a soft shadow, with
+  glass tile buttons for Back and Settings.
+- **Scene veil:** a faint 12% dark wash over the scene, so the brightest midday spots never glare behind loose text.
 
 ## App icon
 
@@ -170,8 +178,8 @@ scripts move into this folder with the build steps that use them.
 
 Planned in steps, each tested on a real phone:
 
-1. The pictures and the time-of-day light (still pictures with eased fades; works on every Android version).
-2. The glass: Haze cards, tints, the clear top bar, Selawik, and glass tile icons.
+1. The pictures and the time-of-day light (still pictures with eased fades; works on every Android version). Done.
+2. The glass: Haze cards, tints, the clear top bar, Selawik, and glass tile icons. Done.
 3. The motion: the AGSL shader with masks, the fish, lens bubbles and surprises, and the battery rules.
 4. Dark mode and late-night dimming.
 5. The app icon and notifications.

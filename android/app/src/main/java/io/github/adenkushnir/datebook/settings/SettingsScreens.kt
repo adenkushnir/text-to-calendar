@@ -1,10 +1,8 @@
 // The Settings screens from the mockup: a category menu, then Apps to watch, Claude & API key, Notifications &
 // alerts, Privacy & history and About (Smart features and Automatic mode appear once their steps are built)
 package io.github.adenkushnir.datebook.settings
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -18,15 +16,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
@@ -38,6 +32,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -52,6 +48,13 @@ import io.github.adenkushnir.datebook.capture.WatchedApp
 import io.github.adenkushnir.datebook.places.TRAVEL_MODES
 import io.github.adenkushnir.datebook.summary.timeLabel
 import io.github.adenkushnir.datebook.trains.Station
+import io.github.adenkushnir.datebook.ui.GelButton
+import io.github.adenkushnir.datebook.ui.GelSwitch
+import io.github.adenkushnir.datebook.ui.GlassButton
+import io.github.adenkushnir.datebook.ui.GlassField
+import io.github.adenkushnir.datebook.ui.GlassTile
+import io.github.adenkushnir.datebook.ui.PlainButton
+import io.github.adenkushnir.datebook.ui.travelIcon
 import kotlinx.coroutines.launch
 const val GITHUB_URL = "https://github.com/adenkushnir/text-to-calendar"
 const val PRIVACY_SUMMARY = "Datebook checks texts from the apps you switch on, on this phone. Texts without a date " +
@@ -61,33 +64,34 @@ const val PRIVACY_SUMMARY = "Datebook checks texts from the apps you switch on, 
     "can't be reached, a text with a date waits on the phone (for up to a day) so Claude can check it later, and " +
     "its offline guess shows it until then."
 
-// One item in the Settings menu: a short icon, its name, a one-line hint, and the page it opens
-class SettingsItem(val icon: String, val title: String, val hint: String, val open: () -> Unit)
+// One item in the Settings menu: its glass tile icon and the icon's colour, its name, a one-line hint, and the page it
+// opens
+class SettingsItem(val icon: ImageVector, val tint: Color, val title: String, val hint: String, val open: () -> Unit)
 
-// The Settings menu: one row per category
+// The Settings menu: one row per category on a glass card
 @Composable
 fun SettingsMenu(items: List<SettingsItem>, onBack: () -> Unit) {
     SettingsPage("Settings", onBack) {
-        // Show each category as a row that opens its page
-        for (item in items) {
-            Row(
-                Modifier.fillMaxWidth().clickable(onClick = item.open).padding(vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                val tile = MaterialTheme.colorScheme.primaryContainer
-                Box(Modifier.size(28.dp).background(tile, MaterialTheme.shapes.small),
-                    contentAlignment = Alignment.Center) {
-                    Text(item.icon, color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp)
+        DatebookCard {
+            // Show each category as a row that opens its page, with a line between rows
+            items.forEachIndexed { index, item ->
+                // A line above every row but the first
+                if (index > 0) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
                 }
-                Column(Modifier.weight(1f)) {
-                    Text(item.title, fontWeight = FontWeight.SemiBold)
-                    Muted(item.hint)
+                Row(
+                    Modifier.fillMaxWidth().clickable(onClick = item.open).padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    GlassTile(item.icon, description = null, size = 34.dp, tint = item.tint)
+                    Column(Modifier.weight(1f)) {
+                        Text(item.title, fontWeight = FontWeight.SemiBold)
+                        Muted(item.hint)
+                    }
+                    Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 20.sp)
                 }
-                Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 20.sp)
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
         }
     }
 }
@@ -129,8 +133,8 @@ fun CalendarsPage(
         if (!access) {
             DatebookCard {
                 Text("Datebook can't see your calendar yet.", fontWeight = FontWeight.SemiBold)
-                Button(onClick = askAccess) {
-                    Text("ALLOW")
+                GelButton(onClick = askAccess) {
+                    Text("Allow")
                 }
                 Muted("If nothing happens, allow Calendar in Android's settings for Datebook.")
             }
@@ -150,7 +154,7 @@ fun CalendarsPage(
                         Text(calendar.name.ifBlank { "Calendar" })
                         Muted(calendar.account)
                     }
-                    Switch(checked = on, onCheckedChange = { checked ->
+                    GelSwitch(checked = on, onCheckedChange = { checked ->
                         setOn(calendar.id, checked)
                         on = checked
                     })
@@ -220,18 +224,20 @@ fun PlacesPage(
             // One choice per travel mode
             for (option in TRAVEL_MODES) {
                 val pick = Modifier.fillMaxWidth().clickable { onMode(option.id) }
-                Row(pick, verticalAlignment = Alignment.CenterVertically) {
-                    Text(option.label, modifier = Modifier.weight(1f))
+                val gap = Arrangement.spacedBy(10.dp)
+                Row(pick, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = gap) {
+                    Icon(travelIcon(option.id), contentDescription = null, modifier = Modifier.size(20.dp))
+                    Text(option.name, modifier = Modifier.weight(1f))
                     RadioButton(selected = mode == option.id, onClick = { onMode(option.id) })
                 }
             }
         }
         Muted("Every plan starts with this. You can change it for one plan on its card.")
         SectionLabel("Home")
-        OutlinedTextField(value = homeInput, onValueChange = { homeInput = it; homeSaved = false },
+        GlassField(value = homeInput, onValueChange = { homeInput = it; homeSaved = false },
             label = { Text("Home address") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedButton(onClick = { saveHome(homeInput); homeSaved = true }, enabled = homeInput.trim() != home.trim()) {
-            Text("SAVE")
+        GlassButton(onClick = { saveHome(homeInput); homeSaved = true }, enabled = homeInput.trim() != home.trim()) {
+            Text("Save")
         }
 
         // Say so once the address is saved
@@ -289,17 +295,17 @@ private fun NjtAccountBox(njtUser: String?, saveNjt: (String, String) -> Unit) {
     var saved by remember { mutableStateOf(njtUser) }
     Muted(saved?.let { "Account saved: $it" } ?: "No account saved. Register at developer.njtransit.com (RailData " +
         "and GTFS-RAIL), then enter it here.")
-    OutlinedTextField(value = user, onValueChange = { user = it }, label = { Text("NJ Transit username") },
+    GlassField(value = user, onValueChange = { user = it }, label = { Text("NJ Transit username") },
         singleLine = true, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Password") },
+    GlassField(value = password, onValueChange = { password = it }, label = { Text("Password") },
         singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-    OutlinedButton(enabled = user.isNotBlank() && password.isNotBlank(), onClick = {
+    GlassButton(enabled = user.isNotBlank() && password.isNotBlank(), onClick = {
         saveNjt(user.trim(), password)
         saved = user.trim()
         user = ""
         password = ""
     }) {
-        Text("SAVE ACCOUNT")
+        Text("Save account")
     }
 }
 
@@ -317,14 +323,14 @@ private fun TripBox(stations: List<Station>, trip: Pair<String, String>?, setTri
     // Without stations, offer to load them
     if (known.isEmpty()) {
         Muted("NJ Transit's stations load after your account is saved.")
-        OutlinedButton(enabled = !loading, onClick = {
+        GlassButton(enabled = !loading, onClick = {
             loading = true
             scope.launch {
                 known = loadStations()
                 loading = false
             }
         }) {
-            Text(if (loading) "LOADING…" else "LOAD STATIONS")
+            Text(if (loading) "Loading…" else "Load stations")
         }
         return
     }
@@ -333,7 +339,7 @@ private fun TripBox(stations: List<Station>, trip: Pair<String, String>?, setTri
         for ((label, code) in listOf("From" to from, "To" to to)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(label, modifier = Modifier.weight(1f))
-                TextButton(onClick = { picking = label }) {
+                PlainButton(onClick = { picking = label }) {
                     Text(known.firstOrNull { it.code == code }?.name ?: "Choose")
                 }
             }
@@ -368,19 +374,19 @@ private fun StationDialog(stations: List<Station>, onDismiss: () -> Unit, onPick
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("CANCEL")
+            PlainButton(onClick = onDismiss) {
+                Text("Cancel")
             }
         },
         title = { Text("Choose a station") },
         text = {
             Column {
-                OutlinedTextField(value = search, onValueChange = { search = it }, label = { Text("Search") },
+                GlassField(value = search, onValueChange = { search = it }, label = { Text("Search") },
                     singleLine = true, modifier = Modifier.fillMaxWidth())
                 Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
                     // One row per matching station
                     for (station in stations.filter { it.name.contains(search, ignoreCase = true) }) {
-                        TextButton(onClick = { onPick(station) }, modifier = Modifier.fillMaxWidth()) {
+                        PlainButton(onClick = { onPick(station) }, modifier = Modifier.fillMaxWidth()) {
                             Text(station.name, modifier = Modifier.fillMaxWidth())
                         }
                     }
@@ -419,9 +425,9 @@ private fun KeyReplaceBox(checkAndSaveKey: suspend (String) -> String?) {
     var input by remember { mutableStateOf("") }
     var result by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    OutlinedTextField(value = input, onValueChange = { input = it }, label = { Text("Paste a new key") },
+    GlassField(value = input, onValueChange = { input = it }, label = { Text("Paste a new key") },
         singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-    OutlinedButton(enabled = input.isNotBlank() && !busy, onClick = {
+    GlassButton(enabled = input.isNotBlank() && !busy, onClick = {
         busy = true
         scope.launch {
             val problem = checkAndSaveKey(input)
@@ -430,7 +436,7 @@ private fun KeyReplaceBox(checkAndSaveKey: suspend (String) -> String?) {
             busy = false
         }
     }) {
-        Text(if (busy) "CHECKING…" else "REPLACE KEY")  // show progress while checking
+        Text(if (busy) "Checking…" else "Replace key")  // show progress while checking
     }
 
     // Show what happened to the last key
@@ -469,7 +475,7 @@ fun NotificationsPage(
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Time", modifier = Modifier.weight(1f))
-                TextButton(onClick = { picking = true }, enabled = on) {
+                PlainButton(onClick = { picking = true }, enabled = on) {
                     Text(timeLabel(hour, minute))
                 }
             }
@@ -498,13 +504,13 @@ private fun TimeDialog(hour: Int, minute: Int, onDismiss: () -> Unit, onPick: (I
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
-            TextButton(onClick = { onPick(state.hour, state.minute) }) {
+            PlainButton(onClick = { onPick(state.hour, state.minute) }) {
                 Text("OK")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("CANCEL")
+            PlainButton(onClick = onDismiss) {
+                Text("Cancel")
             }
         },
         text = { TimePicker(state) },
@@ -522,8 +528,8 @@ fun PrivacyPage(clearHistory: suspend () -> Int, onBack: () -> Unit) {
         SectionLabel("History")
         Muted("Clear history deletes ignored suggestions and added plans that are already over. Plans still waiting " +
             "or coming up are kept.")
-        OutlinedButton(onClick = { confirming = true }) {
-            Text("CLEAR HISTORY")
+        GlassButton(onClick = { confirming = true }) {
+            Text("Clear history")
         }
 
         // Show how many were deleted
@@ -538,16 +544,16 @@ fun PrivacyPage(clearHistory: suspend () -> Int, onBack: () -> Unit) {
                 title = { Text("Clear history?") },
                 text = { Text("Ignored suggestions and finished plans will be deleted. This can't be undone.") },
                 confirmButton = {
-                    TextButton(onClick = {
+                    PlainButton(onClick = {
                         confirming = false
                         scope.launch { result = "Deleted ${clearHistory()} old suggestion(s)." }
                     }) {
-                        Text("CLEAR")
+                        Text("Clear")
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { confirming = false }) {
-                        Text("CANCEL")
+                    PlainButton(onClick = { confirming = false }) {
+                        Text("Cancel")
                     }
                 },
             )
@@ -562,7 +568,7 @@ fun AboutPage(version: String, openGitHub: () -> Unit, pretend: (suspend (String
     SettingsPage("About Datebook", onBack) {
         DatebookCard {
             Text("Datebook $version", fontWeight = FontWeight.SemiBold)
-            TextButton(onClick = openGitHub) {
+            PlainButton(onClick = openGitHub) {
                 Text(GITHUB_URL.removePrefix("https://"))
             }
         }
@@ -587,18 +593,18 @@ private fun PretendBox(pretend: suspend (String, String) -> List<String>) {
     SectionLabel("Test tools (debug builds only)")
     DatebookCard {
         Text("Pretend a text arrived", fontWeight = FontWeight.SemiBold)
-        OutlinedTextField(value = text, onValueChange = { text = it }, label = { Text("Text") },
+        GlassField(value = text, onValueChange = { text = it }, label = { Text("Text") },
             modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = sender, onValueChange = { sender = it }, label = { Text("From") }, singleLine = true,
+        GlassField(value = sender, onValueChange = { sender = it }, label = { Text("From") }, singleLine = true,
             modifier = Modifier.fillMaxWidth())
-        Button(enabled = !busy && text.isNotBlank(), onClick = {
+        GelButton(enabled = !busy && text.isNotBlank(), onClick = {
             busy = true
             scope.launch {
                 results = pretend(text, sender)
                 busy = false
             }
         }) {
-            Text(if (busy) "ASKING CLAUDE…" else "SEND THROUGH DATEBOOK")  // show progress while waiting
+            Text(if (busy) "Asking Claude…" else "Send through Datebook")  // show progress while waiting
         }
 
         // Show each result line, like the log
@@ -613,7 +619,7 @@ private fun PretendBox(pretend: suspend (String, String) -> List<String>) {
 private fun SwitchRow(label: String, on: Boolean, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(label, modifier = Modifier.weight(1f))
-        Switch(checked = on, onCheckedChange = onChange)
+        GelSwitch(checked = on, onCheckedChange = onChange)
     }
 }
 
@@ -625,8 +631,8 @@ private fun StatusRow(label: String, on: Boolean, open: () -> Unit) {
             Text(label)
             Muted(if (on) "On" else "Off")
         }
-        TextButton(onClick = open) {
-            Text(if (on) "SETTINGS" else "TURN ON")  // offer to fix it when it's off
+        PlainButton(onClick = open) {
+            Text(if (on) "Settings" else "Turn on")  // offer to fix it when it's off
         }
     }
 }

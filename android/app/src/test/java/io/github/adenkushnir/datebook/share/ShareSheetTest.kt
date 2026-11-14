@@ -1,6 +1,7 @@
 // Tests for the share sheet: the spinner, the plans with Add and ✕, and the notes with their buttons
 package io.github.adenkushnir.datebook.share
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import io.github.adenkushnir.datebook.data.Suggestion
@@ -50,7 +51,7 @@ class ShareSheetTest {
         compose.onNodeWithText("Game 1").assertExists()
         compose.onNodeWithText("Game 2").assertExists()
         compose.onNodeWithText("Plans you don't add or ignore wait on Datebook's home screen.").assertExists()
-        compose.onNodeWithText("DONE").performClick()
+        compose.onNodeWithText("Done").performClick()
         assertEquals(listOf("close"), pressed)
     }
 
@@ -60,15 +61,15 @@ class ShareSheetTest {
         show(ShareResult(listOf(game, game.copy(id = 4, title = "Game 2"))), added = setOf(3), ignored = setOf(4))
         compose.onNodeWithText("Added ✓").assertExists()
         compose.onNodeWithText("Ignored").assertExists()
-        compose.onNodeWithText("ADD").assertDoesNotExist()
+        compose.onNodeWithText("Add").assertDoesNotExist()
     }
 
     // Tapping Add on a plan adds that plan
     @Test
     fun addOne() {
         show(ShareResult(listOf(game)))
-        compose.onNodeWithText("ADD").performClick()
-        compose.onNodeWithText("✕").performClick()
+        compose.onNodeWithText("Add").performClick()
+        compose.onNodeWithContentDescription("Ignore").performClick()
         assertEquals(listOf("add 3", "ignore 3"), pressed)
     }
 
@@ -77,8 +78,8 @@ class ShareSheetTest {
     fun notesWithButtons() {
         show(ShareResult(emptyList(), "Couldn't reach Claude.", canRetry = true))
         compose.onNodeWithText("Couldn't reach Claude.").assertExists()
-        compose.onNodeWithText("OPEN DATEBOOK").assertDoesNotExist()
-        compose.onNodeWithText("TRY AGAIN").performClick()
+        compose.onNodeWithText("Open Datebook").assertDoesNotExist()
+        compose.onNodeWithText("Try again").performClick()
         assertEquals(listOf("retry"), pressed)
     }
 
@@ -86,8 +87,8 @@ class ShareSheetTest {
     @Test
     fun keyNote() {
         show(ShareResult(emptyList(), "Add your Claude API key in Datebook first.", needsKey = true))
-        compose.onNodeWithText("OPEN DATEBOOK").performClick()
-        compose.onNodeWithText("CLOSE").performClick()
+        compose.onNodeWithText("Open Datebook").performClick()
+        compose.onNodeWithText("Close").performClick()
         assertEquals(listOf("open", "close"), pressed)
     }
 }

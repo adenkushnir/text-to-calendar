@@ -46,8 +46,8 @@ class SetupScreenTest {
     fun requiredStepBlocksNext() {
         showSetup(SetupStatus())
         compose.onNodeWithText("STEP 1 OF 6").assertExists()
-        compose.onNodeWithText("NEXT").assertIsNotEnabled()
-        compose.onNodeWithText("OPEN SETTINGS").performClick()
+        compose.onNodeWithText("Next").assertIsNotEnabled()
+        compose.onNodeWithText("Open settings").performClick()
         assertEquals(listOf("access"), opened)
     }
 
@@ -60,15 +60,15 @@ class SetupScreenTest {
         // Go through the three required pages
         for (page in 1..3) {
             compose.onNodeWithText("✓ Done").assertExists()
-            compose.onNodeWithText("NEXT").performScrollTo().assertIsEnabled().performClick()
+            compose.onNodeWithText("Next").performScrollTo().assertIsEnabled().performClick()
         }
 
         // Skip the three optional pages
         for (page in 4..6) {
-            compose.onNodeWithText("SKIP").performScrollTo().assertIsEnabled().performClick()
+            compose.onNodeWithText("Skip").performScrollTo().assertIsEnabled().performClick()
         }
         compose.onNodeWithText("You're set").assertExists()
-        compose.onNodeWithText("GO TO DATEBOOK").performScrollTo().performClick()
+        compose.onNodeWithText("Go to Datebook").performScrollTo().performClick()
         assertEquals(listOf(true), finished)
     }
 

@@ -92,12 +92,12 @@ class PlacesTest {
                     allTheTime = false, askAllTheTime = {}, onBack = {})
             }
         }
-        compose.onNodeWithText("🚌 Transit").performScrollTo().performClick()
+        compose.onNodeWithText("Transit").performScrollTo().performClick()
         assertEquals(listOf(TRAVEL_TRANSIT), chosen)
         compose.onNodeWithText("Home address").performScrollTo().performTextReplacement("1 College Ave")
-        compose.onNodeWithText("SAVE").performScrollTo().performClick()
+        compose.onNodeWithText("Save").performScrollTo().performClick()
         assertEquals("1 College Ave", home)
-        compose.onAllNodesWithText("TURN ON")[0].performScrollTo().performClick()
+        compose.onAllNodesWithText("Turn on")[0].performScrollTo().performClick()
         assertEquals(1, asked)
     }
 }

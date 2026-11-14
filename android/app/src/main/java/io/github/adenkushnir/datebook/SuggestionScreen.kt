@@ -9,16 +9,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +39,11 @@ import io.github.adenkushnir.datebook.prompts.promptTitle
 import io.github.adenkushnir.datebook.tracking.trackLinkFor
 import io.github.adenkushnir.datebook.trains.TrainChoices
 import io.github.adenkushnir.datebook.trains.TrainRow
+import io.github.adenkushnir.datebook.ui.DatebookIcons
+import io.github.adenkushnir.datebook.ui.GelButton
+import io.github.adenkushnir.datebook.ui.GlassButton
+import io.github.adenkushnir.datebook.ui.PlainButton
+import io.github.adenkushnir.datebook.ui.travelIcon
 
 // Show one suggestion; null while it is loading or after it was deleted
 @Composable
@@ -84,7 +88,13 @@ fun SuggestionScreen(
 
                 // Show the flight's live status when it's known
                 if (flightStatus != null) {
-                    Text("✈ $flightStatus", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                    val color = MaterialTheme.colorScheme.onPrimaryContainer
+                    val gap = Arrangement.spacedBy(6.dp)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = gap) {
+                        Icon(DatebookIcons.Plane, contentDescription = "Flight", modifier = Modifier.size(18.dp),
+                            tint = color)
+                        Text(flightStatus, color = color, fontWeight = FontWeight.SemiBold)
+                    }
                 }
 
                 Muted(statusText(suggestion))
@@ -102,7 +112,10 @@ fun SuggestionScreen(
                     // One chip per mode
                     for (option in TRAVEL_MODES) {
                         FilterChip(selected = option.id == travelMode, onClick = { onTravelMode(option.id) },
-                            label = { Text(option.label) })
+                            label = { Text(option.name) },
+                            leadingIcon = {
+                                Icon(travelIcon(option.id), contentDescription = null, Modifier.size(18.dp))
+                            })
                     }
                 }
             }
@@ -111,26 +124,27 @@ fun SuggestionScreen(
 
             // Offer the package's tracking page or the flight's status
             if (track != null) {
-                OutlinedButton(onClick = { onTrack(track.url) }) {
+                GlassButton(onClick = { onTrack(track.url) }) {
                     Text(track.label)
                 }
             }
 
             // Offer directions when the plan has a place
             if (suggestion.location.isNotBlank()) {
-                OutlinedButton(onClick = { onOpenMaps(suggestion.location) }) {
-                    Text("OPEN IN MAPS")
+                GlassButton(onClick = { onOpenMaps(suggestion.location) }) {
+                    Text("Open in Maps")
                 }
             }
 
             // Only waiting suggestions can still be added or ignored
             if (suggestion.status == Suggestion.STATUS_WAITING) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onAdd) {
-                        Text(if (isChange(suggestion)) "OPEN EVENT" else "ADD")  // changes open the event instead
+                    val change = isChange(suggestion)  // changes open the event instead
+                    GelButton(onClick = onAdd, green = !change) {
+                        Text(if (change) "Open event" else "Add")
                     }
-                    OutlinedButton(onClick = onIgnore) {
-                        Text("IGNORE")
+                    GlassButton(onClick = onIgnore) {
+                        Text("Ignore")
                     }
                 }
                 val help = if (isChange(suggestion)) "Open event shows it in your calendar app, where you can " +
@@ -147,14 +161,14 @@ fun SuggestionScreen(
 @Composable
 private fun TrainList(choices: TrainChoices, onPick: (TrainRow) -> Unit, onSwitch: (String) -> Unit) {
     var switching by remember { mutableStateOf(false) }
-    SectionLabel("🚆 Trains")
+    SectionLabel("Trains")
 
     // Show the station the trains leave from, with a menu of the other nearby ones
     if (choices.from != null) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("From:")
             Box {
-                TextButton(onClick = { switching = true }) {
+                PlainButton(onClick = { switching = true }) {
                     Text("${choices.from.name} ▾")
                 }
                 DropdownMenu(expanded = switching, onDismissRequest = { switching = false }) {

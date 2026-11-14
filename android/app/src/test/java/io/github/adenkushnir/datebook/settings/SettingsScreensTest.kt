@@ -14,6 +14,8 @@ import io.github.adenkushnir.datebook.calendar.CalendarSwitches
 import io.github.adenkushnir.datebook.calendar.PhoneCalendar
 import io.github.adenkushnir.datebook.capture.WatchedApp
 import io.github.adenkushnir.datebook.pipeline.DEFAULT_MODEL
+import io.github.adenkushnir.datebook.ui.DatebookIcons
+import io.github.adenkushnir.datebook.ui.TILE_BLUE
 import io.github.adenkushnir.datebook.ui.theme.DatebookTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -36,8 +38,11 @@ class SettingsScreensTest {
         val opened = mutableListOf<String>()
         compose.setContent {
             DatebookTheme {
-                SettingsMenu(listOf(SettingsItem("▣", "Apps to watch", "hint") { opened.add("apps") },
-                    SettingsItem("i", "About Datebook", "hint") { opened.add("about") }), onBack = {})
+                val apps = SettingsItem(DatebookIcons.Apps, TILE_BLUE, "Apps to watch", "hint") { opened.add("apps") }
+                val about = SettingsItem(DatebookIcons.Info, TILE_BLUE, "About Datebook", "hint") {
+                    opened.add("about")
+                }
+                SettingsMenu(listOf(apps, about), onBack = {})
             }
         }
         compose.onNodeWithText("Apps to watch").performClick()
@@ -84,9 +89,9 @@ class SettingsScreensTest {
                 PrivacyPage(clearHistory = { cleared += 1; 3 }, onBack = {})
             }
         }
-        compose.onNodeWithText("CLEAR HISTORY").performScrollTo().performClick()
+        compose.onNodeWithText("Clear history").performScrollTo().performClick()
         compose.onNodeWithText("Clear history?").assertExists()
-        compose.onNodeWithText("CLEAR").performClick()
+        compose.onNodeWithText("Clear").performClick()
         compose.onNodeWithText("Deleted 3 old suggestion(s).").assertExists()
         assertEquals(1, cleared)
     }
@@ -116,7 +121,7 @@ class SettingsScreensTest {
                     askAccess = { asked += 1 }, onBack = {})
             }
         }
-        compose.onNodeWithText("ALLOW").performScrollTo().performClick()
+        compose.onNodeWithText("Allow").performScrollTo().performClick()
         assertEquals(1, asked)
         access = true
         compose.onNodeWithText("Personal").assertExists()

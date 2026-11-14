@@ -23,13 +23,14 @@ private const val NEARBY_METERS = 50000.0
 private const val TIMEOUT_MILLIS = 10000
 private val MAPPER = ObjectMapper()
 
-// One way of getting somewhere: its id for Google's Routes API, the name shown in Datebook, and Google Maps' name
-data class TravelMode(val id: String, val label: String, val mapsName: String)
+// One way of getting somewhere: its id for Google's Routes API, its label with an emoji (for notifications), Google
+// Maps' name for it, and its plain name (shown next to a drawn icon in the app)
+data class TravelMode(val id: String, val label: String, val mapsName: String, val name: String)
 val TRAVEL_MODES = listOf(
-    TravelMode(TRAVEL_DRIVE, "🚗 Drive", "driving"),
-    TravelMode(TRAVEL_TRANSIT, "🚌 Transit", "transit"),
-    TravelMode(TRAVEL_WALK, "🚶 Walk", "walking"),
-    TravelMode(TRAVEL_BIKE, "🚲 Bike", "bicycling"),
+    TravelMode(TRAVEL_DRIVE, "🚗 Drive", "driving", "Drive"),
+    TravelMode(TRAVEL_TRANSIT, "🚌 Transit", "transit", "Transit"),
+    TravelMode(TRAVEL_WALK, "🚶 Walk", "walking", "Walk"),
+    TravelMode(TRAVEL_BIKE, "🚲 Bike", "bicycling", "Bike"),
 )
 
 // Return the travel mode with an id, or driving for anything unknown
