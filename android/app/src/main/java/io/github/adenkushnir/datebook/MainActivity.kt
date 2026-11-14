@@ -158,8 +158,8 @@ class MainActivity : ComponentActivity() {
     private fun DatebookApp() {
         val graph = remember { AppGraph.get(applicationContext) }
         val nav = rememberNavController()
-        val entry by nav.currentBackStackEntryAsState()
-        SideEffect { screenRoute = entry?.destination?.route }  // tell the scene behind which screen is open
+        val route = nav.currentBackStackEntryAsState().value?.destination?.route  // read here, so a move recomposes
+        SideEffect { screenRoute = route }  // tell the scene behind which screen is open
         val scope = rememberCoroutineScope()
         val waitingFlow = remember { graph.dao.watchSuggestions(Suggestion.STATUS_WAITING) }
         val addedFlow = remember { graph.dao.watchSuggestions(Suggestion.STATUS_ADDED) }

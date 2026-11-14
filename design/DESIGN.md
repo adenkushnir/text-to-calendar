@@ -66,7 +66,9 @@ Every screen shows the same light at the same moment.
 - **Before the first keyframe and after the last,** it's night.
 - **Late night:** from 11 PM (eased in over 30 minutes) to 5 AM (eased out over 30 minutes), the scene dims by up to
   30%, so a glance in bed isn't bright.
-- **Phone dark mode:** when the phone's dark mode is on, Datebook shows the night light all day.
+- **Always dark UI:** the app's cards, bars and text always use the dark look, whatever the phone's dark mode is set
+  to, so nothing glares over the photos. The scenes still follow the sun. (Decided after the first phone test; it
+  replaces the earlier rule that the phone's dark mode showed the night pictures all day.)
 
 ## Motion
 
@@ -96,6 +98,9 @@ All movement bends the photo's own pixels, or moves photo-real cutouts, so it lo
   animations" setting is on, and it's capped at 30 frames a second.
 
 ## Glass
+
+**To redo in step 2:** with the UI always dark, the glass becomes dark glass with light text all day. The tints
+below were designed for light glass by day and get re-decided then.
 
 - **Cards:** medium frost, glass at 66% opacity with an 18px blur behind it. The blur is live over the moving scene, so
   the build uses the Haze library.

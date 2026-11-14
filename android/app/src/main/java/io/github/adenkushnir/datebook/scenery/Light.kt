@@ -52,14 +52,8 @@ fun lateNight(minute: Double): Float {
     return 0f
 }
 
-// The light at a minute of the day (0 to 1440) for today's sun times; with the phone's dark mode on it's night all day
-fun lightAt(minute: Double, sun: SunTimes, darkMode: Boolean = false): SceneLight {
-    val late = lateNight(minute)
-
-    // Dark mode keeps the night look all day
-    if (darkMode) {
-        return SceneLight(Light.NIGHT, Light.NIGHT, 0f, 1f, late)
-    }
+// The light at a minute of the day (0 to 1440) for today's sun times
+fun lightAt(minute: Double, sun: SunTimes): SceneLight {
     val keys = keyframes(sun)
     var from = Light.NIGHT
     var to = Light.NIGHT
@@ -75,7 +69,7 @@ fun lightAt(minute: Double, sun: SunTimes, darkMode: Boolean = false): SceneLigh
         }
     }
     val dark = darkness(from) * (1 - mix) + darkness(to) * mix
-    return SceneLight(from, to, mix.toFloat(), dark.toFloat(), late)
+    return SceneLight(from, to, mix.toFloat(), dark.toFloat(), lateNight(minute))
 }
 
 // How dark a light is: night fully, blue hour partly, the daylight ones not at all

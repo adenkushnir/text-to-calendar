@@ -1,6 +1,5 @@
-// Datebook's teal, crisp and square theme in the Inter font, which turns dark when the phone is in dark mode
+// Datebook's teal, crisp and square theme in the Inter font, always in its dark colours
 package io.github.adenkushnir.datebook.ui.theme
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
@@ -45,9 +44,10 @@ private val CrispShapes = Shapes(
     extraLarge = RoundedCornerShape(8.dp),
 )
 
-// Wrap the app's screens in Datebook's colours and small-cornered shapes, light or dark to match the phone
+// Wrap the app's screens in Datebook's colours and small-cornered shapes; always dark, so nothing glares over the
+// photo scenes (light stays available for previews and tests)
 @Composable
-fun DatebookTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    val colors = if (dark) DarkColors else LightColors  // dark mode follows the phone
+fun DatebookTheme(dark: Boolean = true, content: @Composable () -> Unit) {
+    val colors = if (dark) DarkColors else LightColors  // dark unless a preview or test asks for light
     MaterialTheme(colorScheme = colors, shapes = CrispShapes, typography = DatebookTypography, content = content)
 }

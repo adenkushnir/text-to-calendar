@@ -51,14 +51,6 @@ class LightTest {
         assertEquals(1.0, eased(150.0, 0.0, 100.0), 0.001)
     }
 
-    // The phone's dark mode keeps the night pictures all day
-    @Test
-    fun darkModeIsNightAllDay() {
-        val light = lightAt(720.0, sun, darkMode = true)
-        assertEquals(Light.NIGHT, light.from)
-        assertEquals(1f, light.dark, 0.001f)
-    }
-
     // Late night eases in from 11 PM, is full from 11:30 PM to 4:30 AM, and is gone by 5 AM
     @Test
     fun lateNightDimming() {

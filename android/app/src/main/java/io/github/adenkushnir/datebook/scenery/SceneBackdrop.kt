@@ -2,7 +2,6 @@
 package io.github.adenkushnir.datebook.scenery
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -26,15 +25,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 private const val TICK_MILLIS = 10_000L
 private const val LATE_DIM = 0.3f
-// Until the glass arrives (step 2), a see-through wash keeps text outside the cards readable
-private val VEIL_LIGHT = Color.White.copy(alpha = 0.45f)
-private val VEIL_DARK = Color(0xFF101816).copy(alpha = 0.5f)
+// Until the glass arrives (step 2), a see-through dark wash keeps the light text outside the cards readable
+private val VEIL = Color(0xFF0A1420).copy(alpha = 0.35f)
 
-// The light right now, from the real sun where the phone is and the phone's dark mode; work it out once for the
-// whole app so every scene shares it
+// The light right now, from the real sun where the phone is; work it out once for the whole app so every scene
+// shares it
 @Composable
 fun rememberSceneLight(): SceneLight {
-    return lightAt(rememberMinute(), rememberSunTimes(), isSystemInDarkTheme())
+    return lightAt(rememberMinute(), rememberSunTimes())
 }
 
 // Show a scene in a light, filling the space it's given; alignment says which part shows when the screen's shape
@@ -42,7 +40,6 @@ fun rememberSceneLight(): SceneLight {
 @Composable
 fun SceneBackdrop(scene: Scene, light: SceneLight, modifier: Modifier = Modifier,
     alignment: Alignment = Alignment.Center) {
-    val darkMode = isSystemInDarkTheme()
     Box(modifier) {
         Image(painterResource(pictureFor(scene, light.from)), contentDescription = null, modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop, alignment = alignment)
@@ -54,7 +51,7 @@ fun SceneBackdrop(scene: Scene, light: SceneLight, modifier: Modifier = Modifier
                 alignment = alignment)
         }
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = light.late * LATE_DIM)))
-        Box(Modifier.fillMaxSize().background(if (darkMode) VEIL_DARK else VEIL_LIGHT))
+        Box(Modifier.fillMaxSize().background(VEIL))
     }
 }
 
