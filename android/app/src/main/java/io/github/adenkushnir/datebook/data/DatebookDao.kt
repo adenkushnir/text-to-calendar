@@ -118,13 +118,34 @@ interface DatebookDao {
     @Query("SELECT * FROM followups WHERE kind = :kind AND status = 'open' ORDER BY date, createdAt")
     suspend fun openFollowUps(kind: String): List<FollowUp>
 
-    // Watch the open follow-ups of a kind, soonest day first, for Home
-    @Query("SELECT * FROM followups WHERE kind = :kind AND status = 'open' ORDER BY date, createdAt")
+    // Watch the open follow-ups of a kind, soonest day first, for Home and the lists
+    @Query("SELECT * FROM followups WHERE kind = :kind AND status = 'open' ORDER BY date, time, createdAt")
     fun watchOpenFollowUps(kind: String): Flow<List<FollowUp>>
 
     // Return the open follow-ups whose next nudge or reminder is due
     @Query("SELECT * FROM followups WHERE status = 'open' AND nextNudge > 0 AND nextNudge <= :now")
     suspend fun followUpsDue(now: Long): List<FollowUp>
+
+    // Watch the plans that are deliveries (a carrier or tracking number) and not ignored, soonest first
+    @Query("SELECT * FROM suggestions WHERE (packageCarrier != '' OR trackingNumber != '') AND status != 'ignored' " +
+        "ORDER BY start")
+    fun watchPackages(): Flow<List<Suggestion>>
+
+    // Watch the plans that belong to a trip and aren't ignored, soonest first
+    @Query("SELECT * FROM suggestions WHERE trip != '' AND status != 'ignored' ORDER BY start")
+    fun watchTripPlans(): Flow<List<Suggestion>>
+
+    // When the next open follow-up is due (null when none is booked)
+    @Query("SELECT MIN(nextNudge) FROM followups WHERE status = 'open' AND nextNudge > 0")
+    suspend fun soonestNudge(): Long?
+
+    // Watch the notes, newest first
+    @Query("SELECT * FROM followups WHERE kind = 'note' AND status = 'open' ORDER BY createdAt DESC")
+    fun watchNotes(): Flow<List<FollowUp>>
+
+    // Watch the open reminders, the next to go off first
+    @Query("SELECT * FROM followups WHERE kind = 'reminder' AND status = 'open' ORDER BY nextNudge")
+    fun watchReminders(): Flow<List<FollowUp>>
 
     // Mark a follow-up done, dropped or open again
     @Query("UPDATE followups SET status = :status WHERE id = :id")

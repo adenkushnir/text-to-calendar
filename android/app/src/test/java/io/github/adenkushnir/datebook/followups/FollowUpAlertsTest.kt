@@ -4,8 +4,10 @@ package io.github.adenkushnir.datebook.followups
 import io.github.adenkushnir.datebook.calendar.CalendarEvent
 import io.github.adenkushnir.datebook.calendar.HomeEvent
 import io.github.adenkushnir.datebook.data.FollowUp
+import io.github.adenkushnir.datebook.data.KIND_ASSIGNMENT
 import io.github.adenkushnir.datebook.data.KIND_DUE
 import io.github.adenkushnir.datebook.data.KIND_LOOSE
+import io.github.adenkushnir.datebook.data.KIND_REMINDER
 import io.github.adenkushnir.datebook.data.Suggestion
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -35,6 +37,28 @@ class FollowUpAlertsTest {
         assertEquals(millis(LocalDateTime.of(2037, 11, 20, 9, 0)), nextAfterReminder(bill, twoDaysBefore, newYork))
         assertEquals(0L, nextAfterReminder(bill, millis(LocalDateTime.of(2037, 11, 20, 9, 0)), newYork))
         assertEquals(0L, nextAfterReminder(bill.copy(kind = KIND_LOOSE), twoDaysBefore, newYork))
+    }
+
+    // An assignment reminded the evening before gets one more that morning; its due time reads in words
+    @Test
+    fun assignmentReminders() {
+        val essay = bill.copy(kind = KIND_ASSIGNMENT, title = "History essay", date = "2037-11-17", amount = "",
+            time = "23:59")
+        val evening = millis(LocalDateTime.of(2037, 11, 16, 18, 0))
+        assertEquals(millis(LocalDateTime.of(2037, 11, 17, 9, 0)), nextAfterReminder(essay, evening, newYork))
+        assertEquals("Due tomorrow 11:59 PM", assignmentDue(essay, LocalDate.of(2037, 11, 16)))
+        assertEquals("Due today 11:59 PM", assignmentDue(essay, LocalDate.of(2037, 11, 17)))
+        assertEquals("Due Tue Nov 17", assignmentDue(essay.copy(time = ""), LocalDate.of(2037, 11, 10)))
+    }
+
+    // A repeating reminder comes back at its next time; a one-off one doesn't
+    @Test
+    fun reminderRepeats() {
+        val went = millis(LocalDateTime.of(2037, 11, 16, 8, 0))  // a Monday
+        val trash = bill.copy(kind = KIND_REMINDER, title = "Take out the trash", nextNudge = went,
+            repeat = "FREQ=WEEKLY;BYDAY=MO")
+        assertEquals(millis(LocalDateTime.of(2037, 11, 23, 8, 0)), nextAfterReminder(trash, went, newYork))
+        assertEquals(0L, nextAfterReminder(trash.copy(repeat = ""), went, newYork))
     }
 
     // "Still on?" comes from 6 PM the day before a waiting new plan, not earlier, not for changes or added plans

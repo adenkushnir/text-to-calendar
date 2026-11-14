@@ -1,5 +1,6 @@
-// Datebook's main screen: setup until it's finished, then Home (from your calendar), a suggestion's or calendar event's
-// card and Settings; opens the suggestion a tapped prompt names, and shows banners for settings that are off
+// Datebook's main screen: setup until it's finished, then the tabs (Home from your calendar, Lists, Notes and Ask),
+// a suggestion's or calendar event's card and Settings; opens the suggestion a tapped prompt names, and shows banners
+// for settings that are off
 package io.github.adenkushnir.datebook
 import android.Manifest
 import android.content.ActivityNotFoundException
@@ -19,6 +20,10 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -31,6 +36,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.rememberCoroutineScope
@@ -70,6 +76,7 @@ import io.github.adenkushnir.datebook.email.gmailRequest
 import io.github.adenkushnir.datebook.email.scheduleGmailChecks
 import io.github.adenkushnir.datebook.email.stopGmailChecks
 import io.github.adenkushnir.datebook.data.FollowUp
+import io.github.adenkushnir.datebook.data.KIND_ASSIGNMENT
 import io.github.adenkushnir.datebook.data.KIND_DUE
 import io.github.adenkushnir.datebook.data.KIND_LOOSE
 import io.github.adenkushnir.datebook.data.Suggestion
@@ -77,6 +84,7 @@ import io.github.adenkushnir.datebook.flights.scheduleFlightChecks
 import io.github.adenkushnir.datebook.followups.ROUTE_WEEK
 import io.github.adenkushnir.datebook.followups.WeekAheadScreen
 import io.github.adenkushnir.datebook.followups.WeekAheadSettings
+import io.github.adenkushnir.datebook.followups.bookNextFollowUp
 import io.github.adenkushnir.datebook.followups.weekDays
 import io.github.adenkushnir.datebook.followups.scheduleFollowUps
 import io.github.adenkushnir.datebook.flights.statusLine
@@ -127,7 +135,19 @@ import io.github.adenkushnir.datebook.trains.refreshStations
 import io.github.adenkushnir.datebook.trains.scheduleTrains
 import io.github.adenkushnir.datebook.trains.trainChoices
 import io.github.adenkushnir.datebook.trains.wantsTrain
+import io.github.adenkushnir.datebook.data.noteTitle
+import io.github.adenkushnir.datebook.lists.AskComingSoon
+import io.github.adenkushnir.datebook.notes.NotesActions
+import io.github.adenkushnir.datebook.notes.NotesScreen
+import io.github.adenkushnir.datebook.lists.LIST_PACKAGES
+import io.github.adenkushnir.datebook.lists.ListsActions
+import io.github.adenkushnir.datebook.lists.ListsContent
+import io.github.adenkushnir.datebook.lists.ListsScreen
+import io.github.adenkushnir.datebook.lists.PackageStore
+import io.github.adenkushnir.datebook.lists.tripsOf
 import io.github.adenkushnir.datebook.ui.DatebookIcons
+import io.github.adenkushnir.datebook.ui.TabBar
+import io.github.adenkushnir.datebook.ui.TabItem
 import io.github.adenkushnir.datebook.ui.Glass
 import io.github.adenkushnir.datebook.ui.LocalGlass
 import io.github.adenkushnir.datebook.ui.TILE_AQUA
@@ -147,6 +167,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 const val ROUTE_SETUP = "setup"
 const val ROUTE_HOME = "home"
+const val ROUTE_LISTS = "lists"
+const val ROUTE_NOTES = "notes"
+const val ROUTE_ASK = "ask"
 const val ROUTE_SUGGESTION = "suggestion/{id}"
 const val ROUTE_EVENT = "event/{eventId}/{begin}"
 const val ROUTE_SETTINGS = "settings"
@@ -163,6 +186,9 @@ const val ROUTE_SETTINGS_ABOUT = "settings/about"
 const val ROUTE_SETTINGS_AUTOMATIC = "settings/automatic"
 const val ROUTE_SETTINGS_LOOK = "settings/look"
 private const val TICK_MILLIS = 30_000L  // how often Home moves "now" on
+private val MAIN_TABS = listOf(TabItem(ROUTE_HOME, DatebookIcons.Home, "Home"),
+    TabItem(ROUTE_LISTS, DatebookIcons.List, "Lists"), TabItem(ROUTE_NOTES, DatebookIcons.Note, "Notes"),
+    TabItem(ROUTE_ASK, DatebookIcons.Sparkle, "Ask"))
 private const val RELOAD_MILLIS = 5 * 60_000L  // how often Home re-reads the calendar even without a change
 
 // The activity Android starts when you tap the Datebook icon or a prompt
@@ -228,6 +254,22 @@ class MainActivity : ComponentActivity() {
         val looseFlow = remember { graph.dao.watchOpenFollowUps(KIND_LOOSE) }
         val bills by billsFlow.collectAsState(initial = emptyList())
         val loosePlans by looseFlow.collectAsState(initial = emptyList())
+        val assignmentsFlow = remember { graph.dao.watchOpenFollowUps(KIND_ASSIGNMENT) }
+        val packagesFlow = remember { graph.dao.watchPackages() }
+        val tripPlansFlow = remember { graph.dao.watchTripPlans() }
+        val assignments by assignmentsFlow.collectAsState(initial = emptyList())
+        val packages by packagesFlow.collectAsState(initial = emptyList())
+        val tripPlans by tripPlansFlow.collectAsState(initial = emptyList())
+        val packageStore = remember { PackageStore(applicationContext) }
+        var received by remember { mutableStateOf(packageStore.received()) }
+        var listShown by rememberSaveable { mutableStateOf(LIST_PACKAGES) }
+        val openTab: (String) -> Unit = { route ->
+            nav.navigate(route) {
+                popUpTo(ROUTE_HOME) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
         val checkingFlow = remember { graph.dao.watchRetryIds() }
         val checking by checkingFlow.collectAsState(initial = emptyList())
         var status by remember { mutableStateOf(readSetupStatus(applicationContext, graph)) }
@@ -249,6 +291,7 @@ class MainActivity : ComponentActivity() {
             scheduleFlightChecks(applicationContext)  // start the flight checks if they aren't running
             scheduleTrains(applicationContext)  // start the NJ Transit train checks if they aren't running
             scheduleFollowUps(applicationContext)  // start the follow-up nudges and reminders if they aren't running
+            bookNextFollowUp(applicationContext)  // and book the next one due, on time
             graph.offlineDates.prepare()  // download the offline date model the first time there's internet
 
             // Keep checking Gmail while you're signed in
@@ -327,33 +370,71 @@ class MainActivity : ComponentActivity() {
                         delay(60_000)
                     }
                 }
-                HomeScreen(
-                    waiting = waiting,
-                    agenda = agendaOf(events, now, ZoneId.systemDefault()),
-                    nowMillis = now,
-                    onOpenEvent = { event -> openEvent(nav::navigate, event) },
-                    onOpen = { nav.navigate("suggestion/$it") },
-                    onAdd = add,
-                    onIgnore = ignore,
-                    onSettings = { nav.navigate(ROUTE_SETTINGS) },
-                    fixes = fixesFor(status, actions, openKeySetup = { nav.navigate(ROUTE_SETUP) }),
-                    trains = trains,
-                    checking = checking.toSet(),
-                    bills = bills,
-                    loosePlans = loosePlans,
-                    onPaid = { id -> scope.launch { graph.dao.setFollowUpStatus(id, FollowUp.DONE) } },
-                    onDropLoose = { id -> scope.launch { graph.dao.setFollowUpStatus(id, FollowUp.DROPPED) } },
-                    onOpenChat = { loose -> openApp(loose.app) },
-                    onFlipTrains = {
-                        val saved = trip
+                Tabbed(ROUTE_HOME, openTab) {
+                    HomeScreen(
+                        waiting = waiting,
+                        agenda = agendaOf(events, now, ZoneId.systemDefault()),
+                        nowMillis = now,
+                        onOpenEvent = { event -> openEvent(nav::navigate, event) },
+                        onOpen = { nav.navigate("suggestion/$it") },
+                        onAdd = add,
+                        onIgnore = ignore,
+                        onSettings = { nav.navigate(ROUTE_SETTINGS) },
+                        fixes = fixesFor(status, actions, openKeySetup = { nav.navigate(ROUTE_SETUP) }),
+                        trains = trains,
+                        checking = checking.toSet(),
+                        loosePlans = loosePlans,
+                        onDropLoose = { id -> scope.launch { graph.dao.setFollowUpStatus(id, FollowUp.DROPPED) } },
+                        onOpenChat = { loose -> openApp(loose.app) },
+                        onFlipTrains = {
+                            val saved = trip
 
-                        // Flip the saved trip's direction
-                        if (saved != null) {
-                            graph.trainSettings.setTrip(saved.second, saved.first)
-                            trip = Pair(saved.second, saved.first)
+                            // Flip the saved trip's direction
+                            if (saved != null) {
+                                graph.trainSettings.setTrip(saved.second, saved.first)
+                                trip = Pair(saved.second, saved.first)
+                            }
+                        },
+                    )
+                }
+            }
+            composable(ROUTE_LISTS) {
+                val today = LocalDate.now()
+                val content = ListsContent(packages.filter { it.id !in received }, assignments,
+                    tripsOf(tripPlans, today), bills, today)
+                val listActions = ListsActions(
+                    onTrack = { url -> openLink(url) },
+                    onGotIt = { id -> packageStore.markReceived(id); received = packageStore.received() },
+                    onDone = { id -> scope.launch { graph.dao.setFollowUpStatus(id, FollowUp.DONE) } },
+                    onPaid = { id -> scope.launch { graph.dao.setFollowUpStatus(id, FollowUp.DONE) } },
+                    onOpenPlan = { id -> nav.navigate("suggestion/$id") },
+                )
+                Tabbed(ROUTE_LISTS, openTab) {
+                    ListsScreen(listShown, { listShown = it }, content, listActions)
+                }
+            }
+            composable(ROUTE_NOTES) {
+                val remindersFlow = remember { graph.dao.watchReminders() }
+                val notesFlow = remember { graph.dao.watchNotes() }
+                val reminders by remindersFlow.collectAsState(initial = emptyList())
+                val notes by notesFlow.collectAsState(initial = emptyList())
+                val notesActions = NotesActions(
+                    onSave = { text -> graph.pipeline.typed(text) },
+                    onDelete = { id -> scope.launch { graph.dao.setFollowUpStatus(id, FollowUp.DROPPED) } },
+                    onEditNote = { note, text ->
+                        scope.launch {
+                            graph.dao.updateFollowUp(note.copy(title = noteTitle(text), body = text.trim()))
                         }
                     },
                 )
+                Tabbed(ROUTE_NOTES, openTab) {
+                    NotesScreen(reminders, notes, ZoneId.systemDefault(), notesActions)
+                }
+            }
+            composable(ROUTE_ASK) {
+                Tabbed(ROUTE_ASK, openTab) {
+                    AskComingSoon()
+                }
             }
             composable(ROUTE_SUGGESTION, arguments = listOf(navArgument("id") { type = NavType.LongType })) { entry ->
                 val id = entry.arguments?.getLong("id") ?: -1
@@ -537,6 +618,18 @@ class MainActivity : ComponentActivity() {
                     onBack = { nav.popBackStack() },
                 )
             }
+        }
+    }
+
+    // One of the tabbed screens: the screen above, the glass tab bar along the bottom (which takes the space of
+    // Android's navigation bar, so the screen doesn't leave room for it twice)
+    @Composable
+    private fun Tabbed(route: String, openTab: (String) -> Unit, screen: @Composable () -> Unit) {
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f).consumeWindowInsets(WindowInsets.navigationBars)) {
+                screen()
+            }
+            TabBar(MAIN_TABS, route, openTab)
         }
     }
 

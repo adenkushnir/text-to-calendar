@@ -7,8 +7,8 @@ const val KIND_EVENT = "event"
 // number in the list Claude was shown, and calendarEventId is that event's id on the phone; flight is a flight number
 // like UA1234, packageCarrier and trackingNumber describe a delivery, confirmation is a booking or order code,
 // placeLat and placeLng are the place's coordinates from the address lookup (null when unknown), and kind says
-// whether it's a plan ("event"), a loose plan without a set date ("loose") or something due ("due", with its
-// amount)
+// whether it's a plan ("event"), a loose plan without a set date ("loose"), something due ("due", with its
+// amount) or an assignment ("assignment"), and trip names the trip a travel booking belongs to
 data class Event(
     val title: String,
     val start: String,
@@ -27,6 +27,7 @@ data class Event(
     val confirmation: String = "",
     val kind: String = KIND_EVENT,
     val amount: String = "",
+    val trip: String = "",
     val placeLat: Double? = null,
     val placeLng: Double? = null,
 )

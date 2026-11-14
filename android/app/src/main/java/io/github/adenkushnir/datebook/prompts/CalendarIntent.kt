@@ -11,6 +11,7 @@ import io.github.adenkushnir.datebook.pipeline.CHANGE_CANCELLED
 import io.github.adenkushnir.datebook.pipeline.CHANGE_MOVED
 import io.github.adenkushnir.datebook.pipeline.SHARED_IMAGE_APP
 import io.github.adenkushnir.datebook.pipeline.SHARED_PDF_APP
+import io.github.adenkushnir.datebook.pipeline.TYPED_APP
 import io.github.adenkushnir.datebook.pipeline.SHARED_TEXT_APP
 import io.github.adenkushnir.datebook.pipeline.eventTimes
 import io.github.adenkushnir.datebook.pipeline.eventZone
@@ -38,6 +39,7 @@ fun calendarNotes(suggestion: Suggestion): String {
         SHARED_TEXT_APP -> return "Shared to Datebook"
         SHARED_IMAGE_APP -> return "Image shared to Datebook"
         SHARED_PDF_APP -> return "PDF shared to Datebook"
+        TYPED_APP -> return "Typed into Datebook"
     }
     val app = WATCHABLE_APPS.firstOrNull { it.packageName == suggestion.app }?.shortName  // the app's name, if known
     val group = if (suggestion.conversation.isNotBlank()) " · ${suggestion.conversation}" else ""  // group chats only

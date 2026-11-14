@@ -11,8 +11,10 @@ import com.anthropic.models.beta.messages.BetaOutputConfig
 import com.anthropic.models.beta.messages.BetaStopReason
 import com.anthropic.models.beta.messages.MessageCreateParams
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.github.adenkushnir.datebook.data.KIND_ASSIGNMENT
 import io.github.adenkushnir.datebook.data.KIND_DUE
 import io.github.adenkushnir.datebook.data.KIND_LOOSE
+import io.github.adenkushnir.datebook.data.KIND_REMINDER
 import io.github.adenkushnir.datebook.calendar.CalendarEvent
 import java.time.Duration
 import java.time.Instant
@@ -26,6 +28,7 @@ private const val FALLBACK_BETA = "server-side-fallback-2026-07-01"
 const val SHARED_TEXT_APP = "datebook.shared.text"
 const val SHARED_IMAGE_APP = "datebook.shared.image"
 const val SHARED_PDF_APP = "datebook.shared.pdf"
+const val TYPED_APP = "datebook.typed"
 private val RECEIVED_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.US)
 private val WEEKDAY_FORMAT = DateTimeFormatter.ofPattern("EEEE", Locale.US)
 private val DAY_FORMAT = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US)
@@ -55,11 +58,14 @@ private val EVENT_ITEM = mapOf(
         "package_carrier" to mapOf("type" to "string", "enum" to listOf("", "ups", "fedex", "usps", "amazon", "dhl")),
         "tracking_number" to mapOf("type" to "string"),
         "confirmation_code" to mapOf("type" to "string"),
-        "kind" to mapOf("type" to "string", "enum" to listOf(KIND_EVENT, KIND_LOOSE, KIND_DUE)),
+        "kind" to mapOf("type" to "string", "enum" to listOf(KIND_EVENT, KIND_LOOSE, KIND_DUE, KIND_ASSIGNMENT,
+            KIND_REMINDER)),
         "amount" to mapOf("type" to "string"),
+        "trip" to mapOf("type" to "string"),
     ),
     "required" to listOf("title", "start", "end", "all_day", "location", "repeat", "timezone", "change",
-        "calendar_event", "flight", "package_carrier", "tracking_number", "confirmation_code", "kind", "amount"),
+        "calendar_event", "flight", "package_carrier", "tracking_number", "confirmation_code", "kind", "amount",
+        "trip"),
     "additionalProperties" to false,
 )
 val EVENTS_SCHEMA = mapOf(
@@ -90,7 +96,7 @@ data class IncomingText(
 
 // Return true if something came from long-press or Share rather than a notification
 fun isShared(app: String): Boolean {
-    return app == SHARED_TEXT_APP || app == SHARED_IMAGE_APP || app == SHARED_PDF_APP
+    return app == SHARED_TEXT_APP || app == SHARED_IMAGE_APP || app == SHARED_PDF_APP || app == TYPED_APP
 }
 
 // Read Claude's instructions, shared word for word with the Python version, from the app's resources
@@ -233,9 +239,10 @@ fun parseResponse(stopped: Boolean, json: String, phoneZone: String): List<Event
             confirmation = item.path("confirmation_code").asText("").trim(),
             kind = item.path("kind").asText(KIND_EVENT).ifBlank { KIND_EVENT },
             amount = item.path("amount").asText("").trim(),
+            trip = item.path("trip").asText("").trim(),
         )
 
-        // A plan or bill without a start has nothing to go on; a loose plan may have no day yet
-        if (event.start.isBlank() && event.kind != KIND_LOOSE) null else event
+        // A plan or bill without a start has nothing to go on; a loose plan or reminder may have no day yet
+        if (event.start.isBlank() && event.kind != KIND_LOOSE && event.kind != KIND_REMINDER) null else event
     }
 }
