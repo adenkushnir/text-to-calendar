@@ -63,7 +63,7 @@ class HomeScreenTest {
         compose.onNodeWithText("Dinner at Joe's").assertExists()
         compose.onNodeWithText("Movie").assertExists()
         compose.onNodeWithText("WAITING FOR YOU (1)").assertExists()
-        compose.onNodeWithText("⚠ You already have Practice 11:00 AM–1:00 PM").assertExists()
+        compose.onNodeWithText("You already have Practice 11:00 AM–1:00 PM").assertExists()
         compose.onAllNodesWithText("ADD")[0].performClick()
         assertEquals(listOf(3L), added)
     }

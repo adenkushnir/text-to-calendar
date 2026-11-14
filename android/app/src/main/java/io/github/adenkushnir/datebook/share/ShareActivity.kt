@@ -15,6 +15,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -24,6 +25,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewModelScope
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import io.github.adenkushnir.datebook.AppGraph
 import io.github.adenkushnir.datebook.MainActivity
 import io.github.adenkushnir.datebook.pipeline.IncomingText
@@ -35,6 +38,9 @@ import io.github.adenkushnir.datebook.prompts.ignoreSuggestion
 import io.github.adenkushnir.datebook.scenery.Scene
 import io.github.adenkushnir.datebook.scenery.SceneBackdrop
 import io.github.adenkushnir.datebook.scenery.rememberSceneLight
+import io.github.adenkushnir.datebook.ui.Glass
+import io.github.adenkushnir.datebook.ui.LocalGlass
+import io.github.adenkushnir.datebook.ui.glassTint
 import io.github.adenkushnir.datebook.ui.theme.DatebookTheme
 import java.time.LocalDateTime
 import kotlinx.coroutines.Dispatchers
@@ -99,14 +105,18 @@ class ShareActivity : ComponentActivity() {
             DatebookTheme {
                 val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
                 val light = rememberSceneLight()
-                ModalBottomSheet(onDismissRequest = { finish() }, sheetState = sheet, containerColor = Color.Transparent,
-                    dragHandle = null) {
+                val haze = rememberHazeState()
+                ModalBottomSheet(onDismissRequest = { finish() }, sheetState = sheet,
+                    containerColor = Color.Transparent, dragHandle = null) {
                     // The beach scene fills the sheet behind its handle and contents, showing the picture's bottom
                     Box {
-                        SceneBackdrop(Scene.BEACH, light, Modifier.matchParentSize(), alignment = Alignment.BottomCenter)
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            BottomSheetDefaults.DragHandle()
-                            SheetContents(item)
+                        SceneBackdrop(Scene.BEACH, light, Modifier.matchParentSize().hazeSource(haze),
+                            alignment = Alignment.BottomCenter)
+                        CompositionLocalProvider(LocalGlass provides Glass(haze, glassTint(light))) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                BottomSheetDefaults.DragHandle()
+                                SheetContents(item)
+                            }
                         }
                     }
                 }

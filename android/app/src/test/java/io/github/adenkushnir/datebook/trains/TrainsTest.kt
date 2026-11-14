@@ -2,6 +2,7 @@
 // and their locations, and what's remembered
 package io.github.adenkushnir.datebook.trains
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -142,7 +143,7 @@ class TrainsTest {
             }
         }
         compose.onNodeWithText("5:12 PM · Track 2 · On time").assertExists()
-        compose.onNodeWithText("⇄").performClick()
+        compose.onNodeWithContentDescription("Flip the trip").performClick()
         assertEquals(1, flipped)
     }
 

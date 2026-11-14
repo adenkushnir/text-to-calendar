@@ -1,6 +1,7 @@
 // Tests for the share sheet: the spinner, the plans with Add and ✕, and the notes with their buttons
 package io.github.adenkushnir.datebook.share
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import io.github.adenkushnir.datebook.data.Suggestion
@@ -68,7 +69,7 @@ class ShareSheetTest {
     fun addOne() {
         show(ShareResult(listOf(game)))
         compose.onNodeWithText("ADD").performClick()
-        compose.onNodeWithText("✕").performClick()
+        compose.onNodeWithContentDescription("Ignore").performClick()
         assertEquals(listOf("add 3", "ignore 3"), pressed)
     }
 

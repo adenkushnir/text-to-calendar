@@ -1,4 +1,4 @@
-// The bottom sheet shown over the app you long-pressed or shared from: the plans Claude found, each with Add and ✕
+// The bottom sheet shown over the app you long-pressed or shared from: the plans Claude found, each with Add and Ignore
 package io.github.adenkushnir.datebook.share
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -10,11 +10,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,6 +28,9 @@ import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.pipeline.ShareResult
 import io.github.adenkushnir.datebook.prompts.isChange
 import io.github.adenkushnir.datebook.prompts.promptTitle
+import io.github.adenkushnir.datebook.ui.DatebookIcons
+import io.github.adenkushnir.datebook.ui.GlassIconButton
+import io.github.adenkushnir.datebook.ui.addButtonColors
 import io.github.adenkushnir.datebook.whenAndWhere
 
 // Show the sheet's contents: a spinner while Claude reads it, then the plans found or why there are none; added and
@@ -75,7 +78,7 @@ fun ShareSheet(
                 }
             }
         } else {
-            // Show each plan with Add and ✕, or what you already did with it
+            // Show each plan with Add and Ignore, or what you already did with it
             for (suggestion in result.suggestions) {
                 PlanRow(suggestion, suggestion.id in added, suggestion.id in ignored, onAdd, onIgnore)
             }
@@ -106,12 +109,12 @@ private fun PlanRow(suggestion: Suggestion, isAdded: Boolean, isIgnored: Boolean
         } else if (isIgnored) {
             Muted("Ignored")
         } else {
-            Button(onClick = { onAdd(suggestion.id) }) {
-                Text(if (isChange(suggestion)) "OPEN" else "ADD")  // changes open the event instead
+            val change = isChange(suggestion)  // changes open the event instead
+            Button(onClick = { onAdd(suggestion.id) },
+                colors = if (change) ButtonDefaults.buttonColors() else addButtonColors()) {
+                Text(if (change) "OPEN" else "ADD")
             }
-            TextButton(onClick = { onIgnore(suggestion.id) }) {
-                Text("✕")
-            }
+            GlassIconButton(DatebookIcons.Close, "Ignore", onClick = { onIgnore(suggestion.id) })
         }
     }
 }

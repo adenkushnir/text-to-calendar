@@ -11,8 +11,9 @@ import kotlin.math.tan
 // When the sun rises and sets, in minutes after local midnight (6:43 AM is 403.0)
 data class SunTimes(val rise: Double, val set: Double)
 
-// Work out sunrise and sunset for a date at a latitude and longitude, in a time zone (summer time included); in polar
-// night the sun never rises, so both come out at noon, and in polar day sunrise is midnight and sunset the next midnight
+// Work out sunrise and sunset for a date at a latitude and longitude, in a time zone (summer time included); in
+// polar night the sun never rises, so both come out at noon, and in polar day sunrise is midnight and sunset the next
+// midnight
 fun sunTimes(date: LocalDate, latitude: Double, longitude: Double, zone: ZoneId): SunTimes {
     val angle = 2 * PI / 365 * (date.dayOfYear - 1)
     val equation = 229.18 * (0.000075 + 0.001868 * cos(angle) - 0.032077 * sin(angle) - 0.014615 * cos(2 * angle) -

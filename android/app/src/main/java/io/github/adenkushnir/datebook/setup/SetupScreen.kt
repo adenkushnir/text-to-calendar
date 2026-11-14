@@ -29,14 +29,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.adenkushnir.datebook.Muted
 import io.github.adenkushnir.datebook.SectionLabel
+import io.github.adenkushnir.datebook.ui.DatebookIcons
+import io.github.adenkushnir.datebook.ui.GlassTile
+import io.github.adenkushnir.datebook.ui.TILE_AQUA
+import io.github.adenkushnir.datebook.ui.TILE_BLUE
+import io.github.adenkushnir.datebook.ui.TILE_LEAF
+import io.github.adenkushnir.datebook.ui.TILE_WARN
 import kotlinx.coroutines.launch
 
 // What each setup page can do; MainActivity supplies these because they open Android settings and permission pop-ups
@@ -49,30 +56,32 @@ class SetupActions(
     val saveMapsKey: (String) -> Unit,
 )
 
-// One setup page: its picture, title, explanation, whether it must be done, and how to tell it is done
+// One setup page: its icon and the icon's colour, title, explanation, whether it must be done, and how to tell it is
+// done
 private class SetupPage(
-    val art: String,
+    val icon: ImageVector,
+    val tint: Color,
     val title: String,
     val text: String,
     val required: Boolean,
     val done: (SetupStatus) -> Boolean,
 )
 private val PAGES = listOf(
-    SetupPage("🔔", "Let Datebook read your notifications",
+    SetupPage(DatebookIcons.Bell, TILE_BLUE, "Let Datebook read your notifications",
         "So it can spot plans in texts as they arrive. Texts without a date never leave your phone.", true) {
         it.access
     },
-    SetupPage("✓", "Allow Datebook to show notifications",
+    SetupPage(DatebookIcons.Check, TILE_LEAF, "Allow Datebook to show notifications",
         "That's how \"Add to calendar?\" suggestions reach you.", true) { it.notifications },
-    SetupPage("AI", "Paste your Claude API key",
+    SetupPage(DatebookIcons.Key, TILE_AQUA, "Paste your Claude API key",
         "Create one at console.anthropic.com. It's stored encrypted on this phone and never shared.", true) { it.key },
-    SetupPage("⚡", "Keep Datebook running",
+    SetupPage(DatebookIcons.Bolt, TILE_WARN, "Keep Datebook running",
         "Set battery to Unrestricted so Samsung doesn't put Datebook to sleep. It uses almost no battery: Android " +
             "tells it about new texts.", false) { it.battery },
-    SetupPage("13", "Let Datebook see your calendar",
+    SetupPage(DatebookIcons.Calendar, TILE_BLUE, "Let Datebook see your calendar",
         "For clash warnings, changed plans and your morning summary (coming in a later update). Datebook never adds " +
             "or changes events itself.", false) { it.calendar },
-    SetupPage("📍", "Add a Google Maps key",
+    SetupPage(DatebookIcons.Pin, TILE_LEAF, "Add a Google Maps key",
         "For full addresses, travel times and \"leave by\" alerts (coming in a later update). You can skip this and " +
             "add it later in Settings.", false) { it.mapsKey },
 )
@@ -95,7 +104,7 @@ fun SetupScreen(status: SetupStatus, actions: SetupActions, onSample: () -> Unit
         val done = page.done(status)
         Progress(index)
         SectionLabel("Step ${index + 1} of ${PAGES.size}${if (page.required) "" else " · optional"}")
-        Art(page.art)
+        Art(page.icon, page.tint)
         Text(page.title, fontWeight = FontWeight.Bold, fontSize = 22.sp)
         Muted(page.text)
         PageAction(index, status, actions)
@@ -185,20 +194,16 @@ private fun Progress(index: Int) {
     }
 }
 
-// The square picture at the top of each page
+// The large glass tile icon at the top of each page
 @Composable
-private fun Art(text: String) {
-    Box(Modifier.size(72.dp).background(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.shapes.small),
-        contentAlignment = Alignment.Center) {
-        val color = MaterialTheme.colorScheme.onPrimaryContainer
-        Text(text, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = color)
-    }
+private fun Art(icon: ImageVector, tint: Color) {
+    GlassTile(icon, description = null, size = 76.dp, tint = tint)
 }
 
 // The last page: everything needed is done, with an optional sample prompt
 @Composable
 private fun FinishPage(onSample: () -> Unit, onFinish: () -> Unit, onBack: () -> Unit) {
-    Art("✓")
+    Art(DatebookIcons.Check, TILE_LEAF)
     Text("You're set", fontWeight = FontWeight.Bold, fontSize = 22.sp)
     Muted("Datebook now watches your texts for plans. When one has a date, you'll get an \"Add to calendar?\" " +
         "prompt. Want to see what one looks like?")

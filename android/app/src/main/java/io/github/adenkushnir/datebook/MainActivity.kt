@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -41,6 +42,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.work.ExistingWorkPolicy
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import io.github.adenkushnir.datebook.calendar.phoneCalendars
 import io.github.adenkushnir.datebook.capture.WATCHABLE_APPS
 import io.github.adenkushnir.datebook.data.Suggestion
@@ -89,6 +92,14 @@ import io.github.adenkushnir.datebook.trains.refreshStations
 import io.github.adenkushnir.datebook.trains.scheduleTrains
 import io.github.adenkushnir.datebook.trains.trainChoices
 import io.github.adenkushnir.datebook.trains.wantsTrain
+import io.github.adenkushnir.datebook.ui.DatebookIcons
+import io.github.adenkushnir.datebook.ui.Glass
+import io.github.adenkushnir.datebook.ui.LocalGlass
+import io.github.adenkushnir.datebook.ui.TILE_AQUA
+import io.github.adenkushnir.datebook.ui.TILE_BLUE
+import io.github.adenkushnir.datebook.ui.TILE_LEAF
+import io.github.adenkushnir.datebook.ui.TILE_WARN
+import io.github.adenkushnir.datebook.ui.glassTint
 import io.github.adenkushnir.datebook.ui.theme.DatebookTheme
 import java.time.Instant
 import java.time.LocalDate
@@ -127,14 +138,18 @@ class MainActivity : ComponentActivity() {
         setContent {
             DatebookTheme {
                 val light = rememberSceneLight()
+                val haze = rememberHazeState()
                 Box(Modifier.fillMaxSize()) {
-                    // The scene behind the open screen, fading to the next scene when you move between screens
+                    // The scene behind the open screen (what the glass frosts), fading to the next scene when you move
+                    // between screens
                     Crossfade(sceneForRoute(screenRoute), label = "scene") { scene ->
-                        SceneBackdrop(scene, light, Modifier.fillMaxSize())
+                        SceneBackdrop(scene, light, Modifier.fillMaxSize().hazeSource(haze))
                     }
-                    // The screens over the scene, in the theme's text colour so they're readable in light and dark
-                    Surface(color = Color.Transparent, contentColor = MaterialTheme.colorScheme.onBackground) {
-                        DatebookApp()
+                    // The screens over the scene, on glass tinted by the light, in the theme's light text
+                    CompositionLocalProvider(LocalGlass provides Glass(haze, glassTint(light))) {
+                        Surface(color = Color.Transparent, contentColor = MaterialTheme.colorScheme.onBackground) {
+                            DatebookApp()
+                        }
                     }
                 }
             }
@@ -425,24 +440,37 @@ class MainActivity : ComponentActivity() {
         return problem
     }
 
-    // The Settings menu's rows, each opening its page (Smart features and Automatic mode come in later steps)
+    // The Settings menu's rows, each with its glass tile icon and opening its page
     private fun settingsItems(open: (String) -> Unit): List<SettingsItem> {
         return listOf(
-            SettingsItem("▣", "Apps to watch", "Which apps Datebook reads texts from") { open(ROUTE_SETTINGS_APPS) },
-            SettingsItem("AI", "Claude & API key", "Your key and which model to use") { open(ROUTE_SETTINGS_CLAUDE) },
-            SettingsItem("13", "Calendars", "Which calendars to check for clashes") { open(ROUTE_SETTINGS_CALENDARS) },
-            SettingsItem("📍", "Places & travel", "Maps key, how you get around, home") { open(ROUTE_SETTINGS_PLACES) },
-            SettingsItem("✈", "Flights & trains", "Live flight times and NJ Transit") { open(ROUTE_SETTINGS_FLIGHTS) },
-            SettingsItem("🔔", "Notifications & alerts", "Reading texts and showing prompts") {
+            SettingsItem(DatebookIcons.Apps, TILE_BLUE, "Apps to watch", "Which apps Datebook reads texts from") {
+                open(ROUTE_SETTINGS_APPS)
+            },
+            SettingsItem(DatebookIcons.Sparkle, TILE_AQUA, "Claude & API key", "Your key and which model to use") {
+                open(ROUTE_SETTINGS_CLAUDE)
+            },
+            SettingsItem(DatebookIcons.Calendar, TILE_BLUE, "Calendars", "Which calendars to check for clashes") {
+                open(ROUTE_SETTINGS_CALENDARS)
+            },
+            SettingsItem(DatebookIcons.Pin, TILE_LEAF, "Places & travel", "Maps key, how you get around, home") {
+                open(ROUTE_SETTINGS_PLACES)
+            },
+            SettingsItem(DatebookIcons.Plane, TILE_BLUE, "Flights & trains", "Live flight times and NJ Transit") {
+                open(ROUTE_SETTINGS_FLIGHTS)
+            },
+            SettingsItem(DatebookIcons.Bell, TILE_WARN, "Notifications & alerts", "Reading texts and showing prompts") {
                 open(ROUTE_SETTINGS_NOTIFICATIONS)
             },
-            SettingsItem("🔒", "Privacy & history", "What's kept, and clearing history") {
+            SettingsItem(DatebookIcons.Lock, TILE_LEAF, "Privacy & history", "What's kept, and clearing history") {
                 open(ROUTE_SETTINGS_PRIVACY)
             },
-            SettingsItem("⚡", "Automatic mode", "Catch plans in texts you send and open chats") {
+            SettingsItem(DatebookIcons.Auto, TILE_AQUA, "Automatic mode",
+                "Catch plans in texts you send and open chats") {
                 open(ROUTE_SETTINGS_AUTOMATIC)
             },
-            SettingsItem("i", "About Datebook", "Version, GitHub and privacy") { open(ROUTE_SETTINGS_ABOUT) },
+            SettingsItem(DatebookIcons.Info, TILE_BLUE, "About Datebook", "Version, GitHub and privacy") {
+                open(ROUTE_SETTINGS_ABOUT)
+            },
         )
     }
 

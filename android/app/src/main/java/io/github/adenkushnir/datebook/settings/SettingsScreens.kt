@@ -1,10 +1,8 @@
 // The Settings screens from the mockup: a category menu, then Apps to watch, Claude & API key, Notifications &
 // alerts, Privacy & history and About (Smart features and Automatic mode appear once their steps are built)
 package io.github.adenkushnir.datebook.settings
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -20,6 +18,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -38,6 +37,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -52,6 +53,8 @@ import io.github.adenkushnir.datebook.capture.WatchedApp
 import io.github.adenkushnir.datebook.places.TRAVEL_MODES
 import io.github.adenkushnir.datebook.summary.timeLabel
 import io.github.adenkushnir.datebook.trains.Station
+import io.github.adenkushnir.datebook.ui.GlassTile
+import io.github.adenkushnir.datebook.ui.travelIcon
 import kotlinx.coroutines.launch
 const val GITHUB_URL = "https://github.com/adenkushnir/text-to-calendar"
 const val PRIVACY_SUMMARY = "Datebook checks texts from the apps you switch on, on this phone. Texts without a date " +
@@ -61,33 +64,34 @@ const val PRIVACY_SUMMARY = "Datebook checks texts from the apps you switch on, 
     "can't be reached, a text with a date waits on the phone (for up to a day) so Claude can check it later, and " +
     "its offline guess shows it until then."
 
-// One item in the Settings menu: a short icon, its name, a one-line hint, and the page it opens
-class SettingsItem(val icon: String, val title: String, val hint: String, val open: () -> Unit)
+// One item in the Settings menu: its glass tile icon and the icon's colour, its name, a one-line hint, and the page it
+// opens
+class SettingsItem(val icon: ImageVector, val tint: Color, val title: String, val hint: String, val open: () -> Unit)
 
-// The Settings menu: one row per category
+// The Settings menu: one row per category on a glass card
 @Composable
 fun SettingsMenu(items: List<SettingsItem>, onBack: () -> Unit) {
     SettingsPage("Settings", onBack) {
-        // Show each category as a row that opens its page
-        for (item in items) {
-            Row(
-                Modifier.fillMaxWidth().clickable(onClick = item.open).padding(vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                val tile = MaterialTheme.colorScheme.primaryContainer
-                Box(Modifier.size(28.dp).background(tile, MaterialTheme.shapes.small),
-                    contentAlignment = Alignment.Center) {
-                    Text(item.icon, color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp)
+        DatebookCard {
+            // Show each category as a row that opens its page, with a line between rows
+            items.forEachIndexed { index, item ->
+                // A line above every row but the first
+                if (index > 0) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
                 }
-                Column(Modifier.weight(1f)) {
-                    Text(item.title, fontWeight = FontWeight.SemiBold)
-                    Muted(item.hint)
+                Row(
+                    Modifier.fillMaxWidth().clickable(onClick = item.open).padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    GlassTile(item.icon, description = null, size = 34.dp, tint = item.tint)
+                    Column(Modifier.weight(1f)) {
+                        Text(item.title, fontWeight = FontWeight.SemiBold)
+                        Muted(item.hint)
+                    }
+                    Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 20.sp)
                 }
-                Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 20.sp)
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
         }
     }
 }
@@ -220,8 +224,10 @@ fun PlacesPage(
             // One choice per travel mode
             for (option in TRAVEL_MODES) {
                 val pick = Modifier.fillMaxWidth().clickable { onMode(option.id) }
-                Row(pick, verticalAlignment = Alignment.CenterVertically) {
-                    Text(option.label, modifier = Modifier.weight(1f))
+                val gap = Arrangement.spacedBy(10.dp)
+                Row(pick, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = gap) {
+                    Icon(travelIcon(option.id), contentDescription = null, modifier = Modifier.size(20.dp))
+                    Text(option.name, modifier = Modifier.weight(1f))
                     RadioButton(selected = mode == option.id, onClick = { onMode(option.id) })
                 }
             }
