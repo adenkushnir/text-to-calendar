@@ -8,12 +8,19 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewModelScope
@@ -25,6 +32,9 @@ import io.github.adenkushnir.datebook.pipeline.SHARED_TEXT_APP
 import io.github.adenkushnir.datebook.pipeline.ShareResult
 import io.github.adenkushnir.datebook.prompts.addSuggestion
 import io.github.adenkushnir.datebook.prompts.ignoreSuggestion
+import io.github.adenkushnir.datebook.scenery.Scene
+import io.github.adenkushnir.datebook.scenery.SceneBackdrop
+import io.github.adenkushnir.datebook.scenery.rememberSceneLight
 import io.github.adenkushnir.datebook.ui.theme.DatebookTheme
 import java.time.LocalDateTime
 import kotlinx.coroutines.Dispatchers
@@ -88,24 +98,39 @@ class ShareActivity : ComponentActivity() {
         setContent {
             DatebookTheme {
                 val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-                ModalBottomSheet(onDismissRequest = { finish() }, sheetState = sheet) {
-                    ShareSheet(model.result, model.added, model.ignored,
-                        onAdd = { id ->
-                            model.added += id
-                            lifecycleScope.launch { addSuggestion(this@ShareActivity, id) }
-                        },
-                        onIgnore = { id ->
-                            model.ignored += id
-                            lifecycleScope.launch { ignoreSuggestion(applicationContext, id) }
-                        },
-                        onRetry = { model.start(item, again = true) },
-                        onOpenDatebook = {
-                            startActivity(Intent(this@ShareActivity, MainActivity::class.java))
-                            finish()
-                        },
-                        onClose = { finish() })
+                val light = rememberSceneLight()
+                ModalBottomSheet(onDismissRequest = { finish() }, sheetState = sheet, containerColor = Color.Transparent,
+                    dragHandle = null) {
+                    // The beach scene fills the sheet behind its handle and contents, showing the picture's bottom
+                    Box {
+                        SceneBackdrop(Scene.BEACH, light, Modifier.matchParentSize(), alignment = Alignment.BottomCenter)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            BottomSheetDefaults.DragHandle()
+                            SheetContents(item)
+                        }
+                    }
                 }
             }
         }
+    }
+
+    // The plans in the sheet, with what each button does
+    @Composable
+    private fun SheetContents(item: SharedItem) {
+        ShareSheet(model.result, model.added, model.ignored,
+            onAdd = { id ->
+                model.added += id
+                lifecycleScope.launch { addSuggestion(this@ShareActivity, id) }
+            },
+            onIgnore = { id ->
+                model.ignored += id
+                lifecycleScope.launch { ignoreSuggestion(applicationContext, id) }
+            },
+            onRetry = { model.start(item, again = true) },
+            onOpenDatebook = {
+                startActivity(Intent(this@ShareActivity, MainActivity::class.java))
+                finish()
+            },
+            onClose = { finish() })
     }
 }

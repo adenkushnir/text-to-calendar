@@ -1,6 +1,5 @@
 // The suggestion card from the mockup: a read-only summary of one suggestion, with Add and Ignore
 package io.github.adenkushnir.datebook
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -59,7 +58,7 @@ fun SuggestionScreen(
     onSwitchOrigin: (String) -> Unit = {},
     guessText: String? = null,
 ) {
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Column(Modifier.fillMaxSize()) {  // see-through, so the scene behind shows
         TopBar("Suggestion", onBack = onBack)
         Column(
             Modifier.verticalScroll(rememberScrollState()).navigationBarsPadding().padding(16.dp),
