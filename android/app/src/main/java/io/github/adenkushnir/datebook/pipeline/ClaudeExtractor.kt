@@ -11,6 +11,8 @@ import com.anthropic.models.beta.messages.BetaOutputConfig
 import com.anthropic.models.beta.messages.BetaStopReason
 import com.anthropic.models.beta.messages.MessageCreateParams
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.github.adenkushnir.datebook.data.KIND_DUE
+import io.github.adenkushnir.datebook.data.KIND_LOOSE
 import io.github.adenkushnir.datebook.calendar.CalendarEvent
 import java.time.Duration
 import java.time.Instant
@@ -53,9 +55,11 @@ private val EVENT_ITEM = mapOf(
         "package_carrier" to mapOf("type" to "string", "enum" to listOf("", "ups", "fedex", "usps", "amazon", "dhl")),
         "tracking_number" to mapOf("type" to "string"),
         "confirmation_code" to mapOf("type" to "string"),
+        "kind" to mapOf("type" to "string", "enum" to listOf(KIND_EVENT, KIND_LOOSE, KIND_DUE)),
+        "amount" to mapOf("type" to "string"),
     ),
     "required" to listOf("title", "start", "end", "all_day", "location", "repeat", "timezone", "change",
-        "calendar_event", "flight", "package_carrier", "tracking_number", "confirmation_code"),
+        "calendar_event", "flight", "package_carrier", "tracking_number", "confirmation_code", "kind", "amount"),
     "additionalProperties" to false,
 )
 val EVENTS_SCHEMA = mapOf(
@@ -210,7 +214,7 @@ fun parseResponse(stopped: Boolean, json: String, phoneZone: String): List<Event
     }
     val found = MAPPER.readTree(json).path("events")
 
-    // Turn each item into an event, dropping any without a start time
+    // Turn each item into an event, dropping plans and bills without a start
     return found.mapNotNull { item ->
         val event = Event(
             title = item.path("title").asText(""),
@@ -227,7 +231,11 @@ fun parseResponse(stopped: Boolean, json: String, phoneZone: String): List<Event
             packageCarrier = item.path("package_carrier").asText(""),
             trackingNumber = item.path("tracking_number").asText("").replace(" ", ""),
             confirmation = item.path("confirmation_code").asText("").trim(),
+            kind = item.path("kind").asText(KIND_EVENT).ifBlank { KIND_EVENT },
+            amount = item.path("amount").asText("").trim(),
         )
-        if (event.start.isBlank()) null else event  // no start means nothing to put on the calendar
+
+        // A plan or bill without a start has nothing to go on; a loose plan may have no day yet
+        if (event.start.isBlank() && event.kind != KIND_LOOSE) null else event
     }
 }

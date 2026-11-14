@@ -1,6 +1,6 @@
 // The home dashboard: a clear top bar over the scene with Settings, banners for anything off, then Next up (from your
-// calendar), Waiting for you and Coming up (the next 3 days with something on) on dark glass; also the glass pieces
-// every screen shares (top bar, labels, cards)
+// calendar), Waiting for you, Bills due and Loose plans, and Coming up (the next 3 days with something on) on dark
+// glass; also the glass pieces every screen shares (top bar, labels, cards)
 package io.github.adenkushnir.datebook
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -46,7 +46,9 @@ import io.github.adenkushnir.datebook.calendar.dayOf
 import io.github.adenkushnir.datebook.calendar.endText
 import io.github.adenkushnir.datebook.calendar.timeText
 import io.github.adenkushnir.datebook.calendar.whenWhere
+import io.github.adenkushnir.datebook.data.FollowUp
 import io.github.adenkushnir.datebook.data.Suggestion
+import io.github.adenkushnir.datebook.data.followUpDay
 import io.github.adenkushnir.datebook.pipeline.summary
 import io.github.adenkushnir.datebook.prompts.changedNote
 import io.github.adenkushnir.datebook.prompts.guessNote
@@ -89,6 +91,11 @@ fun HomeScreen(
     trains: TrainBoard? = null,
     onFlipTrains: () -> Unit = {},
     checking: Set<Long> = emptySet(),
+    bills: List<FollowUp> = emptyList(),
+    loosePlans: List<FollowUp> = emptyList(),
+    onPaid: (Long) -> Unit = {},
+    onDropLoose: (Long) -> Unit = {},
+    onOpenChat: (FollowUp) -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize()) {  // see-through, so the scene behind shows
         TopBar("Datebook", onSettings = onSettings)
@@ -135,6 +142,7 @@ fun HomeScreen(
                     }
                 }
             }
+            FollowUpSections(bills, loosePlans, onPaid, onDropLoose, onOpenChat)
             SectionLabel("Coming up")
             DatebookCard {
                 // Say so when the rest of the week is empty
@@ -154,6 +162,58 @@ fun HomeScreen(
                     for (event in day.events) {
                         EventRow(event, zone, onOpenEvent)
                     }
+                }
+            }
+        }
+    }
+}
+
+// Bills due (each with Paid) and Loose plans (tap to open the chat, ✕ to drop it), each only when it has something
+@Composable
+private fun FollowUpSections(bills: List<FollowUp>, loosePlans: List<FollowUp>, onPaid: (Long) -> Unit,
+    onDrop: (Long) -> Unit, onOpenChat: (FollowUp) -> Unit) {
+    // Bills and due dates, soonest first
+    if (bills.isNotEmpty()) {
+        SectionLabel("Bills due")
+        DatebookCard {
+            // One row per bill, a line between them
+            bills.forEachIndexed { index, bill ->
+                // A line above every bill but the first
+                if (index > 0) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(bill.title, fontWeight = FontWeight.SemiBold)
+                        val amount = if (bill.amount.isNotBlank()) "${bill.amount} · " else ""  // only when known
+                        Muted("${amount}due ${followUpDay(bill)}")
+                    }
+                    GelButton(onClick = { onPaid(bill.id) }, small = true) {
+                        Text("Paid")
+                    }
+                }
+            }
+        }
+    }
+
+    // Loose plans to pin down
+    if (loosePlans.isNotEmpty()) {
+        SectionLabel("Loose plans")
+        DatebookCard {
+            // One row per loose plan, a line between them; tapping it opens the chat it came from
+            loosePlans.forEachIndexed { index, loose ->
+                // A line above every loose plan but the first
+                if (index > 0) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f).clickable { onOpenChat(loose) }) {
+                        Text(loose.title, fontWeight = FontWeight.SemiBold)
+                        val day = followUpDay(loose)
+                        val who = loose.conversation.ifBlank { loose.sender }
+                        Muted(if (day.isBlank()) "From $who" else "From $who · around $day")
+                    }
+                    GlassIconButton(DatebookIcons.Close, "Drop", onClick = { onDrop(loose.id) })
                 }
             }
         }

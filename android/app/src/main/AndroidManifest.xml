@@ -8,6 +8,17 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <!-- The messaging apps Datebook watches, so it can open the one a loose plan came from (Android 11+ hides other
+         apps unless they're named here) -->
+    <queries>
+        <package android:name="com.samsung.android.messaging" />
+        <package android:name="com.google.android.apps.messaging" />
+        <package android:name="com.groupme.android" />
+        <package android:name="com.whatsapp" />
+        <package android:name="com.instagram.android" />
+        <package android:name="com.discord" />
+        <package android:name="com.google.android.gm" />
+    </queries>
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"

@@ -10,6 +10,9 @@ import io.github.adenkushnir.datebook.calendar.CalendarEvent
 import io.github.adenkushnir.datebook.calendar.HomeEvent
 import io.github.adenkushnir.datebook.calendar.agendaOf
 import io.github.adenkushnir.datebook.calendar.fromCalendar
+import io.github.adenkushnir.datebook.data.FollowUp
+import io.github.adenkushnir.datebook.data.KIND_DUE
+import io.github.adenkushnir.datebook.data.KIND_LOOSE
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.ui.theme.DatebookTheme
 import java.time.ZoneId
@@ -48,6 +51,29 @@ class HomeScreenTest {
         compose.onNodeWithText("Nothing coming up yet").assertExists()
         compose.onNodeWithText("WAITING FOR YOU (0)").assertExists()
         compose.onNodeWithText("Nothing on your calendar this month.").assertExists()
+    }
+
+    // Bills show with their amount, day and Paid; loose plans with who they came from; tapping acts on them
+    @Test
+    fun followUpSections() {
+        val bill = FollowUp(id = 7, kind = KIND_DUE, title = "Phone bill", date = "2037-11-20", amount = "$45",
+            sender = "Verizon", app = "sms", conversation = "", status = FollowUp.OPEN, createdAt = 0, nextNudge = 0,
+            nudges = 0)
+        val lunch = bill.copy(id = 8, kind = KIND_LOOSE, title = "Lunch with Sam", date = "", amount = "",
+            sender = "Sam")
+        val acted = mutableListOf<String>()
+        compose.setContent {
+            DatebookTheme {
+                HomeScreen(nowMillis = now, bills = listOf(bill), loosePlans = listOf(lunch),
+                    onPaid = { acted.add("paid $it") }, onOpenChat = { acted.add("chat ${it.sender}") })
+            }
+        }
+        compose.onNodeWithText("BILLS DUE").assertExists()
+        compose.onNodeWithText("$45 · due Fri Nov 20").assertExists()
+        compose.onNodeWithText("From Sam").assertExists()
+        compose.onNodeWithText("Paid").performClick()
+        compose.onNodeWithText("Lunch with Sam").performScrollTo().performClick()
+        assertEquals(listOf("paid 7", "chat Sam"), acted)
     }
 
     // A calendar event of the given length starting at a time in New York, on a blue calendar

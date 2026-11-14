@@ -69,6 +69,9 @@ import io.github.adenkushnir.datebook.email.gmailAddress
 import io.github.adenkushnir.datebook.email.gmailRequest
 import io.github.adenkushnir.datebook.email.scheduleGmailChecks
 import io.github.adenkushnir.datebook.email.stopGmailChecks
+import io.github.adenkushnir.datebook.data.FollowUp
+import io.github.adenkushnir.datebook.data.KIND_DUE
+import io.github.adenkushnir.datebook.data.KIND_LOOSE
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.flights.scheduleFlightChecks
 import io.github.adenkushnir.datebook.flights.statusLine
@@ -216,6 +219,10 @@ class MainActivity : ComponentActivity() {
         val addedFlow = remember { graph.dao.watchSuggestions(Suggestion.STATUS_ADDED) }
         val waiting by waitingFlow.collectAsState(initial = emptyList())
         val added by addedFlow.collectAsState(initial = emptyList())
+        val billsFlow = remember { graph.dao.watchOpenFollowUps(KIND_DUE) }
+        val looseFlow = remember { graph.dao.watchOpenFollowUps(KIND_LOOSE) }
+        val bills by billsFlow.collectAsState(initial = emptyList())
+        val loosePlans by looseFlow.collectAsState(initial = emptyList())
         val checkingFlow = remember { graph.dao.watchRetryIds() }
         val checking by checkingFlow.collectAsState(initial = emptyList())
         var status by remember { mutableStateOf(readSetupStatus(applicationContext, graph)) }
@@ -326,6 +333,11 @@ class MainActivity : ComponentActivity() {
                     fixes = fixesFor(status, actions, openKeySetup = { nav.navigate(ROUTE_SETUP) }),
                     trains = trains,
                     checking = checking.toSet(),
+                    bills = bills,
+                    loosePlans = loosePlans,
+                    onPaid = { id -> scope.launch { graph.dao.setFollowUpStatus(id, FollowUp.DONE) } },
+                    onDropLoose = { id -> scope.launch { graph.dao.setFollowUpStatus(id, FollowUp.DROPPED) } },
+                    onOpenChat = { loose -> openApp(loose.app) },
                     onFlipTrains = {
                         val saved = trip
 
@@ -755,6 +767,18 @@ class MainActivity : ComponentActivity() {
             askMany(LOCATION_PERMISSIONS)
         } else {
             askOne(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        }
+    }
+
+    // Open the app a loose plan came from (its chat list), telling you if it isn't installed
+    private fun openApp(app: String) {
+        val launch = packageManager.getLaunchIntentForPackage(app)
+
+        // Open the app, or say it can't be opened
+        if (launch != null) {
+            startActivity(launch)
+        } else {
+            Toast.makeText(this, "Can't open that app", Toast.LENGTH_LONG).show()
         }
     }
 
