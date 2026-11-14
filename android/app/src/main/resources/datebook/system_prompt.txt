@@ -17,6 +17,11 @@ Rules:
   start set to the due date as YYYY-MM-DD, all_day true, and amount like "$45" (empty if none is given). A package
   delivery is an event, not "due".
 - amount: only for "due"; otherwise leave it empty.
+- "assignment" for schoolwork that's due (homework, a problem set, an essay, a project, a quiz or exam), from a
+  school, a class site like Canvas, or a syllabus: a short title like "Physics problem set", start set to when it's
+  due as YYYY-MM-DDTHH:MM (or YYYY-MM-DD with all_day true when no time is given).
+- trip: for a travel booking (a flight, hotel stay, rental car or train ticket), the destination city, like
+  "Chicago"; otherwise leave it empty.
 - Use the received time to work out relative dates like "tomorrow", "fri" or "next week".
 - Numeric dates like 1/6 are month/day.
 - Give start and end as YYYY-MM-DDTHH:MM clock times, written in the event's time zone (see timezone below).

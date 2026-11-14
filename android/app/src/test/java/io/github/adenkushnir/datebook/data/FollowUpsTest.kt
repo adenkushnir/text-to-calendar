@@ -33,6 +33,16 @@ class FollowUpsTest {
         assertEquals(0L, firstNudge(KIND_DUE, "", found, newYork))
     }
 
+    // An assignment is reminded at 6 PM the evening before, or 9 AM on the day when that's passed; never once it's over
+    @Test
+    fun assignments() {
+        assertEquals(millis(LocalDateTime.of(2037, 11, 16, 18, 0)),
+            firstNudge(KIND_ASSIGNMENT, "2037-11-17", found, newYork))
+        assertEquals(millis(LocalDateTime.of(2037, 11, 11, 9, 0)),
+            firstNudge(KIND_ASSIGNMENT, "2037-11-11", millis(LocalDateTime.of(2037, 11, 10, 19, 0)), newYork))
+        assertEquals(0L, firstNudge(KIND_ASSIGNMENT, "2037-11-10", found, newYork))
+    }
+
     // A follow-up's day reads like "Fri Nov 20", and nothing without one
     @Test
     fun dayText() {

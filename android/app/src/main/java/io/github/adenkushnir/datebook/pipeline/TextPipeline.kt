@@ -329,7 +329,8 @@ class TextPipeline(
         return ids
     }
 
-    // Save loose plans and bills as follow-ups (not the same one twice while it's open, and no bill already past due),
+    // Save loose plans, bills and assignments as follow-ups (not the same one twice while it's open, and nothing
+    // already past due),
     // with their first nudge or reminder booked; returns how many were saved
     private suspend fun saveFollowUps(found: List<Event>, incoming: IncomingText): Int {
         val zone = zoneOf(phoneZone()) ?: ZoneId.systemDefault()
@@ -348,10 +349,11 @@ class TextPipeline(
             if (open || (past && event.kind != KIND_LOOSE)) {
                 continue
             }
+            val time = if (event.start.length >= 16) event.start.substring(11, 16) else ""  // HH:MM when given
             dao.saveFollowUp(FollowUp(kind = event.kind, title = event.title, date = day, amount = event.amount,
                 sender = incoming.sender, app = incoming.app, conversation = incoming.group,
                 status = FollowUp.OPEN, createdAt = now(), nextNudge = firstNudge(event.kind, day, now(), zone),
-                nudges = 0))
+                nudges = 0, time = time))
             saved += 1
         }
         return saved

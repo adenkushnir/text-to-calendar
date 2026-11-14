@@ -11,6 +11,7 @@ import com.anthropic.models.beta.messages.BetaOutputConfig
 import com.anthropic.models.beta.messages.BetaStopReason
 import com.anthropic.models.beta.messages.MessageCreateParams
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.github.adenkushnir.datebook.data.KIND_ASSIGNMENT
 import io.github.adenkushnir.datebook.data.KIND_DUE
 import io.github.adenkushnir.datebook.data.KIND_LOOSE
 import io.github.adenkushnir.datebook.calendar.CalendarEvent
@@ -55,11 +56,13 @@ private val EVENT_ITEM = mapOf(
         "package_carrier" to mapOf("type" to "string", "enum" to listOf("", "ups", "fedex", "usps", "amazon", "dhl")),
         "tracking_number" to mapOf("type" to "string"),
         "confirmation_code" to mapOf("type" to "string"),
-        "kind" to mapOf("type" to "string", "enum" to listOf(KIND_EVENT, KIND_LOOSE, KIND_DUE)),
+        "kind" to mapOf("type" to "string", "enum" to listOf(KIND_EVENT, KIND_LOOSE, KIND_DUE, KIND_ASSIGNMENT)),
         "amount" to mapOf("type" to "string"),
+        "trip" to mapOf("type" to "string"),
     ),
     "required" to listOf("title", "start", "end", "all_day", "location", "repeat", "timezone", "change",
-        "calendar_event", "flight", "package_carrier", "tracking_number", "confirmation_code", "kind", "amount"),
+        "calendar_event", "flight", "package_carrier", "tracking_number", "confirmation_code", "kind", "amount",
+        "trip"),
     "additionalProperties" to false,
 )
 val EVENTS_SCHEMA = mapOf(
@@ -233,6 +236,7 @@ fun parseResponse(stopped: Boolean, json: String, phoneZone: String): List<Event
             confirmation = item.path("confirmation_code").asText("").trim(),
             kind = item.path("kind").asText(KIND_EVENT).ifBlank { KIND_EVENT },
             amount = item.path("amount").asText("").trim(),
+            trip = item.path("trip").asText("").trim(),
         )
 
         // A plan or bill without a start has nothing to go on; a loose plan may have no day yet

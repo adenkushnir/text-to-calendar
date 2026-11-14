@@ -113,6 +113,35 @@ object DatebookIcons {
             "a2.2 2.2 0 0 1 2.2 -2.2z",
         "M8 10.5V8a4 4 0 0 1 8 0v2.5",
     )
+    // A house, for the Home tab
+    val Home = icon("home", filled = false,
+        "M4 11l8-7 8 7v9h-5v-6h-6v6H4z",
+    )
+    // Lines of a list, for the Lists tab
+    val List = icon("list", filled = false,
+        "M9 6h11M9 12h11M9 18h11",
+        "M4.5 6h.01M4.5 12h.01M4.5 18h.01",
+    )
+    // A page with lines, for notes
+    val Note = icon("note", filled = false,
+        "M6 3.5h9l4 4v13H6z",
+        "M9 11h7M9 15h7M9 19h4",
+    )
+    // A box, for packages
+    val Box = icon("box", filled = false,
+        "M4 8l8-4 8 4v8.5l-8 4-8-4z",
+        "M4 8l8 4 8-4M12 12v8.5",
+    )
+    // A book, for assignments
+    val Book = icon("book", filled = false,
+        "M6 4h12v16H8a2 2 0 0 1 -2 -2z",
+        "M6 18a2 2 0 0 1 2 -2h10",
+    )
+    // A receipt, for bills
+    val Receipt = icon("receipt", filled = false,
+        "M6 3h12v18l-3-2-3 2-3-2-3 2z",
+        "M9 8h6M9 12h6",
+    )
     // An envelope, for Gmail
     val Mail = icon("mail", filled = false,
         "M5.5 5.5h13a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-13a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2z",

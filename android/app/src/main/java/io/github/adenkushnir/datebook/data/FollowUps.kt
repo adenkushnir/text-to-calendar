@@ -1,6 +1,8 @@
-// Follow-ups: loose plans ("we should get lunch next week") to pin down later, and bills and due dates ("phone bill of
-// $45 due Nov 20") to be reminded about; they're kept apart from calendar plans and never become calendar events
+// Follow-ups: loose plans ("we should get lunch next week") to pin down later, bills and due dates ("phone bill of $45
+// due Nov 20") and assignments ("problem set due Tue 11:59 PM") to be reminded about, and (step 19) reminders and
+// notes; they're kept apart from calendar plans and never become calendar events
 package io.github.adenkushnir.datebook.data
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import java.time.Instant
@@ -10,13 +12,16 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 const val KIND_LOOSE = "loose"
 const val KIND_DUE = "due"
+const val KIND_ASSIGNMENT = "assignment"
+const val EVENING_HOUR = 18  // the evening-before reminder comes at 6 PM
 const val NUDGE_HOUR = 9  // nudges and reminders come at 9 in the morning
 private const val DAY_MILLIS = 24L * 60 * 60 * 1000
 private val DAY_NAME = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US)
 
-// One follow-up: a loose plan or something due, who it came from (and which chat), its day (YYYY-MM-DD, "" when
-// none), the amount for a bill, whether it's open, done (paid, or pinned down) or dropped, when it was found, when its
-// next nudge or reminder is due (0 for none), and how many have been sent
+// One follow-up: a loose plan, something due or an assignment, who it came from (and which chat), its day
+// (YYYY-MM-DD, "" when none), the amount for a bill, whether it's open, done (paid, handed in, or pinned down) or
+// dropped, when it was found, when its next nudge or reminder is due (0 for none), how many have been sent, its time
+// of day (HH:MM, "" when none), how it repeats (a reminder's rule) and a note's text
 @Entity(tableName = "followups")
 data class FollowUp(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -31,6 +36,9 @@ data class FollowUp(
     val createdAt: Long,
     val nextNudge: Long,
     val nudges: Int,
+    @ColumnInfo(defaultValue = "") val time: String = "",
+    @ColumnInfo(defaultValue = "") val repeat: String = "",
+    @ColumnInfo(defaultValue = "") val body: String = "",
 ) {
     // Names for the states a follow-up can be in
     companion object {
@@ -47,12 +55,24 @@ private fun morningOf(day: LocalDate, zone: ZoneId): Long {
 
 // When a new follow-up's first nudge or reminder is due (0 for none): a loose plan on the first day of the time it
 // names (or 3 days after it came, when it names none or that day has passed), a bill 2 days before it's due (or on the
-// day, if that's already passed); nothing for a bill whose day is over
+// day, if that's already passed), an assignment at 6 PM the evening before (or 9 AM on the day); nothing for a bill or
+// assignment whose day is over
 fun firstNudge(kind: String, date: String, createdAt: Long, zone: ZoneId): Long {
     val day = runCatching { LocalDate.parse(date) }.getOrNull()
     val inThreeDays = morningOf(Instant.ofEpochMilli(createdAt).atZone(zone).toLocalDate().plusDays(3), zone)
 
-    // Pick the time for each kind
+    // Assignments: the evening before, else the morning of, else none
+    if (kind == KIND_ASSIGNMENT) {
+        val evening = day?.minusDays(1)?.atTime(EVENING_HOUR, 0)?.atZone(zone)?.toInstant()?.toEpochMilli()
+        return when {
+            day == null -> 0
+            evening != null && evening > createdAt -> evening
+            morningOf(day, zone) > createdAt -> morningOf(day, zone)
+            else -> 0
+        }
+    }
+
+    // Pick the time for each other kind
     return when {
         kind == KIND_LOOSE && day != null && morningOf(day, zone) > createdAt -> morningOf(day, zone)
         kind == KIND_LOOSE -> inThreeDays

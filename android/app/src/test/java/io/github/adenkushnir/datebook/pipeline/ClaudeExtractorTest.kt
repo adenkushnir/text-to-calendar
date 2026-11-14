@@ -84,7 +84,7 @@ class ClaudeExtractorTest {
              "tracking_number": "", "confirmation_code": "", "kind": "loose", "amount": ""},
             {"title": "Phone bill", "start": "2037-11-20", "end": "", "all_day": true, "location": "", "repeat": "",
              "timezone": "", "change": "", "calendar_event": 0, "flight": "", "package_carrier": "",
-             "tracking_number": "", "confirmation_code": "", "kind": "due", "amount": "$45"},
+             "tracking_number": "", "confirmation_code": "", "kind": "due", "amount": "$45", "trip": "Chicago"},
             {"title": "No day", "start": "", "end": "", "all_day": true, "location": "", "repeat": "",
              "timezone": "", "change": "", "calendar_event": 0, "flight": "", "package_carrier": "",
              "tracking_number": "", "confirmation_code": "", "kind": "due", "amount": ""}]}"""
@@ -92,6 +92,7 @@ class ClaudeExtractorTest {
         assertEquals(listOf("Lunch with Sam", "Phone bill"), events.map { it.title })
         assertEquals(listOf("loose", "due"), events.map { it.kind })
         assertEquals("$45", events[1].amount)
+        assertEquals("Chicago", events[1].trip)
         assertTrue(SYSTEM_PROMPT.contains("\"loose\" for a plan suggested without a set date"))
     }
 

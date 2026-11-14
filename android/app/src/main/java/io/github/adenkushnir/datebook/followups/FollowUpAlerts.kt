@@ -23,6 +23,7 @@ import io.github.adenkushnir.datebook.R
 import io.github.adenkushnir.datebook.calendar.CalendarEvent
 import io.github.adenkushnir.datebook.calendar.calendarEvents
 import io.github.adenkushnir.datebook.data.FollowUp
+import io.github.adenkushnir.datebook.data.KIND_ASSIGNMENT
 import io.github.adenkushnir.datebook.data.KIND_DUE
 import io.github.adenkushnir.datebook.data.KIND_LOOSE
 import io.github.adenkushnir.datebook.data.NUDGE_HOUR
@@ -57,6 +58,8 @@ private const val ACTION_SNOOZE = "io.github.adenkushnir.datebook.FOLLOW_UP_SNOO
 private const val ACTION_DROP = "io.github.adenkushnir.datebook.FOLLOW_UP_DROP"
 private const val ACTION_PAID = "io.github.adenkushnir.datebook.FOLLOW_UP_PAID"
 private const val ACTION_TOMORROW = "io.github.adenkushnir.datebook.FOLLOW_UP_TOMORROW"
+private const val ACTION_LATER = "io.github.adenkushnir.datebook.FOLLOW_UP_LATER"
+private const val LATER_MILLIS = 2 * 60 * 60 * 1000L  // "Remind me later" is 2 hours
 private const val EXTRA_FOLLOW_UP_ID = "io.github.adenkushnir.datebook.FOLLOW_UP_ID"
 private const val FLAGS = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
 private val CLOCK = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
@@ -128,11 +131,25 @@ private fun morningOf(day: LocalDate, zone: ZoneId): Long {
     return day.atTime(NUDGE_HOUR, 0).atZone(zone).toInstant().toEpochMilli()
 }
 
-// When a follow-up's next reminder comes after the one just sent: a bill reminded 2 days early gets one more on its
-// day; everything else is done (loose plans are nudged once, then only when you ask for later)
+// When a follow-up's next reminder comes after the one just sent: a bill reminded 2 days early, or an assignment
+// reminded the evening before, gets one more on its day; everything else is done (loose plans are nudged once, then
+// only when you ask for later)
 fun nextAfterReminder(followUp: FollowUp, nowMillis: Long, zone: ZoneId): Long {
     val day = runCatching { LocalDate.parse(followUp.date) }.getOrNull() ?: return 0
-    return if (followUp.kind == KIND_DUE && morningOf(day, zone) > nowMillis) morningOf(day, zone) else 0
+    val again = followUp.kind == KIND_DUE || followUp.kind == KIND_ASSIGNMENT
+    return if (again && morningOf(day, zone) > nowMillis) morningOf(day, zone) else 0
+}
+
+// When an assignment is due, in words: "Due tomorrow 11:59 PM", "Due today", "Due Tue Nov 17"
+fun assignmentDue(assignment: FollowUp, today: LocalDate): String {
+    val day = runCatching { LocalDate.parse(assignment.date) }.getOrNull() ?: return "Due soon"
+    val time = runCatching { java.time.LocalTime.parse(assignment.time).format(CLOCK) }.getOrNull()
+    val dayText = when (day) {
+        today -> "today"
+        today.plusDays(1) -> "tomorrow"
+        else -> day.format(DAY_NAME)
+    }
+    return if (time == null) "Due $dayText" else "Due $dayText $time"
 }
 
 // Return true if a waiting plan gets its "Still on?" reminder now: a new plan (not a change) that starts tomorrow, from
@@ -261,6 +278,22 @@ private fun showBillReminder(context: Context, bill: FollowUp, today: LocalDate)
     NotificationManagerCompat.from(context).notify(id, notification)
 }
 
+// The reminder for an assignment: "Physics problem set · Due tomorrow 11:59 PM", with Done and Remind me later
+private fun showAssignmentReminder(context: Context, assignment: FollowUp, today: LocalDate) {
+    val id = FOLLOW_UP_IDS + assignment.id.toInt()
+    val notification = NotificationCompat.Builder(context, FOLLOW_UPS_CHANNEL)
+        .setSmallIcon(R.drawable.ic_stat_datebook)
+        .setColor(ContextCompat.getColor(context, R.color.brand_aqua))
+        .setContentTitle(assignment.title)
+        .setContentText(assignmentDue(assignment, today))
+        .setContentIntent(openDatebook(context, id))
+        .setAutoCancel(true)
+        .addAction(0, "Done", followUpAction(context, ACTION_PAID, assignment.id, 2))
+        .addAction(0, "Remind me later", followUpAction(context, ACTION_LATER, assignment.id, 3))
+        .build()
+    NotificationManagerCompat.from(context).notify(id, notification)
+}
+
 // The Friday week ahead: a quiet notification with Claude's paragraph about next week; tapping it opens the Week
 // ahead screen
 private fun showWeekAhead(context: Context, title: String, brief: String) {
@@ -308,16 +341,16 @@ suspend fun runFollowUps(context: Context, nowMillis: Long, force: Boolean = fal
         return listOf("follow-ups: can't show notifications")
     }
     makeChannels(context)
-    val all = dao.openFollowUps(KIND_LOOSE) + dao.openFollowUps(KIND_DUE)
+    val all = dao.openFollowUps(KIND_LOOSE) + dao.openFollowUps(KIND_DUE) + dao.openFollowUps(KIND_ASSIGNMENT)
     val due = if (weekOnly) emptyList() else if (force) all else dao.followUpsDue(nowMillis)
 
     // Nudge or remind each follow-up that's due, then book its next one
     for (followUp in due) {
-        // Loose plans get a nudge, bills a reminder
-        if (followUp.kind == KIND_LOOSE) {
-            showLooseNudge(context, followUp)
-        } else {
-            showBillReminder(context, followUp, today)
+        // Loose plans get a nudge, bills and assignments a reminder
+        when (followUp.kind) {
+            KIND_LOOSE -> showLooseNudge(context, followUp)
+            KIND_ASSIGNMENT -> showAssignmentReminder(context, followUp, today)
+            else -> showBillReminder(context, followUp, today)
         }
         dao.updateFollowUp(followUp.copy(nudges = followUp.nudges + 1,
             nextNudge = nextAfterReminder(followUp, nowMillis, zone)))
@@ -359,7 +392,8 @@ suspend fun runFollowUps(context: Context, nowMillis: Long, force: Boolean = fal
     return lines
 }
 
-// Handles the buttons on follow-up notifications: Not now (again in 3 days), Drop, Mark paid, Remind me tomorrow
+// Handles the buttons on follow-up notifications: Not now (again in 3 days), Drop, Mark paid or Done, Remind me
+// tomorrow, Remind me later (in 2 hours)
 class FollowUpReceiver : BroadcastReceiver() {
     // Update the follow-up and clear its notification
     override fun onReceive(context: Context, intent: Intent) {
@@ -380,6 +414,8 @@ class FollowUpReceiver : BroadcastReceiver() {
                     ACTION_SNOOZE -> dao.updateFollowUp(followUp.copy(nextNudge = morningOf(today.plusDays(SNOOZE_DAYS),
                         zone)))
                     ACTION_TOMORROW -> dao.updateFollowUp(followUp.copy(nextNudge = morningOf(today.plusDays(1), zone)))
+                    ACTION_LATER -> dao.updateFollowUp(followUp.copy(nextNudge = System.currentTimeMillis() +
+                        LATER_MILLIS))
                     ACTION_DROP -> dao.setFollowUpStatus(id, FollowUp.DROPPED)
                     ACTION_PAID -> dao.setFollowUpStatus(id, FollowUp.DONE)
                 }
