@@ -15,6 +15,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.Box
@@ -57,6 +58,17 @@ import io.github.adenkushnir.datebook.calendar.homeCalendarEvents
 import io.github.adenkushnir.datebook.calendar.phoneCalendars
 import io.github.adenkushnir.datebook.calendar.planOf
 import io.github.adenkushnir.datebook.capture.WATCHABLE_APPS
+import com.google.android.gms.auth.api.identity.AuthorizationResult
+import com.google.android.gms.auth.api.identity.Identity
+import io.github.adenkushnir.datebook.email.EXTRA_OPEN_ROUTE
+import io.github.adenkushnir.datebook.email.GMAIL_APP
+import io.github.adenkushnir.datebook.email.GmailSettings
+import io.github.adenkushnir.datebook.email.ROUTE_SETTINGS_GMAIL
+import io.github.adenkushnir.datebook.email.checkGmailNow
+import io.github.adenkushnir.datebook.email.gmailAddress
+import io.github.adenkushnir.datebook.email.gmailRequest
+import io.github.adenkushnir.datebook.email.scheduleGmailChecks
+import io.github.adenkushnir.datebook.email.stopGmailChecks
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.flights.scheduleFlightChecks
 import io.github.adenkushnir.datebook.flights.statusLine
@@ -82,6 +94,7 @@ import io.github.adenkushnir.datebook.settings.AutomaticPage
 import io.github.adenkushnir.datebook.settings.CalendarsPage
 import io.github.adenkushnir.datebook.settings.ClaudePage
 import io.github.adenkushnir.datebook.settings.FlightsPage
+import io.github.adenkushnir.datebook.settings.GmailPage
 import io.github.adenkushnir.datebook.settings.LookPage
 import io.github.adenkushnir.datebook.settings.GITHUB_URL
 import io.github.adenkushnir.datebook.settings.NotificationsPage
@@ -147,6 +160,7 @@ private const val RELOAD_MILLIS = 5 * 60_000L  // how often Home re-reads the ca
 // The activity Android starts when you tap the Datebook icon or a prompt
 class MainActivity : ComponentActivity() {
     private var promptSuggestion by mutableStateOf<Long?>(null)
+    private var openRoute by mutableStateOf<String?>(null)  // a page a notification asked to open
     private var screenRoute by mutableStateOf<String?>(null)  // the open screen, so the scene behind can follow it
 
     // Draw edge to edge and show the app, opening the suggestion a prompt asked for
@@ -155,6 +169,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         movingSwitch.value = MotionSettings(this).isOn()
         promptSuggestion = suggestionIn(intent)
+        openRoute = intent?.getStringExtra(EXTRA_OPEN_ROUTE)
         setContent {
             DatebookTheme {
                 val light = rememberSceneLight()
@@ -180,6 +195,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         promptSuggestion = suggestionIn(intent) ?: promptSuggestion
+        openRoute = intent.getStringExtra(EXTRA_OPEN_ROUTE) ?: openRoute
     }
 
     // Return the suggestion id a prompt's intent carries, or null
@@ -221,6 +237,11 @@ class MainActivity : ComponentActivity() {
             scheduleFlightChecks(applicationContext)  // start the flight checks if they aren't running
             scheduleTrains(applicationContext)  // start the NJ Transit train checks if they aren't running
             graph.offlineDates.prepare()  // download the offline date model the first time there's internet
+
+            // Keep checking Gmail while you're signed in
+            if (GmailSettings(applicationContext).signedIn()) {
+                scheduleGmailChecks(applicationContext)
+            }
         }
         val actions = SetupActions(
             openAccess = { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
@@ -230,6 +251,15 @@ class MainActivity : ComponentActivity() {
             askCalendar = { askPermission.launch(Manifest.permission.READ_CALENDAR) },
             saveMapsKey = { key -> graph.mapsKeyStore.save(key); refresh() },
         )
+        LaunchedEffect(openRoute) {
+            val asked = openRoute
+
+            // Open the page a notification named, like Settings → Gmail
+            if (asked != null) {
+                nav.navigate(asked)
+                openRoute = null
+            }
+        }
         LaunchedEffect(promptSuggestion) {
             val id = promptSuggestion
 
@@ -390,6 +420,54 @@ class MainActivity : ComponentActivity() {
                     onBack = { nav.popBackStack() },
                 )
             }
+            composable(ROUTE_SETTINGS_GMAIL) {
+                val gmail = remember { GmailSettings(applicationContext) }
+                var signedIn by remember { mutableStateOf(gmail.signedIn()) }
+                var address by remember { mutableStateOf(gmail.address()) }
+                var lapsed by remember { mutableStateOf(gmail.lapsed()) }
+                var problem by remember { mutableStateOf("") }
+                val finish: (AuthorizationResult) -> Unit = { result ->
+                    scope.launch {
+                        problem = finishGmailSignIn(gmail, result)
+                        signedIn = gmail.signedIn()
+                        address = gmail.address()
+                        lapsed = gmail.lapsed()
+                    }
+                }
+                val consent = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) {
+                    // Google's sign-in screen came back: finish signing in, or say it didn't work
+                    try {
+                        val client = Identity.getAuthorizationClient(this@MainActivity)
+                        finish(client.getAuthorizationResultFromIntent(it.data))
+                    } catch (error: Exception) {  // cancelled, or Google refused
+                        problem = "Sign-in didn't finish. Try again."
+                    }
+                }
+                GmailPage(signedIn, address, lapsed, problem, graph.appSwitches.isOn(GMAIL_APP),
+                    onSignIn = {
+                        problem = ""
+                        Identity.getAuthorizationClient(this@MainActivity).authorize(gmailRequest())
+                            .addOnSuccessListener { result ->
+                                val screen = result.pendingIntent
+
+                                // Google shows its sign-in screen the first time, and after the sign-in lapses
+                                if (result.hasResolution() && screen != null) {
+                                    consent.launch(IntentSenderRequest.Builder(screen.intentSender).build())
+                                } else {
+                                    finish(result)
+                                }
+                            }
+                            .addOnFailureListener { problem = "Couldn't reach Google: ${it.message}" }
+                    },
+                    onSignOut = {
+                        gmail.signOut()
+                        stopGmailChecks(applicationContext)
+                        signedIn = false
+                        address = ""
+                        lapsed = false
+                    },
+                    onBack = { nav.popBackStack() })
+            }
             composable(ROUTE_SETTINGS_NOTIFICATIONS) {
                 val summary = graph.summarySettings
                 NotificationsPage(status.access, status.notifications, actions.openAccess,
@@ -531,6 +609,23 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Finish signing in to Gmail: from the first sign-in only new mail is read, after a lapse the mail that arrived
+    // meanwhile is read too; then the checks start; returns what went wrong ("" when nothing did)
+    private suspend fun finishGmailSignIn(gmail: GmailSettings, result: AuthorizationResult): String {
+        val token = result.accessToken ?: return "Google didn't allow reading Gmail. Try again."
+
+        // A first sign-in reads mail from now on; a renewed one keeps its place
+        if (!gmail.signedIn()) {
+            gmail.signIn(System.currentTimeMillis() / 1000)
+        }
+        gmail.setLapsed(false)
+        val address = withContext(Dispatchers.IO) { runCatching { gmailAddress(token) }.getOrDefault("") }
+        gmail.setAddress(address)
+        scheduleGmailChecks(applicationContext)
+        checkGmailNow(applicationContext)
+        return ""
+    }
+
     // Ask for notification permission (Android 13 and later), or open Datebook's notification settings if it was
     // turned off there, since Android then won't ask again
     private fun askNotifications(launch: (String) -> Unit) {
@@ -572,6 +667,9 @@ class MainActivity : ComponentActivity() {
             },
             SettingsItem(DatebookIcons.Plane, TILE_BLUE, "Flights & trains", "Live flight times and NJ Transit") {
                 open(ROUTE_SETTINGS_FLIGHTS)
+            },
+            SettingsItem(DatebookIcons.Mail, TILE_AQUA, "Gmail", "Plans from your emails") {
+                open(ROUTE_SETTINGS_GMAIL)
             },
             SettingsItem(DatebookIcons.Bell, TILE_WARN, "Notifications & alerts", "Reading texts and showing prompts") {
                 open(ROUTE_SETTINGS_NOTIFICATIONS)

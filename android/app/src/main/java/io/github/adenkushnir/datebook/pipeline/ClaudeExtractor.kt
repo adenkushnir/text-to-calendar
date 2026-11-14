@@ -50,9 +50,10 @@ private val EVENT_ITEM = mapOf(
         "flight" to mapOf("type" to "string"),
         "package_carrier" to mapOf("type" to "string", "enum" to listOf("", "ups", "fedex", "usps", "amazon", "dhl")),
         "tracking_number" to mapOf("type" to "string"),
+        "confirmation_code" to mapOf("type" to "string"),
     ),
     "required" to listOf("title", "start", "end", "all_day", "location", "repeat", "timezone", "change",
-        "calendar_event", "flight", "package_carrier", "tracking_number"),
+        "calendar_event", "flight", "package_carrier", "tracking_number", "confirmation_code"),
     "additionalProperties" to false,
 )
 val EVENTS_SCHEMA = mapOf(
@@ -216,6 +217,7 @@ fun parseResponse(stopped: Boolean, json: String, phoneZone: String): List<Event
             flight = item.path("flight").asText("").replace(" ", "").uppercase(),
             packageCarrier = item.path("package_carrier").asText(""),
             trackingNumber = item.path("tracking_number").asText("").replace(" ", ""),
+            confirmation = item.path("confirmation_code").asText("").trim(),
         )
         if (event.start.isBlank()) null else event  // no start means nothing to put on the calendar
     }

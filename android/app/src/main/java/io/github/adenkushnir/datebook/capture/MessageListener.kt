@@ -1,5 +1,6 @@
 // Android tells this service about each new notification; Datebook ignores every app that isn't switched on,
-// then runs each message through the pipeline (Android only delivers conversation notifications, see the manifest)
+// then runs each message through the pipeline (Android only delivers conversation notifications, see the manifest);
+// once you've signed in to Gmail, a Gmail notification starts a check of the full emails instead
 package io.github.adenkushnir.datebook.capture
 import android.app.Notification
 import android.content.Context
@@ -10,6 +11,9 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import io.github.adenkushnir.datebook.AppGraph
+import io.github.adenkushnir.datebook.email.GMAIL_APP
+import io.github.adenkushnir.datebook.email.GmailSettings
+import io.github.adenkushnir.datebook.email.checkGmailNow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -30,6 +34,12 @@ class MessageListener : NotificationListenerService() {
             return
         }
 
+
+        // With Gmail signed in, read the full new emails instead of the notification
+        if (notification.packageName == GMAIL_APP && GmailSettings(applicationContext).signedIn()) {
+            checkGmailNow(applicationContext)
+            return
+        }
         val raw = rawNotification(notification)
 
         // Debug builds log which watched app posted and the notification's layout, never its text or names

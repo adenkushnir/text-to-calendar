@@ -1,4 +1,4 @@
-// Tests that a phone's saved data survives the database updates from version 4 to 7
+// Tests that a phone's saved data survives the database updates from version 4 to 8
 package io.github.adenkushnir.datebook.data
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
@@ -46,13 +46,14 @@ class MigrationTest {
         old.version = 4
         old.close()
         val database = Room.databaseBuilder(context, DatebookDatabase::class.java, "migration-test.db")
-            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7).allowMainThreadQueries().build()
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8).allowMainThreadQueries().build()
         val plan = database.dao().suggestion(1)!!
         assertEquals("Flight DL701 JFK → LAX", plan.title)
         assertEquals("DL701", plan.flight)
         assertEquals("", plan.previousStart)
         assertEquals(false, plan.fromMe)
         assertEquals(0L, plan.retryId)
+        assertEquals("", plan.confirmation)
         database.close()
     }
 }

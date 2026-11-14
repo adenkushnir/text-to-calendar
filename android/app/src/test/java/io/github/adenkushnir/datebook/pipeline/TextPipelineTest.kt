@@ -227,6 +227,17 @@ class TextPipelineTest {
         assertEquals(null, dao.retryText(guess.retryId))
     }
 
+    // A second text or email about the same plan (same title and time) is skipped while the first is still waiting
+    @Test
+    fun sameWaitingPlanSkipped() = runTest {
+        val pipeline = pipeline(listOf(dinner))
+        assertEquals(1, pipeline.handle(incoming).suggestionIds.size)
+        val again = pipeline.handle(incoming.copy(text = "reminder: dinner fri 7pm at joes"))
+        assertEquals(listOf("already waiting, skipped: Dinner with Sam | 2037-11-13T19:00 to ? | Joe's"), again.lines)
+        assertTrue(again.suggestionIds.isEmpty())
+        assertEquals(1, prompts.size)
+    }
+
     // A key problem alerts at once, and the next good answer from Claude clears the alert and its count
     @Test
     fun keyAlertAndClear() = runTest {
@@ -321,7 +332,8 @@ class TextPipelineTest {
         assertEquals(listOf(Pair("Dinner with Sam", incoming.text), Pair("Movie", incoming.text)), prompts)
     }
 
-    // Shared things skip the date check and the seen list, and are saved as waiting without a prompt
+    // Shared things skip the date check and the seen list, and are saved as waiting without a prompt; sharing the same
+    // plan again asks Claude again but says it is already waiting
     @Test
     fun shareSkipsDateCheck() = runTest {
         val shared = incoming.copy(sender = "you", text = "dinner with sam sometime", app = SHARED_TEXT_APP)
@@ -330,7 +342,9 @@ class TextPipelineTest {
         assertEquals(Suggestion.STATUS_WAITING, result.suggestions.single().status)
         assertTrue(prompts.isEmpty())
         assertEquals(null, dao.seenAt(fingerprint(shared)))
-        assertEquals(1, pipeline(listOf(dinner)).share(shared).suggestions.size)  // sharing again asks again
+        val again = pipeline(listOf(dinner)).share(shared)  // sharing again asks Claude again
+        assertEquals(2, asked.size)
+        assertEquals("That's already waiting for you in Datebook.", again.note)
     }
 
     // Sharing without a key, offline or with nothing in it says why, and never queues a retry

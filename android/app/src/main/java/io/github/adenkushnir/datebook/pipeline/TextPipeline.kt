@@ -156,9 +156,13 @@ class TextPipeline(
                 continue
             }
 
-            // Don't offer new plans that are already on the calendar, or moves the calendar already has
+            // Don't offer new plans that are already on the calendar or already waiting (a second email or text about
+            // the same plan), or moves the calendar already has
             if (changed == null && alreadyOnCalendar(event, calendarAround(event))) {
                 lines.add("already on calendar, skipped: ${eventDetails(event)}")
+                continue
+            } else if (changed == null && alreadyWaiting(event)) {
+                lines.add("already waiting, skipped: ${eventDetails(event)}")
                 continue
             } else if (event.change == CHANGE_MOVED && changed?.begin == eventTimes(event).first) {
                 lines.add("already moved, skipped: ${eventDetails(event)}")
@@ -220,6 +224,7 @@ class TextPipeline(
         if (ids.isEmpty()) {
             val note = when {
                 outcome.lines.any { it.startsWith("already on calendar") } -> "That's already on your calendar."
+                outcome.lines.any { it.startsWith("already waiting") } -> "That's already waiting for you in Datebook."
                 outcome.lines.any { it.startsWith("already started") } -> "That plan has already started."
                 else -> "No plans found in this."
             }
@@ -365,6 +370,14 @@ class TextPipeline(
             }
         }
         return ids + saveSuggestions(left, incoming, announce = false)
+    }
+
+    // Return true if the same plan (same title, ignoring case, at the same time) is already waiting for you
+    private suspend fun alreadyWaiting(event: Event): Boolean {
+        return dao.suggestionsWithStatus(Suggestion.STATUS_WAITING).any { plan ->
+            plan.change.isBlank() && plan.title.trim().equals(event.title.trim(), ignoreCase = true) &&
+                plan.start == event.start && plan.allDay == event.allDay
+        }
     }
 
     // Return true if a text should go to Claude: it passes the date check, or (outside group chats, which always need a
