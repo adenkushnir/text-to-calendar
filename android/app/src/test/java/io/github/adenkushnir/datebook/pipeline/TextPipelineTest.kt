@@ -9,6 +9,8 @@ import io.github.adenkushnir.datebook.data.DatebookDatabase
 import io.github.adenkushnir.datebook.data.FollowUp
 import io.github.adenkushnir.datebook.data.KIND_DUE
 import io.github.adenkushnir.datebook.data.KIND_LOOSE
+import io.github.adenkushnir.datebook.data.KIND_NOTE
+import io.github.adenkushnir.datebook.data.KIND_REMINDER
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.data.suggestionOf
 import io.github.adenkushnir.datebook.flights.FlightInfo
@@ -282,6 +284,23 @@ class TextPipelineTest {
         val result = pipeline(listOf(bill)).share(shared)
         assertEquals("Saved on Datebook's home screen, under Bills due or Loose plans.", result.note)
         assertEquals(FollowUp.OPEN, dao.openFollowUps(KIND_DUE).single().status)
+    }
+
+    // Typing "remind me…" sets a reminder; a plan goes to Waiting; anything else, or no key, is kept as a note
+    @Test
+    fun typedIntoNotes() = runTest {
+        val dentist = Event("Call the dentist", "2037-11-11T09:00", kind = KIND_REMINDER)
+        assertEquals("Reminder set.", pipeline(listOf(dentist)).typed("remind me to call the dentist tmrw 9am"))
+        val reminder = dao.openFollowUps(KIND_REMINDER).single()
+        assertEquals("09:00", reminder.time)
+        assertTrue(reminder.nextNudge > clock)
+        assertEquals("Added to Waiting for you on Home.", pipeline(listOf(dinner)).typed("dinner fri 7 at joes"))
+        assertEquals("Saved as a note.", pipeline(emptyList()).typed("Gift ideas for Mom\nscarf"))
+        assertEquals("Saved as a note.", pipeline(listOf(dinner), key = null).typed("dinner fri 7 at joes"))
+        val notes = dao.openFollowUps(KIND_NOTE)
+        assertEquals(listOf("Gift ideas for Mom", "dinner fri 7 at joes"), notes.map { it.title })
+        assertEquals("Gift ideas for Mom\nscarf", notes[0].body)
+        assertTrue(prompts.isEmpty())
     }
 
     // A key problem alerts at once, and the next good answer from Claude clears the alert and its count

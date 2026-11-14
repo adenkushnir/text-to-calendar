@@ -20,6 +20,10 @@ Rules:
 - "assignment" for schoolwork that's due (homework, a problem set, an essay, a project, a quiz or exam), from a
   school, a class site like Canvas, or a syllabus: a short title like "Physics problem set", start set to when it's
   due as YYYY-MM-DDTHH:MM (or YYYY-MM-DD with all_day true when no time is given).
+- "reminder" only when the phone's owner asks to be reminded ("remind me to call the dentist tomorrow at 9",
+  "remind me every monday to take out the trash"), never when someone else asks: title is the thing to do, like
+  "Call the dentist"; start is when to remind, as YYYY-MM-DDTHH:MM, or YYYY-MM-DD with all_day true when only a day is
+  given, or empty when no time is given; set repeat as for events when it repeats.
 - trip: for a travel booking (a flight, hotel stay, rental car or train ticket), the destination city, like
   "Chicago"; otherwise leave it empty.
 - Use the received time to work out relative dates like "tomorrow", "fri" or "next week".

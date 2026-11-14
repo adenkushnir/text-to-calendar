@@ -7,6 +7,7 @@ import io.github.adenkushnir.datebook.data.FollowUp
 import io.github.adenkushnir.datebook.data.KIND_ASSIGNMENT
 import io.github.adenkushnir.datebook.data.KIND_DUE
 import io.github.adenkushnir.datebook.data.KIND_LOOSE
+import io.github.adenkushnir.datebook.data.KIND_REMINDER
 import io.github.adenkushnir.datebook.data.Suggestion
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -48,6 +49,16 @@ class FollowUpAlertsTest {
         assertEquals("Due tomorrow 11:59 PM", assignmentDue(essay, LocalDate.of(2037, 11, 16)))
         assertEquals("Due today 11:59 PM", assignmentDue(essay, LocalDate.of(2037, 11, 17)))
         assertEquals("Due Tue Nov 17", assignmentDue(essay.copy(time = ""), LocalDate.of(2037, 11, 10)))
+    }
+
+    // A repeating reminder comes back at its next time; a one-off one doesn't
+    @Test
+    fun reminderRepeats() {
+        val went = millis(LocalDateTime.of(2037, 11, 16, 8, 0))  // a Monday
+        val trash = bill.copy(kind = KIND_REMINDER, title = "Take out the trash", nextNudge = went,
+            repeat = "FREQ=WEEKLY;BYDAY=MO")
+        assertEquals(millis(LocalDateTime.of(2037, 11, 23, 8, 0)), nextAfterReminder(trash, went, newYork))
+        assertEquals(0L, nextAfterReminder(trash.copy(repeat = ""), went, newYork))
     }
 
     // "Still on?" comes from 6 PM the day before a waiting new plan, not earlier, not for changes or added plans

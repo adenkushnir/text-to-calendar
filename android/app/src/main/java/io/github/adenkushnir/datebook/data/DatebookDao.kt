@@ -135,6 +135,18 @@ interface DatebookDao {
     @Query("SELECT * FROM suggestions WHERE trip != '' AND status != 'ignored' ORDER BY start")
     fun watchTripPlans(): Flow<List<Suggestion>>
 
+    // When the next open follow-up is due (null when none is booked)
+    @Query("SELECT MIN(nextNudge) FROM followups WHERE status = 'open' AND nextNudge > 0")
+    suspend fun soonestNudge(): Long?
+
+    // Watch the notes, newest first
+    @Query("SELECT * FROM followups WHERE kind = 'note' AND status = 'open' ORDER BY createdAt DESC")
+    fun watchNotes(): Flow<List<FollowUp>>
+
+    // Watch the open reminders, the next to go off first
+    @Query("SELECT * FROM followups WHERE kind = 'reminder' AND status = 'open' ORDER BY nextNudge")
+    fun watchReminders(): Flow<List<FollowUp>>
+
     // Mark a follow-up done, dropped or open again
     @Query("UPDATE followups SET status = :status WHERE id = :id")
     suspend fun setFollowUpStatus(id: Long, status: String)

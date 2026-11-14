@@ -14,6 +14,8 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -26,6 +28,9 @@ import io.github.adenkushnir.datebook.data.FollowUp
 import io.github.adenkushnir.datebook.data.KIND_ASSIGNMENT
 import io.github.adenkushnir.datebook.data.KIND_DUE
 import io.github.adenkushnir.datebook.data.KIND_LOOSE
+import io.github.adenkushnir.datebook.data.KIND_REMINDER
+import io.github.adenkushnir.datebook.data.nextRepeat
+import io.github.adenkushnir.datebook.data.repeatLabel
 import io.github.adenkushnir.datebook.data.NUDGE_HOUR
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.data.followUpDay
@@ -50,6 +55,7 @@ const val ROUTE_WEEK = "week"
 private const val FOLLOW_UPS_CHANNEL = "follow_ups"
 private const val WEEK_AHEAD_CHANNEL = "week_ahead"
 private const val WORK = "datebook-follow-ups"
+private const val NEXT_WORK = "datebook-follow-up-next"
 private const val STILL_ON_HOUR = 18  // "Still on?" comes from 6 PM the day before
 private const val SNOOZE_DAYS = 3L
 private const val FOLLOW_UP_IDS = 1_100_000_000  // notification ids far above any suggestion's
@@ -59,6 +65,9 @@ private const val ACTION_DROP = "io.github.adenkushnir.datebook.FOLLOW_UP_DROP"
 private const val ACTION_PAID = "io.github.adenkushnir.datebook.FOLLOW_UP_PAID"
 private const val ACTION_TOMORROW = "io.github.adenkushnir.datebook.FOLLOW_UP_TOMORROW"
 private const val ACTION_LATER = "io.github.adenkushnir.datebook.FOLLOW_UP_LATER"
+private const val ACTION_HOUR = "io.github.adenkushnir.datebook.FOLLOW_UP_HOUR"
+private const val ACTION_DISMISS = "io.github.adenkushnir.datebook.FOLLOW_UP_DISMISS"
+private const val HOUR_MILLIS = 60 * 60 * 1000L
 private const val LATER_MILLIS = 2 * 60 * 60 * 1000L  // "Remind me later" is 2 hours
 private const val EXTRA_FOLLOW_UP_ID = "io.github.adenkushnir.datebook.FOLLOW_UP_ID"
 private const val FLAGS = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -135,6 +144,14 @@ private fun morningOf(day: LocalDate, zone: ZoneId): Long {
 // reminded the evening before, gets one more on its day; everything else is done (loose plans are nudged once, then
 // only when you ask for later)
 fun nextAfterReminder(followUp: FollowUp, nowMillis: Long, zone: ZoneId): Long {
+    // A reminder comes back only when it repeats
+    if (followUp.kind == KIND_REMINDER) {
+        val last = java.time.LocalDateTime.ofInstant(Instant.ofEpochMilli(followUp.nextNudge.takeIf { it > 0 }
+            ?: nowMillis), zone)
+        val next = nextRepeat(followUp.repeat, last, java.time.LocalDateTime.ofInstant(Instant.ofEpochMilli(nowMillis),
+            zone))
+        return next?.atZone(zone)?.toInstant()?.toEpochMilli() ?: 0
+    }
     val day = runCatching { LocalDate.parse(followUp.date) }.getOrNull() ?: return 0
     val again = followUp.kind == KIND_DUE || followUp.kind == KIND_ASSIGNMENT
     return if (again && morningOf(day, zone) > nowMillis) morningOf(day, zone) else 0
@@ -294,6 +311,25 @@ private fun showAssignmentReminder(context: Context, assignment: FollowUp, today
     NotificationManagerCompat.from(context).notify(id, notification)
 }
 
+// A reminder going off: its title, how it repeats (if it does), with Done, In 1 hour and Tomorrow
+private fun showReminder(context: Context, reminder: FollowUp) {
+    val id = FOLLOW_UP_IDS + reminder.id.toInt()
+    val repeat = repeatLabel(reminder.repeat)
+    val notification = NotificationCompat.Builder(context, FOLLOW_UPS_CHANNEL)
+        .setSmallIcon(R.drawable.ic_stat_datebook)
+        .setColor(ContextCompat.getColor(context, R.color.brand_aqua))
+        .setContentTitle(reminder.title)
+        .setContentText(if (repeat.isBlank()) "Reminder" else "Reminder · $repeat")
+        .setCategory(NotificationCompat.CATEGORY_REMINDER)
+        .setContentIntent(openDatebook(context, id))
+        .setAutoCancel(true)
+        .addAction(0, "Done", followUpAction(context, ACTION_DISMISS, reminder.id, 0))
+        .addAction(0, "In 1 hour", followUpAction(context, ACTION_HOUR, reminder.id, 1))
+        .addAction(0, "Tomorrow", followUpAction(context, ACTION_TOMORROW, reminder.id, 3))
+        .build()
+    NotificationManagerCompat.from(context).notify(id, notification)
+}
+
 // The Friday week ahead: a quiet notification with Claude's paragraph about next week; tapping it opens the Week
 // ahead screen
 private fun showWeekAhead(context: Context, title: String, brief: String) {
@@ -341,19 +377,23 @@ suspend fun runFollowUps(context: Context, nowMillis: Long, force: Boolean = fal
         return listOf("follow-ups: can't show notifications")
     }
     makeChannels(context)
-    val all = dao.openFollowUps(KIND_LOOSE) + dao.openFollowUps(KIND_DUE) + dao.openFollowUps(KIND_ASSIGNMENT)
+    val all = dao.openFollowUps(KIND_LOOSE) + dao.openFollowUps(KIND_DUE) + dao.openFollowUps(KIND_ASSIGNMENT) +
+        dao.openFollowUps(KIND_REMINDER)
     val due = if (weekOnly) emptyList() else if (force) all else dao.followUpsDue(nowMillis)
 
     // Nudge or remind each follow-up that's due, then book its next one
     for (followUp in due) {
         // Loose plans get a nudge, bills and assignments a reminder
         when (followUp.kind) {
+            KIND_REMINDER -> showReminder(context, followUp)
             KIND_LOOSE -> showLooseNudge(context, followUp)
             KIND_ASSIGNMENT -> showAssignmentReminder(context, followUp, today)
             else -> showBillReminder(context, followUp, today)
         }
-        dao.updateFollowUp(followUp.copy(nudges = followUp.nudges + 1,
-            nextNudge = nextAfterReminder(followUp, nowMillis, zone)))
+        val next = nextAfterReminder(followUp, nowMillis, zone)
+        val finished = followUp.kind == KIND_REMINDER && next == 0L  // a one-off reminder is done once it goes off
+        dao.updateFollowUp(followUp.copy(nudges = followUp.nudges + 1, nextNudge = next,
+            status = if (finished) FollowUp.DONE else followUp.status))
         lines.add("follow-up: ${followUp.kind} reminded")
     }
     val record = StillOnRecord(context)
@@ -413,12 +453,17 @@ class FollowUpReceiver : BroadcastReceiver() {
                 when (action) {
                     ACTION_SNOOZE -> dao.updateFollowUp(followUp.copy(nextNudge = morningOf(today.plusDays(SNOOZE_DAYS),
                         zone)))
-                    ACTION_TOMORROW -> dao.updateFollowUp(followUp.copy(nextNudge = morningOf(today.plusDays(1), zone)))
+                    ACTION_TOMORROW -> dao.updateFollowUp(followUp.copy(nextNudge = morningOf(today.plusDays(1), zone),
+                        status = FollowUp.OPEN))
+                    ACTION_HOUR -> dao.updateFollowUp(followUp.copy(status = FollowUp.OPEN,
+                        nextNudge = System.currentTimeMillis() + HOUR_MILLIS))
+                    ACTION_DISMISS -> Unit  // Done on a reminder only clears it (a repeat is already booked)
                     ACTION_LATER -> dao.updateFollowUp(followUp.copy(nextNudge = System.currentTimeMillis() +
                         LATER_MILLIS))
                     ACTION_DROP -> dao.setFollowUpStatus(id, FollowUp.DROPPED)
                     ACTION_PAID -> dao.setFollowUpStatus(id, FollowUp.DONE)
                 }
+                bookNextFollowUp(context)
             } finally {
                 pending.finish()
             }
@@ -426,13 +471,23 @@ class FollowUpReceiver : BroadcastReceiver() {
     }
 }
 
-// Runs the follow-up check every 15 minutes
+// Runs the follow-up check (every 15 minutes, and at the moment the next one is due), then books the next
 class FollowUpWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
-    // Send what's due and log it
+    // Send what's due, log it, and book the next
     override suspend fun doWork(): Result {
         runFollowUps(applicationContext, System.currentTimeMillis()).forEach { Log.i(TAG, it) }  // one line each
+        bookNextFollowUp(applicationContext)
         return Result.success()
     }
+}
+
+// Book a one-off check for the moment the next follow-up is due, so reminders come on time (the 15-minute check is
+// the backup); nothing when none is booked
+suspend fun bookNextFollowUp(context: Context) {
+    val at = AppGraph.get(context).dao.soonestNudge() ?: return
+    val delay = (at - System.currentTimeMillis()).coerceAtLeast(0)
+    val request = OneTimeWorkRequestBuilder<FollowUpWorker>().setInitialDelay(delay, TimeUnit.MILLISECONDS).build()
+    WorkManager.getInstance(context).enqueueUniqueWork(NEXT_WORK, ExistingWorkPolicy.REPLACE, request)
 }
 
 // Book the follow-up check every 15 minutes, keeping the schedule if it's already booked

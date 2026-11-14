@@ -7,7 +7,13 @@ import io.github.adenkushnir.datebook.calendar.clashText
 import io.github.adenkushnir.datebook.calendar.clashesFor
 import io.github.adenkushnir.datebook.data.DatebookDao
 import io.github.adenkushnir.datebook.data.FollowUp
+import io.github.adenkushnir.datebook.data.KIND_ASSIGNMENT
+import io.github.adenkushnir.datebook.data.KIND_DUE
 import io.github.adenkushnir.datebook.data.KIND_LOOSE
+import io.github.adenkushnir.datebook.data.KIND_NOTE
+import io.github.adenkushnir.datebook.data.KIND_REMINDER
+import io.github.adenkushnir.datebook.data.firstReminder
+import io.github.adenkushnir.datebook.data.noteTitle
 import io.github.adenkushnir.datebook.data.firstNudge
 import io.github.adenkushnir.datebook.data.RetryText
 import io.github.adenkushnir.datebook.data.SeenText
@@ -82,6 +88,7 @@ class TextPipeline(
     private val onWithdrawn: (suggestionId: Long) -> Unit = {},
     private val guessTimes: (text: String, receivedAt: LocalDateTime, zone: String) -> List<GuessedTime> =
         { _, _, _ -> emptyList() },
+    private val onFollowUpsSaved: () -> Unit = {},
 ) {
     private val health = Health(dao)
 
@@ -251,6 +258,37 @@ class TextPipeline(
         return ShareResult(ids.mapNotNull { dao.suggestion(it) })
     }
 
+    // Handle something typed in the Notes tab: Claude turns reminders and plans in it into those; anything else (or
+    // everything, when Claude can't be reached) is kept as a note; returns what happened, in words
+    suspend fun typed(text: String): String {
+        val zone = zoneOf(phoneZone()) ?: ZoneId.systemDefault()
+        val incoming = IncomingText("you", text.trim(), LocalDateTime.ofInstant(Instant.ofEpochMilli(now()), zone),
+            TYPED_APP)
+        val outcome = if (apiKey().isNullOrBlank()) null else describe(incoming, checkDate = false)
+        val found = outcome != null && outcome.failure == null &&
+            (outcome.events.isNotEmpty() || outcome.followUps.isNotEmpty())
+
+        // Nothing to set or plan: keep it as a note
+        if (!found) {
+            dao.saveFollowUp(FollowUp(kind = KIND_NOTE, title = noteTitle(text), date = "", amount = "",
+                sender = "you", app = TYPED_APP, conversation = "", status = FollowUp.OPEN, createdAt = now(),
+                nextNudge = 0, nudges = 0, body = text.trim()))
+            return "Saved as a note."
+        }
+        saveFollowUps(outcome!!.followUps, incoming)
+        val plans = saveSuggestions(outcome.events, incoming, announce = false)
+        val reminders = outcome.followUps.count { it.kind == KIND_REMINDER }
+        val listed = outcome.followUps.size - reminders
+
+        // Say what was made of it
+        return when {
+            reminders > 0 && plans.isEmpty() && listed == 0 -> if (reminders == 1) "Reminder set." else "Reminders set."
+            plans.isNotEmpty() && reminders == 0 && listed == 0 -> "Added to Waiting for you on Home."
+            listed > 0 && reminders == 0 && plans.isEmpty() -> "Saved to Lists."
+            else -> "Saved: reminders in Notes, plans on Home, the rest in Lists."
+        }
+    }
+
     // Try the saved texts that are due, giving up on any saved over a day ago (their guesses stay, unchecked); when
     // Claude reads one, its guesses are replaced; returns what happened to each
     suspend fun retryDue(): List<Outcome> {
@@ -345,16 +383,23 @@ class TextPipeline(
                 it.title.equals(event.title, ignoreCase = true) && it.date == day
             }
 
-            // Skip repeats and bills already past due
-            if (open || (past && event.kind != KIND_LOOSE)) {
+            // Skip repeats, and bills and assignments already past due
+            if (open || (past && (event.kind == KIND_DUE || event.kind == KIND_ASSIGNMENT))) {
                 continue
             }
             val time = if (event.start.length >= 16) event.start.substring(11, 16) else ""  // HH:MM when given
+            val first = if (event.kind == KIND_REMINDER) firstReminder(day, time, event.repeat, now(), zone)
+                else firstNudge(event.kind, day, now(), zone)
             dao.saveFollowUp(FollowUp(kind = event.kind, title = event.title, date = day, amount = event.amount,
                 sender = incoming.sender, app = incoming.app, conversation = incoming.group,
-                status = FollowUp.OPEN, createdAt = now(), nextNudge = firstNudge(event.kind, day, now(), zone),
-                nudges = 0, time = time))
+                status = FollowUp.OPEN, createdAt = now(), nextNudge = first, nudges = 0, time = time,
+                repeat = event.repeat))
             saved += 1
+        }
+
+        // Book the check for the next one due, so reminders come on time
+        if (saved > 0) {
+            onFollowUpsSaved()
         }
         return saved
     }

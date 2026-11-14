@@ -84,6 +84,7 @@ import io.github.adenkushnir.datebook.flights.scheduleFlightChecks
 import io.github.adenkushnir.datebook.followups.ROUTE_WEEK
 import io.github.adenkushnir.datebook.followups.WeekAheadScreen
 import io.github.adenkushnir.datebook.followups.WeekAheadSettings
+import io.github.adenkushnir.datebook.followups.bookNextFollowUp
 import io.github.adenkushnir.datebook.followups.weekDays
 import io.github.adenkushnir.datebook.followups.scheduleFollowUps
 import io.github.adenkushnir.datebook.flights.statusLine
@@ -134,7 +135,10 @@ import io.github.adenkushnir.datebook.trains.refreshStations
 import io.github.adenkushnir.datebook.trains.scheduleTrains
 import io.github.adenkushnir.datebook.trains.trainChoices
 import io.github.adenkushnir.datebook.trains.wantsTrain
+import io.github.adenkushnir.datebook.data.noteTitle
 import io.github.adenkushnir.datebook.lists.AskComingSoon
+import io.github.adenkushnir.datebook.notes.NotesActions
+import io.github.adenkushnir.datebook.notes.NotesScreen
 import io.github.adenkushnir.datebook.lists.LIST_PACKAGES
 import io.github.adenkushnir.datebook.lists.ListsActions
 import io.github.adenkushnir.datebook.lists.ListsContent
@@ -287,6 +291,7 @@ class MainActivity : ComponentActivity() {
             scheduleFlightChecks(applicationContext)  // start the flight checks if they aren't running
             scheduleTrains(applicationContext)  // start the NJ Transit train checks if they aren't running
             scheduleFollowUps(applicationContext)  // start the follow-up nudges and reminders if they aren't running
+            bookNextFollowUp(applicationContext)  // and book the next one due, on time
             graph.offlineDates.prepare()  // download the offline date model the first time there's internet
 
             // Keep checking Gmail while you're signed in
@@ -409,8 +414,21 @@ class MainActivity : ComponentActivity() {
                 }
             }
             composable(ROUTE_NOTES) {
+                val remindersFlow = remember { graph.dao.watchReminders() }
+                val notesFlow = remember { graph.dao.watchNotes() }
+                val reminders by remindersFlow.collectAsState(initial = emptyList())
+                val notes by notesFlow.collectAsState(initial = emptyList())
+                val notesActions = NotesActions(
+                    onSave = { text -> graph.pipeline.typed(text) },
+                    onDelete = { id -> scope.launch { graph.dao.setFollowUpStatus(id, FollowUp.DROPPED) } },
+                    onEditNote = { note, text ->
+                        scope.launch {
+                            graph.dao.updateFollowUp(note.copy(title = noteTitle(text), body = text.trim()))
+                        }
+                    },
+                )
                 Tabbed(ROUTE_NOTES, openTab) {
-                    AskComingSoon()
+                    NotesScreen(reminders, notes, ZoneId.systemDefault(), notesActions)
                 }
             }
             composable(ROUTE_ASK) {

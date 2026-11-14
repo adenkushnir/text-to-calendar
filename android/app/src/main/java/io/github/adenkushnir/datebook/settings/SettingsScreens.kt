@@ -64,7 +64,7 @@ const val PRIVACY_SUMMARY = "Datebook checks texts from the apps you switch on, 
     "for a year, never the message text, and nothing is shared anywhere else. The one exception: when Claude " +
     "can't be reached, a text with a date waits on the phone (for up to a day) so Claude can check it later, and " +
     "its offline guess shows it until then. On Fridays, next week's event titles and times also go to Claude, " +
-    "so it can write your week ahead."
+    "so it can write your week ahead. Notes you type in Datebook are kept on this phone."
 
 // One item in the Settings menu: its glass tile icon and the icon's colour, its name, a one-line hint, and the page it
 // opens
