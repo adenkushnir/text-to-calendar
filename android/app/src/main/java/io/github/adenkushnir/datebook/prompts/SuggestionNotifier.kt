@@ -46,7 +46,7 @@ class SuggestionNotifier(private val context: Context) {
         val details = "From ${fromLine(suggestion)}: \"$quote\"\n$whenAndWhere$changed$clash"
         val notification = NotificationCompat.Builder(context, SUGGESTIONS_CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_datebook)
-            .setColor(ContextCompat.getColor(context, R.color.brand_teal))
+            .setColor(ContextCompat.getColor(context, R.color.brand_aqua))
             .setSubText(if (isChange(suggestion)) "Calendar change" else "Add to calendar?")
             .setContentTitle(promptTitle(suggestion))
             .setContentText(whenAndWhere)
@@ -76,7 +76,7 @@ class SuggestionNotifier(private val context: Context) {
         val notNow = Intent(context, NotNowReceiver::class.java).putExtra(EXTRA_SUGGESTION_ID, suggestion.id)
         val notification = NotificationCompat.Builder(context, ON_SCREEN_CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_datebook)
-            .setColor(ContextCompat.getColor(context, R.color.brand_teal))
+            .setColor(ContextCompat.getColor(context, R.color.brand_aqua))
             .setContentTitle(title)
             .setContentText("${promptTitle(suggestion)} · $whenAndWhere")
             .setSilent(true)

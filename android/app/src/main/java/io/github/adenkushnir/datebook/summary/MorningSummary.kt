@@ -151,7 +151,7 @@ suspend fun showSummary(context: Context): Int {
     val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     val notification = NotificationCompat.Builder(context, SUMMARY_CHANNEL)
         .setSmallIcon(R.drawable.ic_stat_datebook)
-        .setColor(ContextCompat.getColor(context, R.color.brand_teal))
+        .setColor(ContextCompat.getColor(context, R.color.brand_aqua))
         .setContentTitle(summaryTitle(events.size))
         .setContentText(summaryPreview(events, zone))
         .setStyle(style.setBigContentTitle(summaryTitle(events.size)))
