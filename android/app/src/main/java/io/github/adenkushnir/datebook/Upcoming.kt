@@ -1,5 +1,5 @@
-// Works out the home screen's Next up and Coming up from the suggestions you added: those still ahead, soonest first
-// (from step 7 this switches to reading your calendar)
+// Works out the plans you added that are still ahead, soonest first, which Home shows when it can't read your calendar,
+// and a plan's countdown
 package io.github.adenkushnir.datebook
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.pipeline.eventTimes

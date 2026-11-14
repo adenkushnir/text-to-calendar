@@ -1,25 +1,33 @@
 // Datebook's Aero controls, matching the design workshop: glossy gel pill buttons (blue, or leaf green to add), glass
-// buttons, plain text buttons, a glossy gel switch, glass text fields and a glossy progress bar
+// buttons, plain text buttons, a glossy gel switch, glass text fields, a glossy progress bar and a segmented glass
+// bar
 package io.github.adenkushnir.datebook.ui
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldColors
 import androidx.compose.runtime.Composable
@@ -33,13 +41,17 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.adenkushnir.datebook.ui.theme.AeroBlueLight
 import io.github.adenkushnir.datebook.ui.theme.MutedNight
 private val BLUE_GEL = Brush.verticalGradient(listOf(Color(0xFF52C0F6), Color(0xFF178DE0)))
 private val GREEN_GEL = Brush.verticalGradient(listOf(Color(0xFF8BDC5C), Color(0xFF46A926)))
+private val AQUA_GEL = Brush.verticalGradient(listOf(Color(0xFF5ADBEA), Color(0xFF0E86C4)))
 private val OFF_TRACK = Brush.verticalGradient(listOf(Color(0xFF2A3646), Color(0xFF4A5A6E)))
 private val GLOSS = Brush.verticalGradient(0f to Color.White.copy(alpha = 0.38f), 0.5f to Color.Transparent)
 private val KNOB = Brush.radialGradient(0f to Color.White, 0.45f to Color.White, 1f to Color(0xFFDBE8F0))
@@ -47,6 +59,8 @@ private val GEL_EDGE = Color.White.copy(alpha = 0.45f)
 private val BUTTON_PADDING = PaddingValues(horizontal = 18.dp, vertical = 0.dp)
 private val SMALL_BUTTON_PADDING = PaddingValues(horizontal = 14.dp, vertical = 0.dp)
 private val FIELD_SHAPE = RoundedCornerShape(12.dp)
+private val BAR_SHAPE = RoundedCornerShape(14.dp)
+private val SEGMENT_SHAPE = RoundedCornerShape(11.dp)
 
 // Gel on a shape: a gradient with a soft highlight across its top half and a light edge
 private fun Modifier.gel(fill: Brush, shape: Shape): Modifier {
@@ -140,4 +154,31 @@ fun GlassField(value: String, onValueChange: (String) -> Unit, modifier: Modifie
     OutlinedTextField(value = value, onValueChange = onValueChange, modifier = modifier, label = label,
         singleLine = singleLine, visualTransformation = visualTransformation, colors = glassFieldColors(),
         shape = FIELD_SHAPE)
+}
+
+// One choice on a segmented bar: what it stands for, its icon and its name
+class Segment(val id: String, val icon: ImageVector, val name: String)
+
+// A segmented glass bar: one bar of glass tinted by the light, split into equal parts, each with its icon above its
+// name; the picked part glows with aqua gel, and tapping another picks it
+@Composable
+fun SegmentedBar(segments: List<Segment>, picked: String, onPick: (String) -> Unit, modifier: Modifier = Modifier) {
+    val tint = LocalGlass.current.tint
+    val bar = modifier.fillMaxWidth().clip(BAR_SHAPE).background(tint.copy(alpha = 0.75f)).background(GLOSS)
+        .border(1.dp, Color.White.copy(alpha = 0.3f), BAR_SHAPE).padding(3.dp)
+    Row(bar, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+        // One part per choice
+        for (segment in segments) {
+            val chosen = segment.id == picked
+            val part = if (chosen) Modifier.weight(1f).gel(AQUA_GEL, SEGMENT_SHAPE)
+                else Modifier.weight(1f).clip(SEGMENT_SHAPE)
+            val ink = if (chosen) Color.White else AeroBlueLight
+            Column(part.selectable(chosen, role = Role.RadioButton) { onPick(segment.id) }.padding(vertical = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(segment.icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = ink)
+                Text(segment.name, color = ink, fontSize = 12.sp, maxLines = 1,
+                    fontWeight = if (chosen) FontWeight.SemiBold else FontWeight.Normal)
+            }
+        }
+    }
 }

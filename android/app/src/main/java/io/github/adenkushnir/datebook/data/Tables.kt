@@ -52,11 +52,13 @@ data class Suggestion(
             packageCarrier = packageCarrier, trackingNumber = trackingNumber, placeLat = placeLat, placeLng = placeLng)
     }
 
-    // Names for the three states a suggestion can be in
+    // Names for the three states a suggestion can be in, plus the one for a calendar event shown on its card (never
+    // saved)
     companion object {
         const val STATUS_WAITING = "waiting"
         const val STATUS_ADDED = "added"
         const val STATUS_IGNORED = "ignored"
+        const val STATUS_CALENDAR = "calendar"
     }
 }
 
