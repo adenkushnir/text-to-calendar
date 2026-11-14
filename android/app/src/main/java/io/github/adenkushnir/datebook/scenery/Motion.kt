@@ -24,7 +24,7 @@ data class SceneEffects(
 fun effectsFor(scene: Scene): SceneEffects {
     // Pick the scene's strengths
     return when (scene) {
-        Scene.LAKE -> SceneEffects(water = 0.0035f, sway = 0.0022f, glint = 0.9f)
+        Scene.LAKE -> SceneEffects(water = 0.0035f, sway = 0.006f, glint = 0.9f)
         Scene.AQUARIUM -> SceneEffects(water = 0.005f, caustics = 0.45f, glint = 0.5f, bubbles = 8, top = 0.45f)
         Scene.RIBBONS -> SceneEffects(flow = 0.006f, glint = 0.9f, bubbles = 3)
         Scene.DEW -> SceneEffects(glint = 1.2f)
@@ -32,6 +32,10 @@ fun effectsFor(scene: Scene): SceneEffects {
         Scene.BEACH -> SceneEffects(water = 0.0035f, sway = 0.004f, glint = 0.9f)
     }
 }
+
+// The share sheet's beach: only a strip of water shows through the glass wash, so its waves are stronger and a few
+// lens bubbles rise behind the plans
+val SHARE_SHEET_EFFECTS = effectsFor(Scene.BEACH).copy(water = 0.008f, bubbles = 6)
 
 // One fish in the aquarium: which picture, its lane (a share of the screen's height), its width in dp, its speed (a
 // share of the trip each second), where on its trip it starts, which way it swims (1 = right), and how far back it is
@@ -54,10 +58,10 @@ private fun loop(start: Double, time: Double, speed: Double): Double {
     return (start + time * speed).mod(1.0)
 }
 
-// The lens bubbles showing at a time (in seconds): the scene's rising bubbles, plus a giant bubble drifting across
-// during a surprise (the aquarium gets a big goldfish instead)
-fun bubblesAt(scene: Scene, time: Double, surprise: Double?): List<LensBubble> {
-    val effects = effectsFor(scene)
+// The lens bubbles showing at a time (in seconds): the rising bubbles the effects ask for, plus a giant bubble drifting
+// across during a surprise (the aquarium gets a big goldfish instead)
+fun bubblesAt(scene: Scene, time: Double, surprise: Double?,
+    effects: SceneEffects = effectsFor(scene)): List<LensBubble> {
     val list = mutableListOf<LensBubble>()
     val end = if (effects.top > 0f) effects.top.toDouble() else -0.05 // Pop at the water's surface, or leave the top
 

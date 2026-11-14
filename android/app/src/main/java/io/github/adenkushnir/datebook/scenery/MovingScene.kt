@@ -44,7 +44,7 @@ private const val FRAME_NANOS = 33_000_000L  // about 30 frames a second
 private const val CLOCK_WRAP = 3600.0  // the clock restarts every hour so its numbers stay precise
 private const val SURPRISE_CHANCE = 1.0 / 180  // a chance each second: about one surprise every 3 minutes
 private const val FISH_STRIPS = 22
-// The motion shader, the same as the design workshop's WebGL one, in Android's AGSL
+// The motion shader: the design workshop's WebGL one in Android's AGSL, plus wind gusts rolling over grass and palms
 private const val SCENE_SHADER = """
 uniform shader scenePrev;
 uniform shader sceneNext;
@@ -82,7 +82,10 @@ half4 main(float2 coord) {
     float2 offset = float2(0.0);
     offset += mask.r * move.x * near * float2(sin(uv.y * 90.0 - time * 1.6) * 0.6
         + sin(uv.x * 40.0 + uv.y * 60.0 + time * 1.1) * 0.4, sin(uv.x * 30.0 + time * 1.3) * 0.5);
-    offset.x += mask.g * move.y * sin(time * 1.4 + uv.x * 12.0 + uv.y * 4.0) * (1.2 - uv.y);
+    float gust = smoothstep(-0.2, 1.0, sin(uv.x * 5.0 + uv.y * 2.0 - time * 1.1)) * (0.65 + 0.35 * sin(time * 0.37));
+    float flutter = sin(time * 3.1 + uv.x * 70.0 + uv.y * 25.0) * 0.35;
+    offset.x += mask.g * move.y * (0.35 * sin(time * 0.9 + uv.y * 3.0) + gust * (1.0 + flutter));
+    offset.y += mask.g * move.y * gust * 0.25;
     offset += mask.g * move.z * float2(sin(uv.y * 14.0 + time * 0.8), cos(uv.x * 10.0 + time * 0.7) * 0.5);
     offset.y += mask.b * move.w * sin(time * 0.9 + floor(uv.x * 6.0) * 1.7);
     float2 aspect = float2(1.0, size.y / size.x);
@@ -112,6 +115,7 @@ half4 main(float2 coord) {
     float cell = hash(floor(coord / 3.0));
     float twinkle = smoothstep(0.965, 1.0, cell) * (0.5 + 0.5 * sin(time * 3.0 + cell * 60.0));
     colour += shine.y * mask.b * smoothstep(0.62, 0.92, brightness) * twinkle * float3(1.0, 0.97, 0.9);
+    colour *= 1.0 + mask.g * step(0.0001, move.y) * gust * 0.07;
     colour = colour * (1.0 - rim * 0.12) + film * 0.28 + rim * 0.12 + gloss * 0.55;
     colour *= 1.0 - late * 0.3;
     return half4(half3(colour), 1.0);
@@ -165,10 +169,11 @@ private fun croppedShader(picture: ImageBitmap, width: Float, height: Float, ali
     return shader
 }
 
-// Show a scene moving in a light through the motion shader, with the aquarium's fish on top
+// Show a scene moving in a light through the motion shader at the given strengths, with the aquarium's fish on top
 @RequiresApi(33)
 @Composable
-fun MovingScene(scene: Scene, light: SceneLight, shader: RuntimeShader, modifier: Modifier, alignment: Alignment) {
+fun MovingScene(scene: Scene, light: SceneLight, shader: RuntimeShader, modifier: Modifier, alignment: Alignment,
+    effects: SceneEffects) {
     val previous = ImageBitmap.imageResource(pictureFor(scene, light.from))
     val next = ImageBitmap.imageResource(pictureFor(scene, light.to))
     val mask = ImageBitmap.imageResource(maskFor(scene))
@@ -191,7 +196,6 @@ fun MovingScene(scene: Scene, light: SceneLight, shader: RuntimeShader, modifier
         }
     }
     val surprise = surpriseStart?.let { (time - it).mod(CLOCK_WRAP) }?.takeIf { it <= SURPRISE_SECONDS }
-    val effects = effectsFor(scene)
     Box(modifier.drawWithCache {
         // Fit the pictures to this size (done again only when the size or the pictures change)
         val previousSource = croppedShader(previous, size.width, size.height, alignment)
@@ -208,7 +212,7 @@ fun MovingScene(scene: Scene, light: SceneLight, shader: RuntimeShader, modifier
             shader.setFloatUniform("size", size.width, size.height)
             shader.setFloatUniform("move", effects.water, effects.sway, effects.flow, effects.bob)
             shader.setFloatUniform("shine", effects.caustics, effects.glint)
-            shader.setFloatUniform("bubbles", packBubbles(bubblesAt(scene, time, surprise)))
+            shader.setFloatUniform("bubbles", packBubbles(bubblesAt(scene, time, surprise, effects)))
             drawRect(ShaderBrush(shader))
 
             // The aquarium's fish (and its surprise: a big goldfish swimming by up close)

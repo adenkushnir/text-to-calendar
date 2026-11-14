@@ -50,6 +50,14 @@ class MotionTest {
         assertEquals(8, bubblesAt(Scene.AQUARIUM, 30.0, SURPRISE_SECONDS / 2).size)
     }
 
+    // The share sheet's beach gets rising bubbles and stronger waves; the beach behind other screens has neither
+    @Test
+    fun shareSheetBeachMovesMore() {
+        assertEquals(0, bubblesAt(Scene.BEACH, 30.0, null).size)
+        assertEquals(6, bubblesAt(Scene.BEACH, 30.0, null, SHARE_SHEET_EFFECTS).size)
+        assertTrue(SHARE_SHEET_EFFECTS.water > effectsFor(Scene.BEACH).water)
+    }
+
     // A fish starts just off one side, swims across and leaves off the other, whichever way it faces
     @Test
     fun fishCrossTheScreen() {

@@ -22,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.AndroidViewModel
@@ -39,6 +40,7 @@ import io.github.adenkushnir.datebook.prompts.addSuggestion
 import io.github.adenkushnir.datebook.prompts.ignoreSuggestion
 import io.github.adenkushnir.datebook.scenery.MotionSettings
 import io.github.adenkushnir.datebook.scenery.Scene
+import io.github.adenkushnir.datebook.scenery.SHARE_SHEET_EFFECTS
 import io.github.adenkushnir.datebook.scenery.SceneBackdrop
 import io.github.adenkushnir.datebook.scenery.movingSwitch
 import io.github.adenkushnir.datebook.scenery.rememberSceneLight
@@ -88,6 +90,7 @@ class ShareModel(application: Application) : AndroidViewModel(application) {
     }
 }
 
+private val SHEET_FRAMING = BiasAlignment(0f, 0.5f)  // between the middle and the bottom: open water, little sand
 private const val SHEET_WASH = 0.55f  // the glass-coloured wash over the beach that keeps the sheet readable
 
 // Shows the bottom sheet over the app you shared from, and closes when the sheet does
@@ -116,10 +119,11 @@ class ShareActivity : ComponentActivity() {
                 ModalBottomSheet(onDismissRequest = { finish() }, sheetState = sheet,
                     containerColor = Color.Transparent, contentColor = MaterialTheme.colorScheme.onSurface,
                     dragHandle = null) {
-                    // The beach scene fills the sheet behind its handle and contents, showing the picture's bottom
+                    // The beach scene fills the sheet behind its handle and contents, showing the water near the
+                    // picture's bottom, with stronger waves and rising bubbles so the motion shows through the wash
                     Box {
                         SceneBackdrop(Scene.BEACH, light, Modifier.matchParentSize().hazeSource(haze),
-                            alignment = Alignment.BottomCenter)
+                            alignment = SHEET_FRAMING, effects = SHARE_SHEET_EFFECTS)
                         Box(Modifier.matchParentSize().background(glassTint(light).copy(alpha = SHEET_WASH)))
                         CompositionLocalProvider(LocalGlass provides Glass(haze, glassTint(light))) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {

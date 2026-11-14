@@ -41,16 +41,16 @@ fun rememberSceneLight(): SceneLight {
 }
 
 // Show a scene in a light, filling the space it's given, moving when it may; alignment says which part shows when the
-// screen's shape crops the picture (the share sheet shows the bottom)
+// screen's shape crops the picture (the share sheet shows the water near the bottom), and effects how strongly it moves
 @Composable
 fun SceneBackdrop(scene: Scene, light: SceneLight, modifier: Modifier = Modifier,
-    alignment: Alignment = Alignment.Center) {
+    alignment: Alignment = Alignment.Center, effects: SceneEffects = effectsFor(scene)) {
     val shader = remember { if (Build.VERSION.SDK_INT >= 33) makeSceneShader() else null }
     val moving = rememberMotionAllowed()
     Box(modifier) {
         // The moving scene where it can run, else the still one
         if (shader != null && moving && Build.VERSION.SDK_INT >= 33) {
-            MovingScene(scene, light, shader, Modifier.fillMaxSize(), alignment)
+            MovingScene(scene, light, shader, Modifier.fillMaxSize(), alignment, effects)
         } else {
             StillScene(scene, light, alignment)
         }
