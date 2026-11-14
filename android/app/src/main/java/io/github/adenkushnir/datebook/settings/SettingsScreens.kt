@@ -194,6 +194,20 @@ fun ClaudePage(
     }
 }
 
+// Look: the Moving backgrounds switch
+@Composable
+fun LookPage(moving: Boolean, setMoving: (Boolean) -> Unit, onBack: () -> Unit) {
+    SettingsPage("Look", onBack) {
+        Muted("Datebook's scenes follow the real sun all day. Moving backgrounds add rippling water, swaying plants, " +
+            "glints, bubbles and fish.")
+        DatebookCard {
+            SwitchRow("Moving backgrounds", moving, setMoving)
+            Muted("They pause in battery saver and when Android's animations are turned off. Switched off, the scenes " +
+                "still change with the time of day.")
+        }
+    }
+}
+
 // Places & travel: the Google Maps key, the default way of getting around, the home address travel times fall back to,
 // and location access
 @Composable

@@ -57,8 +57,10 @@ import io.github.adenkushnir.datebook.pipeline.eventTimes
 import io.github.adenkushnir.datebook.pipeline.maskKey
 import io.github.adenkushnir.datebook.pipeline.summary
 import io.github.adenkushnir.datebook.places.mapsIntent
+import io.github.adenkushnir.datebook.scenery.MotionSettings
 import io.github.adenkushnir.datebook.scenery.SceneBackdrop
 import io.github.adenkushnir.datebook.scenery.rememberSceneLight
+import io.github.adenkushnir.datebook.scenery.movingSwitch
 import io.github.adenkushnir.datebook.scenery.sceneForRoute
 import io.github.adenkushnir.datebook.prompts.EXTRA_SUGGESTION_ID
 import io.github.adenkushnir.datebook.prompts.addSuggestion
@@ -69,6 +71,7 @@ import io.github.adenkushnir.datebook.settings.AutomaticPage
 import io.github.adenkushnir.datebook.settings.CalendarsPage
 import io.github.adenkushnir.datebook.settings.ClaudePage
 import io.github.adenkushnir.datebook.settings.FlightsPage
+import io.github.adenkushnir.datebook.settings.LookPage
 import io.github.adenkushnir.datebook.settings.GITHUB_URL
 import io.github.adenkushnir.datebook.settings.NotificationsPage
 import io.github.adenkushnir.datebook.settings.PlacesPage
@@ -124,6 +127,7 @@ const val ROUTE_SETTINGS_NOTIFICATIONS = "settings/notifications"
 const val ROUTE_SETTINGS_PRIVACY = "settings/privacy"
 const val ROUTE_SETTINGS_ABOUT = "settings/about"
 const val ROUTE_SETTINGS_AUTOMATIC = "settings/automatic"
+const val ROUTE_SETTINGS_LOOK = "settings/look"
 
 // The activity Android starts when you tap the Datebook icon or a prompt
 class MainActivity : ComponentActivity() {
@@ -134,6 +138,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        movingSwitch.value = MotionSettings(this).isOn()
         promptSuggestion = suggestionIn(intent)
         setContent {
             DatebookTheme {
@@ -393,6 +398,11 @@ class MainActivity : ComponentActivity() {
                     },
                     onBack = { nav.popBackStack() })
             }
+            composable(ROUTE_SETTINGS_LOOK) {
+                val settings = remember { MotionSettings(applicationContext) }
+                var moving by remember { mutableStateOf(settings.isOn()) }
+                LookPage(moving, setMoving = { on -> settings.set(on); moving = on }, onBack = { nav.popBackStack() })
+            }
             composable(ROUTE_SETTINGS_PRIVACY) {
                 PrivacyPage(clearHistory = { graph.pipeline.clearHistory() }, onBack = { nav.popBackStack() })
             }
@@ -460,6 +470,9 @@ class MainActivity : ComponentActivity() {
             },
             SettingsItem(DatebookIcons.Bell, TILE_WARN, "Notifications & alerts", "Reading texts and showing prompts") {
                 open(ROUTE_SETTINGS_NOTIFICATIONS)
+            },
+            SettingsItem(DatebookIcons.Picture, TILE_LEAF, "Look", "Moving backgrounds") {
+                open(ROUTE_SETTINGS_LOOK)
             },
             SettingsItem(DatebookIcons.Lock, TILE_LEAF, "Privacy & history", "What's kept, and clearing history") {
                 open(ROUTE_SETTINGS_PRIVACY)

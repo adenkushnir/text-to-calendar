@@ -89,13 +89,17 @@ All movement bends the photo's own pixels, or moves photo-real cutouts, so it lo
 | Bubble field | | | | 0.006 | | 0.9 | 9 |
 | Tropical beach | 0.0035 | 0.004 | | | | 0.9 | |
 
-- **Lens bubbles:** each one bends the picture behind it like a lens, with a rainbow rim and a shine.
+- **Lens bubbles:** each one bends the picture behind it like a lens, with a rainbow rim and a shine. They rise
+  from below the screen and leave off the top; in the Aquarium they pop at the water's surface.
 - **Fish:** goldfish, clownfish, blue tang and yellow tang cutouts, drawn in thin strips so the tail swings as they
   swim. They're tinted bluer and darker as night falls.
 - **Surprises:** about every 3 minutes, a giant soap bubble drifts across the screen for 14 seconds. In the Aquarium a
   big goldfish swims by up close instead.
 - **Battery:** motion runs only while Datebook is on screen. It stops in battery saver and when Android's "remove
-  animations" setting is on, and it's capped at 30 frames a second.
+  animations" setting is on (both checked every 5 seconds), and it's capped at 30 frames a second.
+- **Moving backgrounds switch:** Settings → Look, on to start. Switched off, the scenes stand still but still change
+  with the time of day.
+- **Share sheet:** its beach moves too, under the glass wash.
 
 ## Glass
 
@@ -168,11 +172,11 @@ and stops at a spending cap. It reads the API key from the environment and never
 **Picked masters:** lake midday version 2, and version 1 of every other scene. **Picked fish:** version 1 of each.
 Making every picture cost about $14 at the script's estimate of $0.15 per image.
 
-[make_app_scenes.py](make_app_scenes.py) turns the picked masters and their relights into the app's 36 scene
-pictures: 1080-wide WebP files in `android/app/src/main/res/drawable-nodpi`, 5.8 MB in total.
+[make_app_scenes.py](make_app_scenes.py) turns the picked masters and their relights into the app's pictures in
+`android/app/src/main/res/drawable-nodpi`: the 36 scene pictures (1080-wide WebP), the six packed effect masks
+(`mask_*.png`, 384 × 688) and the four fish cutouts (`fish_*.png`, 420 wide, white cut away), 6.6 MB in total.
 
-The workshop also packed the masks, cut the white off the fish, and split the icon into its layers. Those helper
-scripts move into this folder with the build steps that use them.
+The workshop also split the icon into its layers. That helper script moves into this folder with the icon step.
 
 ## Building it
 
@@ -180,6 +184,7 @@ Planned in steps, each tested on a real phone:
 
 1. The pictures and the time-of-day light (still pictures with eased fades; works on every Android version). Done.
 2. The glass: Haze cards, tints, the clear top bar, Selawik, and glass tile icons. Done.
-3. The motion: the AGSL shader with masks, the fish, lens bubbles and surprises, and the battery rules.
-4. Dark mode and late-night dimming.
+3. The motion: the AGSL shader with masks, the fish, lens bubbles and surprises, and the battery rules. Done.
+4. Dark mode and late-night dimming. Done as part of steps 1 to 3 (the app is always dark; the late dimming is in
+   both the still and the moving scenes).
 5. The app icon and notifications.

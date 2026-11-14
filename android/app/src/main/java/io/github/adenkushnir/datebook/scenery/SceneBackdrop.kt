@@ -1,5 +1,9 @@
-// The photo scene behind a screen: two of its lights cross-fading with the real sun, dimmed late at night
+// The photo scene behind a screen: two of its lights cross-fading with the real sun, dimmed late at night, and
+// moving (Android 13 and later) unless motion is switched off, battery saver is on or Android's animations are off
 package io.github.adenkushnir.datebook.scenery
+import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -25,6 +29,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 private const val TICK_MILLIS = 10_000L
 private const val LATE_DIM = 0.3f
+private const val MOTION_CHECK_MILLIS = 5_000L
 // A faint dark wash so the brightest midday spots never glare behind the light text outside the glass cards
 private val VEIL = Color(0xFF0A1420).copy(alpha = 0.12f)
 
@@ -35,12 +40,28 @@ fun rememberSceneLight(): SceneLight {
     return lightAt(rememberMinute(), rememberSunTimes())
 }
 
-// Show a scene in a light, filling the space it's given; alignment says which part shows when the screen's shape
-// crops the picture (the share sheet shows the bottom)
+// Show a scene in a light, filling the space it's given, moving when it may; alignment says which part shows when the
+// screen's shape crops the picture (the share sheet shows the bottom)
 @Composable
 fun SceneBackdrop(scene: Scene, light: SceneLight, modifier: Modifier = Modifier,
     alignment: Alignment = Alignment.Center) {
+    val shader = remember { if (Build.VERSION.SDK_INT >= 33) makeSceneShader() else null }
+    val moving = rememberMotionAllowed()
     Box(modifier) {
+        // The moving scene where it can run, else the still one
+        if (shader != null && moving && Build.VERSION.SDK_INT >= 33) {
+            MovingScene(scene, light, shader, Modifier.fillMaxSize(), alignment)
+        } else {
+            StillScene(scene, light, alignment)
+        }
+        Box(Modifier.fillMaxSize().background(VEIL))
+    }
+}
+
+// The scene standing still: the light's picture, the next light fading in on top, dimmed late at night
+@Composable
+private fun StillScene(scene: Scene, light: SceneLight, alignment: Alignment) {
+    Box(Modifier.fillMaxSize()) {
         Image(painterResource(pictureFor(scene, light.from)), contentDescription = null,
             modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop, alignment = alignment)
 
@@ -51,8 +72,24 @@ fun SceneBackdrop(scene: Scene, light: SceneLight, modifier: Modifier = Modifier
                 alignment = alignment)
         }
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = light.late * LATE_DIM)))
-        Box(Modifier.fillMaxSize().background(VEIL))
     }
+}
+
+// Whether the scene may move: the Moving backgrounds switch is on, and (checked every few seconds, since they can
+// change any time) the phone isn't saving battery and Android's animations aren't turned off
+@Composable
+private fun rememberMotionAllowed(): Boolean {
+    val context = LocalContext.current.applicationContext
+    val system = produceState(Pair(false, 1f)) {
+        // Check the phone's battery saver and animation settings now and again while the scene is showing
+        while (true) {
+            val saving = context.getSystemService(PowerManager::class.java)?.isPowerSaveMode ?: false
+            val scale = Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+            value = Pair(saving, scale)
+            delay(MOTION_CHECK_MILLIS)
+        }
+    }
+    return motionAllowed(movingSwitch.value, system.value.first, system.value.second)
 }
 
 // The minute of the day now, with seconds as a fraction (6:43:30 AM is 403.5)

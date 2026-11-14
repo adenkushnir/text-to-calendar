@@ -58,6 +58,30 @@ fun pictureFor(scene: Scene, light: Light): Int {
     return PICTURES.getValue(Pair(scene, light))
 }
 
+// A scene's effect mask (red = water, green = sway or flow, blue = glints or bobbing), made by design/make_app_scenes.py
+fun maskFor(scene: Scene): Int {
+    // Pick the scene's mask
+    return when (scene) {
+        Scene.LAKE -> R.drawable.mask_lake
+        Scene.AQUARIUM -> R.drawable.mask_aquarium
+        Scene.RIBBONS -> R.drawable.mask_ribbons
+        Scene.DEW -> R.drawable.mask_dew
+        Scene.BUBBLES -> R.drawable.mask_bubbles
+        Scene.BEACH -> R.drawable.mask_beach
+    }
+}
+
+// A fish's cut-out picture, by name
+fun fishPicture(name: String): Int {
+    // Pick the fish's picture
+    return when (name) {
+        "clownfish" -> R.drawable.fish_clownfish
+        "bluetang" -> R.drawable.fish_bluetang
+        "yellowtang" -> R.drawable.fish_yellowtang
+        else -> R.drawable.fish_goldfish
+    }
+}
+
 // The scene behind a screen, by its navigation route: Home the lake, a suggestion the dewdrop, setup the bubbles, the
 // Settings menu the ribbons and every Settings page the aquarium
 fun sceneForRoute(route: String?): Scene {

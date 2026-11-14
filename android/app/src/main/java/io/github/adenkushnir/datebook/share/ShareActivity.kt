@@ -37,8 +37,10 @@ import io.github.adenkushnir.datebook.pipeline.SHARED_TEXT_APP
 import io.github.adenkushnir.datebook.pipeline.ShareResult
 import io.github.adenkushnir.datebook.prompts.addSuggestion
 import io.github.adenkushnir.datebook.prompts.ignoreSuggestion
+import io.github.adenkushnir.datebook.scenery.MotionSettings
 import io.github.adenkushnir.datebook.scenery.Scene
 import io.github.adenkushnir.datebook.scenery.SceneBackdrop
+import io.github.adenkushnir.datebook.scenery.movingSwitch
 import io.github.adenkushnir.datebook.scenery.rememberSceneLight
 import io.github.adenkushnir.datebook.ui.Glass
 import io.github.adenkushnir.datebook.ui.LocalGlass
@@ -104,6 +106,7 @@ class ShareActivity : ComponentActivity() {
             return
         }
         model.start(item)
+        movingSwitch.value = MotionSettings(this).isOn()
         enableEdgeToEdge()
         setContent {
             DatebookTheme {
