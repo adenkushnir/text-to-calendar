@@ -63,6 +63,11 @@
                 <data android:mimeType="application/pdf" />
             </intent-filter>
         </activity>
+        <!-- Handles the buttons on follow-up alerts (Not now, Drop, Mark paid, Remind me tomorrow) in the
+             background -->
+        <receiver
+            android:name=".followups.FollowUpReceiver"
+            android:exported="false" />
         <!-- Handles the travel-mode buttons on leave-by alerts in the background -->
         <receiver
             android:name=".leaveby.LeaveByModeReceiver"

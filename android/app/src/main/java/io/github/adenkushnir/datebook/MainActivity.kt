@@ -74,6 +74,11 @@ import io.github.adenkushnir.datebook.data.KIND_DUE
 import io.github.adenkushnir.datebook.data.KIND_LOOSE
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.flights.scheduleFlightChecks
+import io.github.adenkushnir.datebook.followups.ROUTE_WEEK
+import io.github.adenkushnir.datebook.followups.WeekAheadScreen
+import io.github.adenkushnir.datebook.followups.WeekAheadSettings
+import io.github.adenkushnir.datebook.followups.weekDays
+import io.github.adenkushnir.datebook.followups.scheduleFollowUps
 import io.github.adenkushnir.datebook.flights.statusLine
 import io.github.adenkushnir.datebook.leaveby.LeaveByStore
 import io.github.adenkushnir.datebook.leaveby.eventKey
@@ -243,6 +248,7 @@ class MainActivity : ComponentActivity() {
             scheduleLeaveBy(applicationContext)  // start planning leave-by alerts if it isn't already
             scheduleFlightChecks(applicationContext)  // start the flight checks if they aren't running
             scheduleTrains(applicationContext)  // start the NJ Transit train checks if they aren't running
+            scheduleFollowUps(applicationContext)  // start the follow-up nudges and reminders if they aren't running
             graph.offlineDates.prepare()  // download the offline date model the first time there's internet
 
             // Keep checking Gmail while you're signed in
@@ -371,6 +377,18 @@ class MainActivity : ComponentActivity() {
                 PlanCard(graph, plan, onBack = { nav.popBackStack() }, onAdd = {}, onIgnore = {},
                     onOpenCalendar = { plan?.let { openCalendarEvent(it) } })
             }
+            composable(ROUTE_WEEK) {
+                val week = remember { WeekAheadSettings(applicationContext) }
+                val now = remember { System.currentTimeMillis() }
+                val zone = ZoneId.systemDefault()
+                val events by produceState(emptyList<HomeEvent>(), added) {
+                    value = withContext(Dispatchers.IO) { homeEvents(graph, added, now) }
+                }
+                WeekAheadScreen(week.brief(), weekDays(events, LocalDate.now(zone), zone), bills, loosePlans, zone,
+                    onBack = { nav.popBackStack() },
+                    onOpenEvent = { event -> openEvent(nav::navigate, event) },
+                    onOpenChat = { loose -> openApp(loose.app) })
+            }
             composable(ROUTE_SETTINGS) {
                 SettingsMenu(items = settingsItems(nav::navigate), onBack = { nav.popBackStack() })
             }
@@ -482,6 +500,7 @@ class MainActivity : ComponentActivity() {
             }
             composable(ROUTE_SETTINGS_NOTIFICATIONS) {
                 val summary = graph.summarySettings
+                val week = remember { WeekAheadSettings(applicationContext) }
                 NotificationsPage(status.access, status.notifications, actions.openAccess,
                     openNotifications = { startActivity(appNotificationSettings()) },
                     summaryOn = summary.isOn(), summaryHour = summary.hour(), summaryMinute = summary.minute(),
@@ -489,6 +508,8 @@ class MainActivity : ComponentActivity() {
                         summary.set(on, hour, minute)
                         scheduleSummary(applicationContext, ExistingWorkPolicy.REPLACE)  // re-book at the new time
                     },
+                    weekOn = week.isOn(), weekHour = week.hour(), weekMinute = week.minute(),
+                    setWeekAhead = { on, hour, minute -> week.set(on, hour, minute) },
                     onBack = { nav.popBackStack() })
             }
             composable(ROUTE_SETTINGS_LOOK) {
