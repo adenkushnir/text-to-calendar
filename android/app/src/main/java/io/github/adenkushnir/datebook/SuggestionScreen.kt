@@ -14,7 +14,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -42,6 +41,8 @@ import io.github.adenkushnir.datebook.trains.TrainRow
 import io.github.adenkushnir.datebook.ui.DatebookIcons
 import io.github.adenkushnir.datebook.ui.GelButton
 import io.github.adenkushnir.datebook.ui.GlassButton
+import io.github.adenkushnir.datebook.ui.Segment
+import io.github.adenkushnir.datebook.ui.SegmentedBar
 import io.github.adenkushnir.datebook.ui.PlainButton
 import io.github.adenkushnir.datebook.ui.travelIcon
 
@@ -61,9 +62,10 @@ fun SuggestionScreen(
     onPickTrain: (TrainRow) -> Unit = {},
     onSwitchOrigin: (String) -> Unit = {},
     guessText: String? = null,
+    onOpenCalendar: (() -> Unit)? = null,
 ) {
     Column(Modifier.fillMaxSize()) {  // see-through, so the scene behind shows
-        TopBar("Suggestion", onBack = onBack)
+        TopBar(if (suggestion?.status == Suggestion.STATUS_CALENDAR) "Event" else "Suggestion", onBack = onBack)
         Column(
             Modifier.verticalScroll(rememberScrollState()).navigationBarsPadding().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -76,7 +78,11 @@ fun SuggestionScreen(
             DatebookCard(accent = true) {
                 Text(promptTitle(suggestion), fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
                 Muted(whenAndWhere(suggestion))
-                Muted("From ${fromLine(suggestion)}")
+
+                // Say who it came from, except for calendar events that didn't come from a text
+                if (suggestion.sender.isNotBlank() || suggestion.app.isNotBlank()) {
+                    Muted("From ${fromLine(suggestion)}")
+                }
                 changedNote(suggestion)?.let { Muted(it) }  // only when it changed in the chat
                 guessNote(suggestion, guessText != null)?.let { Muted(it) }  // offline guesses only
 
@@ -105,18 +111,13 @@ fun SuggestionScreen(
                 TrainList(trains, onPickTrain, onSwitchOrigin)
             }
 
-            // Offer the travel modes for new plans with a place (the leave-by alert uses the one picked)
+            // Offer the travel modes for new plans with a place, on a glass card so they read over the scene (the
+            // leave-by alert uses the one picked)
             if (suggestion.location.isNotBlank() && travelMode != null && !isChange(suggestion)) {
-                SectionLabel("Getting there")
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    // One chip per mode
-                    for (option in TRAVEL_MODES) {
-                        FilterChip(selected = option.id == travelMode, onClick = { onTravelMode(option.id) },
-                            label = { Text(option.name) },
-                            leadingIcon = {
-                                Icon(travelIcon(option.id), contentDescription = null, Modifier.size(18.dp))
-                            })
-                    }
+                DatebookCard {
+                    SectionLabel("Getting there")
+                    SegmentedBar(TRAVEL_MODES.map { Segment(it.id, travelIcon(it.id), it.name) }, travelMode,
+                        onTravelMode)
                 }
             }
 
@@ -133,6 +134,13 @@ fun SuggestionScreen(
             if (suggestion.location.isNotBlank()) {
                 GlassButton(onClick = { onOpenMaps(suggestion.location) }) {
                     Text("Open in Maps")
+                }
+            }
+
+            // Calendar events open in your calendar app to change them
+            if (onOpenCalendar != null) {
+                GlassButton(onClick = onOpenCalendar) {
+                    Text("Open in calendar")
                 }
             }
 
@@ -211,6 +219,7 @@ private fun statusText(suggestion: Suggestion): String {
     return when (suggestion.status) {
         Suggestion.STATUS_ADDED -> if (isChange(suggestion)) "Opened in your calendar" else "Added to your calendar"
         Suggestion.STATUS_IGNORED -> "Ignored"
+        Suggestion.STATUS_CALENDAR -> "On your calendar"
         else -> "Waiting for you"
     }
 }

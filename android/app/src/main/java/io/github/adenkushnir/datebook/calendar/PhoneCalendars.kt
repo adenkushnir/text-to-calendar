@@ -10,7 +10,8 @@ import androidx.core.content.ContextCompat
 // One calendar on the phone, like "Personal" in your Google account
 data class PhoneCalendar(val id: Long, val name: String, val account: String)
 
-// One event on a calendar (each time of a repeating event is its own), with its start and end in milliseconds
+// One event on a calendar (each time of a repeating event is its own), with its start and end in milliseconds and
+// its colour as the calendar app shows it (0 when unknown)
 data class CalendarEvent(
     val eventId: Long,
     val calendarId: Long,
@@ -19,6 +20,7 @@ data class CalendarEvent(
     val end: Long,
     val allDay: Boolean,
     val location: String = "",
+    val color: Int = 0,
 )
 
 // Return true if Datebook may read the calendar
@@ -54,7 +56,8 @@ fun calendarEvents(context: Context, from: Long, to: Long, switchedOff: Set<Long
     }
     val columns = arrayOf(CalendarContract.Instances.EVENT_ID, CalendarContract.Instances.CALENDAR_ID,
         CalendarContract.Instances.TITLE, CalendarContract.Instances.BEGIN, CalendarContract.Instances.END,
-        CalendarContract.Instances.ALL_DAY, CalendarContract.Instances.EVENT_LOCATION)
+        CalendarContract.Instances.ALL_DAY, CalendarContract.Instances.EVENT_LOCATION,
+        CalendarContract.Instances.DISPLAY_COLOR)
     val events = mutableListOf<CalendarEvent>()
     val cursor = CalendarContract.Instances.query(context.contentResolver, columns, from, to)
     cursor?.use {
@@ -67,7 +70,7 @@ fun calendarEvents(context: Context, from: Long, to: Long, switchedOff: Set<Long
                 continue
             }
             events.add(CalendarEvent(it.getLong(0), calendarId, it.getString(2).orEmpty(), it.getLong(3),
-                it.getLong(4), it.getInt(5) == 1, it.getString(6).orEmpty()))
+                it.getLong(4), it.getInt(5) == 1, it.getString(6).orEmpty(), it.getInt(7)))
         }
     }
     return events.sortedBy { it.begin }

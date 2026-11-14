@@ -1,5 +1,5 @@
-// Datebook's main screen: setup until it's finished, then Home, a suggestion's card and Settings; opens the
-// suggestion a tapped prompt names, and shows banners for required settings that are off
+// Datebook's main screen: setup until it's finished, then Home (from your calendar), a suggestion's or calendar event's
+// card and Settings; opens the suggestion a tapped prompt names, and shows banners for settings that are off
 package io.github.adenkushnir.datebook
 import android.Manifest
 import android.content.ActivityNotFoundException
@@ -8,6 +8,7 @@ import android.content.pm.ApplicationInfo
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.CalendarContract
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -26,6 +27,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -44,7 +46,16 @@ import androidx.navigation.navArgument
 import androidx.work.ExistingWorkPolicy
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
+import io.github.adenkushnir.datebook.calendar.HomeEvent
+import io.github.adenkushnir.datebook.calendar.agendaOf
+import io.github.adenkushnir.datebook.calendar.calendarChanges
+import io.github.adenkushnir.datebook.calendar.calendarEvents
+import io.github.adenkushnir.datebook.calendar.fromCalendar
+import io.github.adenkushnir.datebook.calendar.fromPlans
+import io.github.adenkushnir.datebook.calendar.hasCalendarAccess
+import io.github.adenkushnir.datebook.calendar.homeCalendarEvents
 import io.github.adenkushnir.datebook.calendar.phoneCalendars
+import io.github.adenkushnir.datebook.calendar.planOf
 import io.github.adenkushnir.datebook.capture.WATCHABLE_APPS
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.flights.scheduleFlightChecks
@@ -110,11 +121,13 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.runningFold
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 const val ROUTE_SETUP = "setup"
 const val ROUTE_HOME = "home"
 const val ROUTE_SUGGESTION = "suggestion/{id}"
+const val ROUTE_EVENT = "event/{eventId}/{begin}"
 const val ROUTE_SETTINGS = "settings"
 const val ROUTE_SETTINGS_APPS = "settings/apps"
 const val ROUTE_SETTINGS_CLAUDE = "settings/claude"
@@ -128,6 +141,8 @@ const val ROUTE_SETTINGS_PRIVACY = "settings/privacy"
 const val ROUTE_SETTINGS_ABOUT = "settings/about"
 const val ROUTE_SETTINGS_AUTOMATIC = "settings/automatic"
 const val ROUTE_SETTINGS_LOOK = "settings/look"
+private const val TICK_MILLIS = 30_000L  // how often Home moves "now" on
+private const val RELOAD_MILLIS = 5 * 60_000L  // how often Home re-reads the calendar even without a change
 
 // The activity Android starts when you tap the Datebook icon or a prompt
 class MainActivity : ComponentActivity() {
@@ -241,7 +256,22 @@ class MainActivity : ComponentActivity() {
                 )
             }
             composable(ROUTE_HOME) {
-                val now = remember(added) { System.currentTimeMillis() }
+                var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+                val changesFlow = remember {
+                    calendarChanges(applicationContext).runningFold(0) { count, _ -> count + 1 }  // counts changes
+                }
+                val changes by changesFlow.collectAsState(initial = 0)
+                val reload = now / RELOAD_MILLIS
+                val events by produceState(emptyList<HomeEvent>(), added, changes, status.calendar, reload) {
+                    value = withContext(Dispatchers.IO) { homeEvents(graph, added, now) }
+                }
+                LaunchedEffect(Unit) {
+                    // Keep "now" current while Home is open, so what's on now and the countdowns move on
+                    while (true) {
+                        delay(TICK_MILLIS)
+                        now = System.currentTimeMillis()
+                    }
+                }
                 var trip by remember { mutableStateOf(graph.trainSettings.trip()) }
                 var trains by remember { mutableStateOf<TrainBoard?>(null) }
                 LaunchedEffect(trip) {
@@ -256,8 +286,9 @@ class MainActivity : ComponentActivity() {
                 }
                 HomeScreen(
                     waiting = waiting,
-                    ahead = upcoming(added, now),
+                    agenda = agendaOf(events, now, ZoneId.systemDefault()),
                     nowMillis = now,
+                    onOpenEvent = { event -> openEvent(nav::navigate, event) },
                     onOpen = { nav.navigate("suggestion/$it") },
                     onAdd = add,
                     onIgnore = ignore,
@@ -283,48 +314,20 @@ class MainActivity : ComponentActivity() {
                     val retryId = suggestion?.retryId ?: 0
                     value = if (retryId == 0L) null else graph.dao.retryText(retryId)?.text  // guesses only
                 }
-                var travelMode by remember(suggestion) { mutableStateOf(suggestion?.let { modeFor(graph, it) }) }
-                var trainChoices by remember { mutableStateOf<TrainChoices?>(null) }
-                var trainRefresh by remember { mutableIntStateOf(0) }
-                LaunchedEffect(suggestion, travelMode, trainRefresh) {
-                    val plan = suggestion ?: return@LaunchedEffect
-                    trainChoices = trainsBefore(graph, plan)
-
-                    // Refresh the live list every minute on the plan's day
-                    while (showsTrains(graph, plan) && isPlanDay(plan)) {
-                        trainChoices = withContext(Dispatchers.IO) { trainChoices(applicationContext, plan) }
-                        delay(60_000)
-                    }
-                }
-                SuggestionScreen(
-                    suggestion = suggestion,
-                    onBack = { nav.popBackStack() },
+                PlanCard(graph, suggestion, onBack = { nav.popBackStack() },
                     onAdd = { add(id); nav.popBackStack() },
                     onIgnore = { ignore(id); nav.popBackStack() },
-                    onOpenMaps = { place -> openMaps(place, travelMode ?: graph.travelSettings.mode()) },
-                    onTrack = { url -> openLink(url) },
-                    flightStatus = suggestion?.let { flightStatusFor(graph, it) },
-                    trains = trainChoices,
-                    guessText = guessText,
-                    onPickTrain = { row ->
-                        val plan = suggestion ?: return@SuggestionScreen
-                        val key = eventKey(plan.title, planBegin(plan))
-                        graph.trainStore.setChoice(key, row.pick.trainId)
-                        graph.trainStore.setPick(key, row.pick)
-                        trainRefresh += 1
-                    },
-                    onSwitchOrigin = { code ->
-                        val plan = suggestion ?: return@SuggestionScreen
-                        graph.trainStore.setOrigin(eventKey(plan.title, planBegin(plan)), code)
-                        trainRefresh += 1
-                    },
-                    travelMode = travelMode,
-                    onTravelMode = { mode ->
-                        val plan = suggestion ?: return@SuggestionScreen
-                        LeaveByStore(applicationContext).setMode(eventKey(plan.title, planBegin(plan)), mode)
-                        travelMode = mode
-                    },
-                )
+                    guessText = guessText)
+            }
+            composable(ROUTE_EVENT, arguments = listOf(navArgument("eventId") { type = NavType.LongType },
+                navArgument("begin") { type = NavType.LongType })) { entry ->
+                val eventId = entry.arguments?.getLong("eventId") ?: -1
+                val begin = entry.arguments?.getLong("begin") ?: -1
+                val plan by produceState<Suggestion?>(null, eventId, begin, added) {
+                    value = withContext(Dispatchers.IO) { calendarPlan(graph, eventId, begin, added) }
+                }
+                PlanCard(graph, plan, onBack = { nav.popBackStack() }, onAdd = {}, onIgnore = {},
+                    onOpenCalendar = { plan?.let { openCalendarEvent(it) } })
             }
             composable(ROUTE_SETTINGS) {
                 SettingsMenu(items = settingsItems(nav::navigate), onBack = { nav.popBackStack() })
@@ -423,6 +426,108 @@ class MainActivity : ComponentActivity() {
                     onBack = { nav.popBackStack() },
                 )
             }
+        }
+    }
+
+    // A plan's card (a suggestion, or a calendar event shown as one) with its travel modes, live trains on its day,
+    // flight status and buttons; changes to the travel mode or train are remembered for its leave-by alert
+    @Composable
+    private fun PlanCard(
+        graph: AppGraph,
+        plan: Suggestion?,
+        onBack: () -> Unit,
+        onAdd: () -> Unit,
+        onIgnore: () -> Unit,
+        guessText: String? = null,
+        onOpenCalendar: (() -> Unit)? = null,
+    ) {
+        var travelMode by remember(plan) { mutableStateOf(plan?.let { modeFor(graph, it) }) }
+        var trainChoices by remember { mutableStateOf<TrainChoices?>(null) }
+        var trainRefresh by remember { mutableIntStateOf(0) }
+        LaunchedEffect(plan, travelMode, trainRefresh) {
+            val shown = plan ?: return@LaunchedEffect
+            trainChoices = trainsBefore(graph, shown)
+
+            // Refresh the live list every minute on the plan's day
+            while (showsTrains(graph, shown) && isPlanDay(shown)) {
+                trainChoices = withContext(Dispatchers.IO) { trainChoices(applicationContext, shown) }
+                delay(60_000)
+            }
+        }
+        SuggestionScreen(
+            suggestion = plan,
+            onBack = onBack,
+            onAdd = onAdd,
+            onIgnore = onIgnore,
+            onOpenMaps = { place -> openMaps(place, travelMode ?: graph.travelSettings.mode()) },
+            onTrack = { url -> openLink(url) },
+            flightStatus = plan?.let { flightStatusFor(graph, it) },
+            trains = trainChoices,
+            guessText = guessText,
+            onOpenCalendar = onOpenCalendar,
+            onPickTrain = { row ->
+                val shown = plan ?: return@SuggestionScreen
+                val key = eventKey(shown.title, planBegin(shown))
+                graph.trainStore.setChoice(key, row.pick.trainId)
+                graph.trainStore.setPick(key, row.pick)
+                trainRefresh += 1
+            },
+            onSwitchOrigin = { code ->
+                val shown = plan ?: return@SuggestionScreen
+                graph.trainStore.setOrigin(eventKey(shown.title, planBegin(shown)), code)
+                trainRefresh += 1
+            },
+            travelMode = travelMode,
+            onTravelMode = { mode ->
+                val shown = plan ?: return@SuggestionScreen
+                LeaveByStore(applicationContext).setMode(eventKey(shown.title, planBegin(shown)), mode)
+                travelMode = mode
+            },
+        )
+    }
+
+    // Home's events: the next month of your switched-on calendars, matched to the plans you added, or without calendar
+    // access the plans you added that are still ahead (call it off the main thread)
+    private fun homeEvents(graph: AppGraph, added: List<Suggestion>, nowMillis: Long): List<HomeEvent> {
+        // Fall back to Datebook's own plans when the calendar can't be read
+        if (!hasCalendarAccess(applicationContext)) {
+            return fromPlans(upcoming(added, nowMillis))
+        }
+        val events = homeCalendarEvents(applicationContext, nowMillis, graph.calendarSwitches.switchedOff())
+        return fromCalendar(events, added)
+    }
+
+    // Open a Home event's card: a calendar event by its id and start, or a Datebook plan when the calendar can't be
+    // read
+    private fun openEvent(navigate: (String) -> Unit, event: HomeEvent) {
+        // Plans without a calendar event open as the plan itself
+        if (event.eventId == 0L) {
+            event.source?.let { navigate("suggestion/${it.id}") }
+            return
+        }
+        navigate("event/${event.eventId}/${event.begin}")
+    }
+
+    // Read one calendar event (this time of it, for repeating events) as a plan for its card, with the Datebook plan
+    // it came from; null when it's gone (call it off the main thread)
+    private fun calendarPlan(graph: AppGraph, eventId: Long, begin: Long, added: List<Suggestion>): Suggestion? {
+        val event = calendarEvents(applicationContext, begin - 1, begin + 1, emptySet())
+            .firstOrNull { it.eventId == eventId && it.begin == begin } ?: return null  // deleted or moved away
+        return planOf(fromCalendar(listOf(event), added).single(), ZoneId.systemDefault())
+    }
+
+    // Open a calendar event (this time of it) in your calendar app, where you can change or delete it
+    private fun openCalendarEvent(plan: Suggestion) {
+        val (begin, end) = eventTimes(plan.toEvent())
+        val uri = android.content.ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, plan.calendarEventId)
+        val intent = Intent(Intent.ACTION_VIEW, uri).putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, begin)
+            .putExtra(CalendarContract.EXTRA_EVENT_END_TIME, end)
+
+        // Open the calendar app, or say there isn't one
+        try {
+            startActivity(intent)
+        } catch (error: ActivityNotFoundException) {  // no calendar app installed
+            Toast.makeText(this, "No calendar app found", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -593,6 +698,11 @@ class MainActivity : ComponentActivity() {
         // Without a key nothing reaches Claude
         if (!status.key) {
             fixes.add(Pair("No Claude API key saved", openKeySetup))
+        }
+
+        // Without calendar access, Home only shows the plans added through Datebook
+        if (!status.calendar) {
+            fixes.add(Pair("Allow calendar to see your whole schedule", actions.askCalendar))
         }
         return fixes
     }

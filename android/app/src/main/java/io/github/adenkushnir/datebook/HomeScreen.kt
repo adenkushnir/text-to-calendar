@@ -1,10 +1,12 @@
-// The home dashboard: a clear top bar over the scene with Settings, banners for anything off, then Next up, Waiting
-// for you and Coming up on dark glass; also the glass pieces every screen shares (top bar, labels, cards)
+// The home dashboard: a clear top bar over the scene with Settings, banners for anything off, then Next up (from your
+// calendar), Waiting for you and Coming up (the next 3 days with something on) on dark glass; also the glass pieces
+// every screen shares (top bar, labels, cards)
 package io.github.adenkushnir.datebook
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -17,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -36,6 +39,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.adenkushnir.datebook.calendar.Agenda
+import io.github.adenkushnir.datebook.calendar.HomeEvent
+import io.github.adenkushnir.datebook.calendar.NextUp
+import io.github.adenkushnir.datebook.calendar.dayOf
+import io.github.adenkushnir.datebook.calendar.endText
+import io.github.adenkushnir.datebook.calendar.timeText
+import io.github.adenkushnir.datebook.calendar.whenWhere
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.pipeline.summary
 import io.github.adenkushnir.datebook.prompts.changedNote
@@ -57,15 +67,20 @@ import io.github.adenkushnir.datebook.ui.glass
 import io.github.adenkushnir.datebook.ui.labelPill
 import io.github.adenkushnir.datebook.ui.looseBacking
 import io.github.adenkushnir.datebook.ui.theme.DatebookTheme
+import java.time.Instant
+import java.time.ZoneId
 private val LABEL_INK = Color(0xFFD6E8FF)
 private val HERO_EDGE = Color.White.copy(alpha = 0.5f)
+private const val OPAQUE = 0xFF shl 24  // calendar colours sometimes leave out the alpha
 
-// Show the whole home dashboard: the next added plan, suggestions waiting for you, and what else is coming up
+// Show the whole home dashboard: what's next on your calendar, suggestions waiting for you, and the rest of the week
 @Composable
 fun HomeScreen(
     waiting: List<Suggestion> = emptyList(),
-    ahead: List<Suggestion> = emptyList(),
+    agenda: Agenda = Agenda(null, emptyList()),
     nowMillis: Long = System.currentTimeMillis(),
+    zone: ZoneId = ZoneId.systemDefault(),
+    onOpenEvent: (HomeEvent) -> Unit = {},
     onOpen: (Long) -> Unit = {},
     onAdd: (Long) -> Unit = {},
     onIgnore: (Long) -> Unit = {},
@@ -85,7 +100,7 @@ fun HomeScreen(
             for ((problem, fix) in fixes) {
                 FixBanner(problem, fix)
             }
-            NextUpCard(ahead.firstOrNull(), nowMillis, onOpen)
+            NextUpCard(agenda.nextUp, nowMillis, zone, onOpenEvent)
 
             // Show the Next trains card once a trip is saved
             if (trains != null) {
@@ -122,22 +137,22 @@ fun HomeScreen(
             }
             SectionLabel("Coming up")
             DatebookCard {
-                val later = ahead.drop(1)  // the first one is already in Next up
-
-                // Show an empty message until more plans are added
-                if (later.isEmpty()) {
-                    Muted("Other plans you add will be listed here.")
+                // Say so when the rest of the week is empty
+                if (agenda.days.isEmpty()) {
+                    Muted("Nothing on your calendar this month.")
                 }
 
-                // Show each later plan, a line between them; tapping one opens its card
-                later.forEachIndexed { index, suggestion ->
-                    // A line above every plan but the first
+                // Show each day's heading and its events, a line between days
+                agenda.days.forEachIndexed { index, day ->
+                    // A line above every day but the first
                     if (index > 0) {
                         HorizontalDivider(color = MaterialTheme.colorScheme.outline)
                     }
-                    Column(Modifier.fillMaxWidth().clickable { onOpen(suggestion.id) }) {
-                        Text(suggestion.title, fontWeight = FontWeight.SemiBold)
-                        Muted(whenAndWhere(suggestion))
+                    Text(day.label, color = LABEL_INK, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+
+                    // One row per event; tapping it opens its card
+                    for (event in day.events) {
+                        EventRow(event, zone, onOpenEvent)
                     }
                 }
             }
@@ -160,23 +175,51 @@ private fun FixBanner(problem: String, fix: () -> Unit) {
     }
 }
 
-// The highlighted card for the next plan you added, with a countdown, or a message when there is none
+// The highlighted card: the event happening now ("Now · ends 8:00 PM", with what's after it) or the next event with
+// its countdown, and who it came from when it's a Datebook plan; a message when nothing is coming up
 @Composable
-private fun NextUpCard(next: Suggestion?, nowMillis: Long, onOpen: (Long) -> Unit) {
+private fun NextUpCard(nextUp: NextUp?, nowMillis: Long, zone: ZoneId, onOpen: (HomeEvent) -> Unit) {
     DatebookCard(accent = true) {
-        // Show a message until a plan has been added
-        if (next == null) {
+        // Show a message until something is coming up
+        if (nextUp == null) {
             SectionLabel("Next up")
             Text("Nothing coming up yet", fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
-            Muted("When you add a plan, the next one shows here with a countdown.")
+            Muted("Your next event shows here with a countdown.")
             return@DatebookCard
         }
+        val event = nextUp.event
+        val today = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
+        val label = if (nextUp.happening) "Now · ends ${endText(event, zone)}"
+            else "Next up · ${countdownLabel(today, dayOf(event, zone))}"
         val spacing = Arrangement.spacedBy(6.dp)
-        Column(Modifier.fillMaxWidth().clickable { onOpen(next.id) }, verticalArrangement = spacing) {
-            SectionLabel("Next up · ${countdownFor(next, nowMillis)}")
-            Text(next.title, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
-            Muted(whenAndWhere(next))
-            Muted("From ${fromLine(next)}")
+        Column(Modifier.fillMaxWidth().clickable { onOpen(event) }, verticalArrangement = spacing) {
+            SectionLabel(label)
+            Text(event.title, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+            Muted(whenWhere(event, zone))
+            event.source?.let { Muted("From ${fromLine(it)}") }  // Datebook plans only
+        }
+
+        // Under the event happening now, what comes after it
+        nextUp.then?.let { then ->
+            Column(Modifier.fillMaxWidth().clickable { onOpen(then) }) {
+                Muted("Then: ${then.title} · ${timeText(then, zone)}")
+            }
+        }
+    }
+}
+
+// One event in Coming up: its calendar's colour dot, title, time and place, and who it came from for Datebook plans
+@Composable
+private fun EventRow(event: HomeEvent, zone: ZoneId, onOpen: (HomeEvent) -> Unit) {
+    val dot = if (event.color == 0) MaterialTheme.colorScheme.primary else Color(event.color or OPAQUE)
+    Row(Modifier.fillMaxWidth().clickable { onOpen(event) }, verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(Modifier.size(10.dp).clip(CircleShape).background(dot))
+        Column(Modifier.weight(1f)) {
+            Text(event.title, fontWeight = FontWeight.SemiBold)
+            val place = if (event.location.isBlank()) "" else " · ${event.location}"  // only when there is one
+            Muted(timeText(event, zone) + place)
+            event.source?.let { Muted("From ${fromLine(it)}") }  // Datebook plans only
         }
     }
 }
