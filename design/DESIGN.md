@@ -89,8 +89,8 @@ All movement bends the photo's own pixels, or moves photo-real cutouts, so it lo
 | Bubble field | | | | 0.006 | | 0.9 | 9 |
 | Tropical beach | 0.0035 | 0.004 | | | | 0.9 | |
 
-- **Wind:** sway comes in gusts that roll across the grass (and the palm) every few seconds; the blades bend, flutter
-  and catch a little more light as each gust passes.
+- **Wind:** sway comes in slow gusts that roll across the grass (and the palm) about every 11 seconds; the blades
+  bend, flutter and catch a little more light as each gust passes.
 - **Lens bubbles:** each one bends the picture behind it like a lens, with a rainbow rim and a shine. They rise
   from below the screen and leave off the top; in the Aquarium they pop at the water's surface.
 - **Fish:** goldfish, clownfish, blue tang and yellow tang cutouts, drawn in thin strips so the tail swings as they

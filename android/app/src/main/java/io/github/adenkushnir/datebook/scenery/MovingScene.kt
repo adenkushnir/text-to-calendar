@@ -82,9 +82,9 @@ half4 main(float2 coord) {
     float2 offset = float2(0.0);
     offset += mask.r * move.x * near * float2(sin(uv.y * 90.0 - time * 1.6) * 0.6
         + sin(uv.x * 40.0 + uv.y * 60.0 + time * 1.1) * 0.4, sin(uv.x * 30.0 + time * 1.3) * 0.5);
-    float gust = smoothstep(-0.2, 1.0, sin(uv.x * 5.0 + uv.y * 2.0 - time * 1.1)) * (0.65 + 0.35 * sin(time * 0.37));
-    float flutter = sin(time * 3.1 + uv.x * 70.0 + uv.y * 25.0) * 0.35;
-    offset.x += mask.g * move.y * (0.35 * sin(time * 0.9 + uv.y * 3.0) + gust * (1.0 + flutter));
+    float gust = smoothstep(-0.2, 1.0, sin(uv.x * 5.0 + uv.y * 2.0 - time * 0.55)) * (0.65 + 0.35 * sin(time * 0.19));
+    float flutter = sin(time * 1.55 + uv.x * 70.0 + uv.y * 25.0) * 0.35;
+    offset.x += mask.g * move.y * (0.35 * sin(time * 0.45 + uv.y * 3.0) + gust * (1.0 + flutter));
     offset.y += mask.g * move.y * gust * 0.25;
     offset += mask.g * move.z * float2(sin(uv.y * 14.0 + time * 0.8), cos(uv.x * 10.0 + time * 0.7) * 0.5);
     offset.y += mask.b * move.w * sin(time * 0.9 + floor(uv.x * 6.0) * 1.7);
