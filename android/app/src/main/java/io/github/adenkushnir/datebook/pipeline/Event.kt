@@ -8,7 +8,8 @@ const val KIND_EVENT = "event"
 // like UA1234, packageCarrier and trackingNumber describe a delivery, confirmation is a booking or order code,
 // placeLat and placeLng are the place's coordinates from the address lookup (null when unknown), and kind says
 // whether it's a plan ("event"), a loose plan without a set date ("loose"), something due ("due", with its
-// amount) or an assignment ("assignment"), and trip names the trip a travel booking belongs to
+// amount) or an assignment ("assignment"), trip names the trip a travel booking belongs to, bring is what the text
+// says to bring ("cleats, $20") and outdoor marks a plan that happens outside
 data class Event(
     val title: String,
     val start: String,
@@ -28,6 +29,8 @@ data class Event(
     val kind: String = KIND_EVENT,
     val amount: String = "",
     val trip: String = "",
+    val bring: String = "",
+    val outdoor: Boolean = false,
     val placeLat: Double? = null,
     val placeLng: Double? = null,
 )

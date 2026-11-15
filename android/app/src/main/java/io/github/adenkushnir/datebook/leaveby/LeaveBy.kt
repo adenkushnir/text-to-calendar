@@ -25,6 +25,8 @@ import io.github.adenkushnir.datebook.MainActivity
 import io.github.adenkushnir.datebook.R
 import io.github.adenkushnir.datebook.calendar.CalendarEvent
 import io.github.adenkushnir.datebook.calendar.calendarEvents
+import io.github.adenkushnir.datebook.extras.BRING_LABEL
+import io.github.adenkushnir.datebook.extras.bringOf
 import io.github.adenkushnir.datebook.flights.isFlightTitle
 import io.github.adenkushnir.datebook.places.TRAVEL_BIKE
 import io.github.adenkushnir.datebook.places.TRAVEL_DRIVE
@@ -172,7 +174,8 @@ private fun freshMinutes(context: Context, event: CalendarEvent, mode: String): 
         Instant.ofEpochMilli(event.begin))
 }
 
-// Post (or update) an event's leave-by alert, naming the suggested NJ Transit train when there is one
+// Post (or update) an event's leave-by alert, naming the suggested NJ Transit train when there is one and what to
+// bring when the event's notes say
 fun showLeaveBy(context: Context, event: CalendarEvent, minutes: Int, mode: String, trainLine: String? = null) {
     // Nothing can be shown without permission to notify
     if (!canNotify(context)) {
@@ -193,7 +196,7 @@ fun showLeaveBy(context: Context, event: CalendarEvent, minutes: Int, mode: Stri
         .setContentTitle(leaveByTitle(event.begin, minutes, ZoneId.systemDefault()))
         .setContentText(text)
         .setStyle(NotificationCompat.BigTextStyle().bigText(listOfNotNull(text, trainLine?.let { "🚆 $it" },
-            event.location).joinToString("\n")))
+            bringOf(event.notes).ifBlank { null }?.let { "🎒 $BRING_LABEL$it" }, event.location).joinToString("\n")))
         .setCategory(NotificationCompat.CATEGORY_REMINDER)
         .setPriority(NotificationCompat.PRIORITY_HIGH)
         .setAutoCancel(true)

@@ -50,6 +50,15 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
     }
 }
 
+// Version 11 keeps what a plan's texts say to bring, and whether it's outdoors
+val MIGRATION_10_11 = object : Migration(10, 11) {
+    // Add the two columns, empty for older plans
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE suggestions ADD COLUMN bring TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE suggestions ADD COLUMN outdoor INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 // Version 10 gives follow-ups a time, a repeat rule and a note's text, and plans the trip they belong to
 val MIGRATION_9_10 = object : Migration(9, 10) {
     // Add the columns, empty for everything saved
@@ -64,7 +73,7 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
 // The database holding seen texts, suggestions, the retry queue and failure counts; from version 5 on, saved data is
 // converted when the database changes (older versions still start empty)
 @Database(entities = [SeenText::class, Suggestion::class, RetryText::class, FailureCount::class, FollowUp::class],
-    version = 10,
+    version = 11,
     exportSchema = false)
 abstract class DatebookDatabase : RoomDatabase() {
     // The queries for all four tables
@@ -80,7 +89,7 @@ abstract class DatebookDatabase : RoomDatabase() {
                 val appContext = context.applicationContext
                 instance ?: Room.databaseBuilder(appContext, DatebookDatabase::class.java, "datebook.db")
                     .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
-                        MIGRATION_9_10)
+                        MIGRATION_9_10, MIGRATION_10_11)
                     .fallbackToDestructiveMigration(true)
                     .build()
                     .also { instance = it }

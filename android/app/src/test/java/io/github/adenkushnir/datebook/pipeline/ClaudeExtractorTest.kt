@@ -84,7 +84,8 @@ class ClaudeExtractorTest {
              "tracking_number": "", "confirmation_code": "", "kind": "loose", "amount": ""},
             {"title": "Phone bill", "start": "2037-11-20", "end": "", "all_day": true, "location": "", "repeat": "",
              "timezone": "", "change": "", "calendar_event": 0, "flight": "", "package_carrier": "",
-             "tracking_number": "", "confirmation_code": "", "kind": "due", "amount": "$45", "trip": "Chicago"},
+             "tracking_number": "", "confirmation_code": "", "kind": "due", "amount": "$45", "trip": "Chicago",
+             "bring": [" cleats", "$20", ""], "outdoor": true},
             {"title": "No day", "start": "", "end": "", "all_day": true, "location": "", "repeat": "",
              "timezone": "", "change": "", "calendar_event": 0, "flight": "", "package_carrier": "",
              "tracking_number": "", "confirmation_code": "", "kind": "due", "amount": ""}]}"""
@@ -93,6 +94,9 @@ class ClaudeExtractorTest {
         assertEquals(listOf("loose", "due"), events.map { it.kind })
         assertEquals("$45", events[1].amount)
         assertEquals("Chicago", events[1].trip)
+        assertEquals("cleats, $20", events[1].bring)
+        assertTrue(events[1].outdoor)
+        assertEquals("", events[0].bring)
         assertTrue(SYSTEM_PROMPT.contains("\"loose\" for a plan suggested without a set date"))
     }
 
