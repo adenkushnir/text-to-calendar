@@ -131,6 +131,10 @@ import io.github.adenkushnir.datebook.trains.ON_THE_DAY
 import io.github.adenkushnir.datebook.trains.TrainBoard
 import io.github.adenkushnir.datebook.trains.TrainChoices
 import io.github.adenkushnir.datebook.trains.nextTrains
+import io.github.adenkushnir.datebook.trains.pickableStations
+import io.github.adenkushnir.datebook.today.todayOf
+import io.github.adenkushnir.datebook.weather.Forecast
+import io.github.adenkushnir.datebook.weather.homeForecast
 import io.github.adenkushnir.datebook.trains.refreshStations
 import io.github.adenkushnir.datebook.trains.scheduleTrains
 import io.github.adenkushnir.datebook.trains.trainChoices
@@ -189,6 +193,7 @@ private const val TICK_MILLIS = 30_000L  // how often Home moves "now" on
 private val MAIN_TABS = listOf(TabItem(ROUTE_HOME, DatebookIcons.Home, "Home"),
     TabItem(ROUTE_LISTS, DatebookIcons.List, "Lists"), TabItem(ROUTE_NOTES, DatebookIcons.Note, "Notes"),
     TabItem(ROUTE_ASK, DatebookIcons.Sparkle, "Ask"))
+private const val WEATHER_CHECK_MILLIS = 15 * 60_000L  // how often Home asks if the forecast needs refreshing
 private const val RELOAD_MILLIS = 5 * 60_000L  // how often Home re-reads the calendar even without a change
 
 // The activity Android starts when you tap the Datebook icon or a prompt
@@ -358,6 +363,16 @@ class MainActivity : ComponentActivity() {
                         now = System.currentTimeMillis()
                     }
                 }
+                val zone = ZoneId.systemDefault()
+                val day = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+                val todayRemindersFlow = remember(day) {
+                    graph.dao.watchRemindersBetween(day.atStartOfDay(zone).toInstant().toEpochMilli(),
+                        day.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli())
+                }
+                val todayReminders by todayRemindersFlow.collectAsState(initial = emptyList())
+                val forecast by produceState<Forecast?>(null, now / WEATHER_CHECK_MILLIS) {
+                    value = withContext(Dispatchers.IO) { homeForecast(applicationContext, now, zone) }
+                }
                 var trip by remember { mutableStateOf(graph.trainSettings.trip()) }
                 var trains by remember { mutableStateOf<TrainBoard?>(null) }
                 LaunchedEffect(trip) {
@@ -373,8 +388,12 @@ class MainActivity : ComponentActivity() {
                 Tabbed(ROUTE_HOME, openTab) {
                     HomeScreen(
                         waiting = waiting,
-                        agenda = agendaOf(events, now, ZoneId.systemDefault()),
+                        agenda = agendaOf(events, now, zone),
+                        today = todayOf(events, todayReminders + assignments + bills, now, zone),
+                        forecast = forecast,
                         nowMillis = now,
+                        zone = zone,
+                        onPaid = { id -> scope.launch { graph.dao.setFollowUpStatus(id, FollowUp.DONE) } },
                         onOpenEvent = { event -> openEvent(nav::navigate, event) },
                         onOpen = { nav.navigate("suggestion/$it") },
                         onAdd = add,
@@ -519,13 +538,13 @@ class MainActivity : ComponentActivity() {
                         graph.njtUserStore.save(user)
                         graph.njtPasswordStore.save(password)
                     },
-                    stations = graph.trainSettings.stations(),
+                    stations = pickableStations(graph.trainSettings),
                     trip = graph.trainSettings.trip(),
                     setTrip = { from, to -> graph.trainSettings.setTrip(from, to) },
                     loadStations = {
                         withContext(Dispatchers.IO) {
                             refreshStations(graph.trainSettings, graph.railData, System.currentTimeMillis())
-                            graph.trainSettings.stations()
+                            pickableStations(graph.trainSettings)
                         }
                     },
                     onBack = { nav.popBackStack() },

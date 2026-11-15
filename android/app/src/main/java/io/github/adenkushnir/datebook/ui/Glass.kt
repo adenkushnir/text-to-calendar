@@ -95,12 +95,12 @@ fun Modifier.glass(shape: Shape, strength: Float = 1f): Modifier {
     return frosted.background(CARD_GLOSS).border(1.dp, GLASS_EDGE, shape)
 }
 
-// A tinted pill behind a small label, without blur (labels can sit on glass cards, where blur would cut a hole); on the
-// blue Next up card the pill is see-through white instead
+// A tinted pill (or another shape) behind a small label, without blur (labels can sit on glass cards, where blur would
+// cut a hole); on the blue Next up card the pill is see-through white instead
 @Composable
-fun Modifier.labelPill(): Modifier {
+fun Modifier.labelPill(shape: Shape = RoundedCornerShape(50)): Modifier {
     val fill = if (LocalOnHero.current) Color.White.copy(alpha = 0.22f) else LocalGlass.current.tint.copy(alpha = 0.55f)
-    return clip(RoundedCornerShape(50)).background(fill)
+    return clip(shape).background(fill)
 }
 
 // A glass tile icon: a rounded glass square with a split highlight and the icon in colour
