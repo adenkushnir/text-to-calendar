@@ -163,6 +163,20 @@ class TrainSettings(context: Context) {
     fun setTrip(from: String, to: String) {
         prefs.edit().putString("from", from).putString("to", to).apply()
     }
+
+    // The trains last seen on a trip's board, so the one that just left can still be shown
+    fun seen(from: String, to: String): List<SeenTrain> {
+        val saved = prefs.getString("seen-$from-$to", null) ?: return emptyList()
+        return MAPPER.readTree(saved).map {
+            SeenTrain(it.path("id").asText(""), it.path("leaves").asLong(), it.path("line").asText(""))
+        }
+    }
+
+    // Remember the trains seen on a trip's board
+    fun setSeen(from: String, to: String, trains: List<SeenTrain>) {
+        val plain = trains.map { mapOf("id" to it.id, "leaves" to it.leaves, "line" to it.line) }
+        prefs.edit().putString("seen-$from-$to", MAPPER.writeValueAsString(plain)).apply()
+    }
 }
 
 // Load the station list with locations if it's missing or a month old; returns how many stations are known; this

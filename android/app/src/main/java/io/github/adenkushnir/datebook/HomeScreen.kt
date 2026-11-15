@@ -105,8 +105,6 @@ private val LIT_EDGE = Color(0xFF5ADBEA).copy(alpha = 0.55f)
 private val REMINDER_DOT = Color(0xFFC59BFF)
 private val ASSIGNMENT_DOT = Color(0xFFFFB547)
 private val BILL_DOT = Color(0xFFFF7AA8)
-private val SAMPLE_INK = Color(0xFF2B1A00)
-private val SAMPLE_FILL = Color(0xFFFFB547)
 private const val PAST_ALPHA = 0.45f  // how faded rows that are over look
 private val ROW_CLOCK = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
 private val TODAY_DATE = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US)
@@ -410,20 +408,13 @@ private fun EventRow(event: HomeEvent, zone: ZoneId, onOpen: (HomeEvent) -> Unit
     }
 }
 
-// The train board at the bottom of Home: the saved trip (tagged Sample while the trains are made up) with a button to
-// flip it, then the train that just left (faded) and the next 3, or why there are none
+// The train board at the bottom of Home: the saved trip with a button to flip it, then the train that just left
+// (faded) and the next 3, or why there are none
 @Composable
 private fun TrainBoardCard(board: TrainBoard, onFlip: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(Modifier.weight(1f, fill = false)) {
             SectionLabel("Trains · ${board.fromName} → ${board.toName}", TRIP_SHAPE, 5.dp)  // fits two lines
-        }
-
-        // Made-up trains say so
-        if (board.sample) {
-            Text("SAMPLE", color = SAMPLE_INK, fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.6.sp,
-                modifier = Modifier.clip(CircleShape).background(SAMPLE_FILL)
-                    .padding(horizontal = 7.dp, vertical = 2.dp))
         }
         Spacer(Modifier.weight(1f))
         GlassIconButton(DatebookIcons.Swap, "Flip the trip", onClick = onFlip)

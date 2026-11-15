@@ -1,7 +1,8 @@
 // Datebook's home-screen widgets, in Android's own style (colours from the wallpaper): Next trains (the saved trip,
 // the train that just left and the next 3, with ⇄) and Lists at a glance (packages, the next bill and the next
 // assignment); plus the jobs that keep them fresh: every 15 minutes (which also checks notification access) and at
-// each train's departure. The text grows with the widget's size, and tapping a train opens the NJ Transit app
+// each train's departure (every 5 minutes in the half hour before it). The text grows with the widget's size, and
+// tapping a train opens the NJ Transit app
 package io.github.adenkushnir.datebook.widgets
 import android.content.Context
 import android.content.Intent
@@ -79,7 +80,6 @@ const val EXTRA_OPEN_LIST = "io.github.adenkushnir.datebook.OPEN_LIST"
 private const val REFRESH_WORK = "datebook-widgets"
 private const val TRAIN_TICK_WORK = "datebook-widget-trains"
 private const val MIN_TICK_MILLIS = 60_000L
-private const val TICK_AFTER_MILLIS = 30_000L  // refresh a little after a train leaves
 private const val NJT_APP = "com.njtransit.njtapp"
 private val CORNER = 26.dp
 private val REFRESHES = intPreferencesKey("refreshes")  // bumped to make an open widget load its data again
@@ -150,20 +150,22 @@ class TrainsWidget : GlanceAppWidget() {
     }
 }
 
-// The saved trip's board (null without a trip), booking a redraw for when the next train leaves
+// The saved trip's board (null without a trip), booking the next redraw: every 5 minutes in the half hour before the
+// next train, else half an hour before it
 private suspend fun loadTrains(context: Context): TrainBoard? {
     val graph = AppGraph.get(context)
     val trip = graph.trainSettings.trip() ?: return null
     val board = withContext(Dispatchers.IO) { nextTrains(graph, trip.first, trip.second) }
+    val tick = nextTickAt(board.nextDeparture, System.currentTimeMillis())
 
-    // Come back when the next train leaves, so the board moves on
-    if (board.nextDeparture > 0) {
-        bookTrainTick(context, board.nextDeparture + TICK_AFTER_MILLIS)
+    // Come back when the board will have changed
+    if (tick > 0) {
+        bookTrainTick(context, tick)
     }
     return board
 }
 
-// The trains widget's face: the trip with Sample and ⇄, then the train that left (faded) and the next 3; without a
+// The trains widget's face: the trip with ⇄, then the train that left (faded) and the next 3; without a
 // trip, how to pick one (tapping opens Datebook's trip setting)
 @Composable
 private fun TrainsContent(board: TrainBoard?, pickTrip: Action, njTransit: Action) {
@@ -183,14 +185,6 @@ private fun TrainsContent(board: TrainBoard?, pickTrip: Action, njTransit: Actio
             Text("${board.fromName} → ${board.toName}", modifier = GlanceModifier.defaultWeight(), maxLines = 2,
                 style = TextStyle(color = colors.onSurfaceVariant, fontWeight = FontWeight.Medium,
                     fontSize = headerText(size).sp))
-
-            // Made-up trains say so
-            if (board.sample) {
-                Text("SAMPLE", modifier = GlanceModifier.background(colors.tertiaryContainer).cornerRadius(10.dp)
-                    .padding(horizontal = 7.dp, vertical = 2.dp),
-                    style = TextStyle(color = colors.onTertiaryContainer, fontWeight = FontWeight.Bold,
-                        fontSize = 10.sp))
-            }
             Spacer(GlanceModifier.width(8.dp))
             Box(GlanceModifier.size(32.dp).background(colors.secondaryContainer).cornerRadius(16.dp)
                 .clickable(actionRunCallback<FlipTripAction>()), contentAlignment = Alignment.Center) {

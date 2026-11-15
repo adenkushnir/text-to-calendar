@@ -140,7 +140,6 @@ import io.github.adenkushnir.datebook.alerts.resetClaudeProblems
 import io.github.adenkushnir.datebook.pipeline.ALERT_TITLES
 import io.github.adenkushnir.datebook.pipeline.PROBLEM_NOTIFICATIONS
 import androidx.lifecycle.lifecycleScope
-import io.github.adenkushnir.datebook.trains.pickableStations
 import io.github.adenkushnir.datebook.today.todayOf
 import io.github.adenkushnir.datebook.weather.Forecast
 import io.github.adenkushnir.datebook.weather.homeForecast
@@ -569,13 +568,13 @@ class MainActivity : ComponentActivity() {
                         graph.njtUserStore.save(user)
                         graph.njtPasswordStore.save(password)
                     },
-                    stations = pickableStations(graph.trainSettings),
+                    stations = graph.trainSettings.stations(),
                     trip = graph.trainSettings.trip(),
                     setTrip = { from, to -> graph.trainSettings.setTrip(from, to) },
                     loadStations = {
                         withContext(Dispatchers.IO) {
                             refreshStations(graph.trainSettings, graph.railData, System.currentTimeMillis())
-                            pickableStations(graph.trainSettings)
+                            graph.trainSettings.stations()
                         }
                     },
                     onBack = { nav.popBackStack() },

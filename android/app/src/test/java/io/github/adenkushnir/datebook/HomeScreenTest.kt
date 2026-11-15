@@ -144,7 +144,7 @@ class HomeScreenTest {
         val forecast = Forecast(HourWeather(now, 49, 0, 3, true), listOf(HourWeather(dinner.begin, 47, 70, 61, false)),
             listOf(DayWeather(LocalDate.of(2037, 11, 10), 52, 41, 70)))
         val board = TrainBoard("New Brunswick", "New York Penn Station", listOf("2:22 PM · Track 2 · On time"),
-            last = "1:51 PM · Track 1 · Departed", sample = true)
+            last = "1:51 PM · Track 1 · Departed")
         val acted = mutableListOf<String>()
         compose.setContent {
             DatebookTheme {
@@ -161,8 +161,7 @@ class HomeScreenTest {
         compose.onNodeWithText("in 5 h").assertExists()
         compose.onNodeWithText("47° · 70%").assertExists()
         compose.onNodeWithText("Paid").performClick()
-        compose.onNodeWithText("SAMPLE").performScrollTo().assertExists()
-        compose.onNodeWithText("1:51 PM · Track 1 · Departed").assertExists()
+        compose.onNodeWithText("1:51 PM · Track 1 · Departed").performScrollTo().assertExists()
         compose.onNodeWithText("2:22 PM · Track 2 · On time").assertExists()
         compose.onNodeWithContentDescription("Flip the trip").performScrollTo().performClick()
         assertEquals(listOf("paid 6", "flip"), acted)
