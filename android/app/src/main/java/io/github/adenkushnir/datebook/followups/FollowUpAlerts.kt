@@ -392,7 +392,8 @@ suspend fun runFollowUps(context: Context, nowMillis: Long, force: Boolean = fal
         }
         val next = nextAfterReminder(followUp, nowMillis, zone)
         val finished = followUp.kind == KIND_REMINDER && next == 0L  // a one-off reminder is done once it goes off
-        dao.updateFollowUp(followUp.copy(nudges = followUp.nudges + 1, nextNudge = next,
+        val keep = minOf(followUp.nextNudge, nowMillis)  // a done one-off keeps when it went off, for Today
+        dao.updateFollowUp(followUp.copy(nudges = followUp.nudges + 1, nextNudge = if (finished) keep else next,
             status = if (finished) FollowUp.DONE else followUp.status))
         lines.add("follow-up: ${followUp.kind} reminded")
     }

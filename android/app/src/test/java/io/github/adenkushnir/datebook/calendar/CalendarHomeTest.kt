@@ -41,8 +41,8 @@ class CalendarHomeTest {
             status = Suggestion.STATUS_ADDED, createdAt = 0, flight = "", placeLat = 40.7)
     }
 
-    // While class is on, Next up is "now" with dinner after it; Coming up lists the next 3 days with events, Next up's
-    // included, all-day events first; finished events and a 4th day are left out
+    // While class is on, Next up is "now" with dinner after it; Coming up lists the next 3 days after today with
+    // events (today has its own card), all-day events first; a 4th day is left out
     @Test
     fun nowThenAndTheWeek() {
         val events = fromCalendar(listOf(
@@ -59,10 +59,9 @@ class CalendarHomeTest {
         assertTrue(agenda.nextUp!!.happening)
         assertEquals("Dinner at Joe's", agenda.nextUp!!.then!!.title)
         assertEquals("3:00 PM", endText(agenda.nextUp!!.event, newYork))
-        assertEquals(listOf("Today", "Tomorrow", "Thu Nov 12"), agenda.days.map { it.label })
-        assertEquals(listOf("Class", "Dinner at Joe's", "Late show"), agenda.days[0].events.map { it.title })
-        assertEquals("All day", timeText(agenda.days[1].events.single(), newYork))
-        assertEquals("10:00 PM", timeText(agenda.days[2].events.single(), newYork))
+        assertEquals(listOf("Tomorrow", "Thu Nov 12", "Fri Nov 13"), agenda.days.map { it.label })
+        assertEquals("All day", timeText(agenda.days[0].events.single(), newYork))
+        assertEquals("10:00 PM", timeText(agenda.days[1].events.single(), newYork))
     }
 
     // With nothing on now, Next up is the next timed event with no "then"; all-day events never take Next up
@@ -73,7 +72,7 @@ class CalendarHomeTest {
         assertFalse(later.nextUp!!.happening)
         assertNull(later.nextUp!!.then)
         assertEquals("Dinner", later.nextUp!!.event.title)
-        assertEquals("Today", later.days.single().label)
+        assertTrue(later.days.isEmpty())  // today's events are on the Today card
         val onlyAllDay = agendaOf(fromCalendar(listOf(allDay("Holiday", 2037, 11, 11)), emptyList()), now, newYork)
         assertNull(onlyAllDay.nextUp)
         assertEquals("Tomorrow", onlyAllDay.days.single().label)
@@ -90,7 +89,7 @@ class CalendarHomeTest {
             timed("Lunch", LocalDateTime.of(2037, 11, 16, 12, 0)),
             timed("Trip", LocalDateTime.of(2037, 11, 30, 8, 0)),
         ), emptyList()), now, newYork)
-        assertEquals(listOf("Today", "Sun Nov 15", "Mon Nov 16"), agenda.days.map { it.label })
+        assertEquals(listOf("Sun Nov 15", "Mon Nov 16", "Mon Nov 30"), agenda.days.map { it.label })
     }
 
     // A plan added through Datebook matches its calendar event even after it moved 30 minutes, so it shows once with

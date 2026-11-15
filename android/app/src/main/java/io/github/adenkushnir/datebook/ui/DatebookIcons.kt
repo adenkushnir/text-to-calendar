@@ -193,6 +193,29 @@ object DatebookIcons {
         "M12 3.5l9.5 16.5h-19z",
         "M12 10v4.5M12 17.3v.2",
     )
+    // A sun, for clear weather
+    val Sun = icon("sun", filled = false,
+        "M8 12a4 4 0 1 0 8 0a4 4 0 1 0 -8 0",
+        "M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4",
+    )
+    // A crescent moon, for a clear night
+    val Moon = icon("moon", filled = false,
+        "M19.5 14.5a7.5 7.5 0 1 1 -10 -10a8 8 0 0 0 10 10z",
+    )
+    // A cloud
+    val Cloud = icon("cloud", filled = false,
+        "M7.5 18h9.5a3.5 3.5 0 0 0 0 -7h-0.3a5.5 5.5 0 0 0 -10.7 0.6a3.7 3.7 0 0 0 1.5 6.4z",
+    )
+    // A cloud with rain falling
+    val Rain = icon("rain", filled = false,
+        "M7.5 15h9.5a3.5 3.5 0 0 0 0 -7h-0.3a5.5 5.5 0 0 0 -10.7 0.6a3.7 3.7 0 0 0 1.5 6.4z",
+        "M9 18l-1 2.5M13 18l-1 2.5M17 18l-1 2.5",
+    )
+    // A cloud with snow falling
+    val Snow = icon("snow", filled = false,
+        "M7.5 15h9.5a3.5 3.5 0 0 0 0 -7h-0.3a5.5 5.5 0 0 0 -10.7 0.6a3.7 3.7 0 0 0 1.5 6.4z",
+        "M8.5 18.5h.01M12 18.5h.01M15.5 18.5h.01M10.2 21h.01M13.8 21h.01",
+    )
 }
 
 // The icon for a way of getting somewhere (driving for anything unknown)

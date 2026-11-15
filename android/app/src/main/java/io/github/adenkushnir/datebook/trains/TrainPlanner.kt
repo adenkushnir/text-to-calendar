@@ -277,8 +277,16 @@ fun scheduleTrains(context: Context) {
     WorkManager.getInstance(context).enqueueUniquePeriodicWork(TRAIN_WORK, ExistingPeriodicWorkPolicy.KEEP, request)
 }
 
-// The Next trains card's contents: the trip's station names and up to 3 trains, or a note saying why there are none
-data class TrainBoard(val fromName: String, val toName: String, val lines: List<String>, val note: String = "")
+// The train board's contents: the trip's station names, up to 3 trains (or a note saying why there are none), the
+// train that just left (blank when unknown), and whether the trains are made up
+data class TrainBoard(
+    val fromName: String,
+    val toName: String,
+    val lines: List<String>,
+    val note: String = "",
+    val last: String = "",
+    val sample: Boolean = false,
+)
 
 // One train on the Next trains card, like "5:12 PM · Track 2 · On time" or "5:42 PM · 3 min late"
 fun boardLine(train: Train): String {
@@ -294,10 +302,16 @@ fun boardLine(train: Train): String {
     return "$time$track · $state"
 }
 
-// Read the Next trains card for a trip: the next 3 trains from the first station that stop at the second; this waits
-// on the network, so call it off the main thread
-fun nextTrains(graph: AppGraph, from: String, to: String): TrainBoard {
-    val stations = graph.trainSettings.stations()
+// Read the train board for a trip: the next 3 trains from the first station that stop at the second (sample trains,
+// with the one that just left, until NJ Transit approves the account); this waits on the network, so call it off the
+// main thread
+fun nextTrains(graph: AppGraph, from: String, to: String, nowMillis: Long = System.currentTimeMillis()): TrainBoard {
+    val stations = pickableStations(graph.trainSettings)
+
+    // Made-up trains until the real ones can be tested
+    if (SAMPLE_TRAINS) {
+        return sampleBoard(stations, from, to, nowMillis)
+    }
     val fromName = stations.firstOrNull { it.code == from }?.name ?: from
     val toName = stations.firstOrNull { it.code == to }?.name ?: to
     val trains = graph.railData.departures(from).filter { arrivalAt(it, to) != null }.take(3)

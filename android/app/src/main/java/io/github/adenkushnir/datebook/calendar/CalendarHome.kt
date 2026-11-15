@@ -48,7 +48,7 @@ data class NextUp(val event: HomeEvent, val happening: Boolean, val then: HomeEv
 // One day of Coming up, like "Tomorrow" and its events
 data class DayGroup(val label: String, val events: List<HomeEvent>)
 
-// What Home shows from the calendar: Next up (null when nothing is ahead) and the next 3 days with events
+// What Home shows from the calendar: Next up (null when nothing is ahead) and the next 3 days after today with events
 data class Agenda(val nextUp: NextUp?, val days: List<DayGroup>)
 
 // Turn calendar events into Home events, matching each to the Datebook plan you added for it (same title, starting
@@ -89,8 +89,8 @@ private fun isOver(event: HomeEvent, nowMillis: Long, zone: ZoneId): Boolean {
 }
 
 // Work out Home from the events: Next up is the timed event happening now (the one ending soonest, with the next one
-// under it) or else the next timed event; Coming up is the next 3 days that have something on them (empty days don't
-// count), with every event on them, Next up's included and all-day events first
+// under it) or else the next timed event; Coming up is the next 3 days after today that have something on them (empty
+// days don't count; today has its own card), with every event on them, all-day events first
 fun agendaOf(events: List<HomeEvent>, nowMillis: Long, zone: ZoneId): Agenda {
     val ahead = events.filter { !isOver(it, nowMillis, zone) }.sortedWith(compareBy({ it.begin }, { it.title }))
     val timed = ahead.filter { !it.allDay }
@@ -98,7 +98,8 @@ fun agendaOf(events: List<HomeEvent>, nowMillis: Long, zone: ZoneId): Agenda {
     val next = timed.firstOrNull { it.begin > nowMillis }
     val nextUp = if (happening != null) NextUp(happening, true, next) else next?.let { NextUp(it, false) }
     val today = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
-    val days = ahead.groupBy { maxOf(dayOf(it, zone), today) }  // a multi-day event that's still on shows today
+    val days = ahead.groupBy { dayOf(it, zone) }
+        .filterKeys { it > today }
         .toSortedMap()
         .entries.take(HOME_DAYS)
         .map { (day, list) -> DayGroup(dayLabel(day, today), list.sortedWith(compareBy({ !it.allDay }, { it.begin }))) }

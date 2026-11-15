@@ -143,6 +143,11 @@ interface DatebookDao {
     @Query("SELECT * FROM followups WHERE kind = 'note' AND status = 'open' ORDER BY createdAt DESC")
     fun watchNotes(): Flow<List<FollowUp>>
 
+    // Watch the reminders that go off (or went off) between two times, for Today: open ones and one-offs already done
+    @Query("SELECT * FROM followups WHERE kind = 'reminder' AND status IN ('open', 'done') AND nextNudge >= :from " +
+        "AND nextNudge < :until ORDER BY nextNudge")
+    fun watchRemindersBetween(from: Long, until: Long): Flow<List<FollowUp>>
+
     // Watch the open reminders, the next to go off first
     @Query("SELECT * FROM followups WHERE kind = 'reminder' AND status = 'open' ORDER BY nextNudge")
     fun watchReminders(): Flow<List<FollowUp>>
