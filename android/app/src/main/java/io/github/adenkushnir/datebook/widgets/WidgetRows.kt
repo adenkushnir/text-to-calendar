@@ -1,5 +1,6 @@
 // What the Lists at a glance widget says: one row for packages on the way, one for the next bill and one for the next
-// assignment, each left out when its list is empty; and how big the widgets' text is at their size
+// assignment, each left out when its list is empty; how big the widgets' text is at their size; and when the trains
+// widget next loads
 package io.github.adenkushnir.datebook.widgets
 import io.github.adenkushnir.datebook.data.FollowUp
 import io.github.adenkushnir.datebook.data.Suggestion
@@ -12,6 +13,9 @@ import io.github.adenkushnir.datebook.lists.arrivalText
 import io.github.adenkushnir.datebook.lists.daysAway
 import java.time.LocalDate
 private const val HEADER_DP = 60f  // the widget's padding plus its header row
+private const val SOON_MILLIS = 30L * 60 * 1000  // how close a train is before the board is checked more often
+private const val CLOSE_TICK_MILLIS = 5L * 60 * 1000
+private const val TICK_AFTER_MILLIS = 30_000L  // refresh a little after a train leaves
 
 // One row of the widget: the list it opens, the main line, the line under it and the chip on the right (like
 // "in 5 days")
@@ -36,6 +40,22 @@ fun listsText(heightDp: Float): Float {
 // A widget's header text, growing a little with its rows
 fun headerText(rowText: Float): Float {
     return (rowText * 0.78f).coerceIn(13f, 16f)
+}
+
+// When the trains widget should next load its board: every 5 minutes in the half hour before the next train (and
+// just after it leaves), otherwise half an hour before it; 0 when no train is coming
+fun nextTickAt(nextDeparture: Long, nowMillis: Long): Long {
+    // No train coming: the 15-minute refresh is enough
+    if (nextDeparture <= 0) {
+        return 0
+    }
+    val soon = nextDeparture - SOON_MILLIS
+
+    // Close to the train: every 5 minutes until just after it leaves
+    if (nowMillis >= soon) {
+        return minOf(nowMillis + CLOSE_TICK_MILLIS, nextDeparture + TICK_AFTER_MILLIS)
+    }
+    return soon
 }
 
 // How far away a "yyyy-MM-dd" day is, or a fallback when there's no day

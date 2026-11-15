@@ -47,7 +47,6 @@ import io.github.adenkushnir.datebook.calendar.PhoneCalendar
 import io.github.adenkushnir.datebook.capture.WatchedApp
 import io.github.adenkushnir.datebook.places.TRAVEL_MODES
 import io.github.adenkushnir.datebook.summary.timeLabel
-import io.github.adenkushnir.datebook.trains.SAMPLE_TRAINS
 import io.github.adenkushnir.datebook.trains.Station
 import io.github.adenkushnir.datebook.ui.GelButton
 import io.github.adenkushnir.datebook.ui.GelSwitch
@@ -300,11 +299,6 @@ fun FlightsPage(
         NjtAccountBox(njtUser, saveNjt)
         SectionLabel("Next trains trip")
         TripBox(stations, trip, setTrip, loadStations)
-
-        // Say the board's trains are made up until the account is approved
-        if (SAMPLE_TRAINS) {
-            Muted("Until NJ Transit approves your account, Home's train board shows sample trains.")
-        }
         Muted("Datebook sends NJ Transit only station codes. Your account details stay encrypted on this phone.")
     }
 }

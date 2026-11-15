@@ -52,6 +52,17 @@ class WidgetRowsTest {
         assertEquals(16f, headerText(22f), 0.01f)
     }
 
+    // Half an hour before the next train, then every 5 minutes until just after it leaves; nothing without a train
+    @Test
+    fun trainTicks() {
+        val minute = 60_000L
+        val train = 1_000_000_000L
+        assertEquals(train - 30 * minute, nextTickAt(train, train - 90 * minute))
+        assertEquals(train - 15 * minute, nextTickAt(train, train - 20 * minute))
+        assertEquals(train + 30_000, nextTickAt(train, train - 2 * minute))
+        assertEquals(0L, nextTickAt(0, train))
+    }
+
     // Empty lists leave their rows out; a package with no day says it's coming soon
     @Test
     fun emptyLists() {

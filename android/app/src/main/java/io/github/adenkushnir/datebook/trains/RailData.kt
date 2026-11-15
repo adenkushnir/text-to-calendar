@@ -94,15 +94,15 @@ class RailDataClient(
     private val loadToken: () -> String?,
     private val saveToken: (String) -> Unit,
 ) {
-    // Return a station's live departure board, or an empty list on any failure (logged); this waits on the network,
-    // so call it off the main thread
-    fun departures(station: String): List<Train> {
-        // Any network or reply problem gives an empty board
+    // Return a station's live departure board, or null on any failure (logged); this waits on the network, so call it
+    // off the main thread
+    fun departures(station: String): List<Train>? {
+        // Any network or reply problem gives no board
         return try {
             parseBoard(call("getTrainSchedule", mapOf("station" to station)))
         } catch (error: Exception) {  // no internet, no account, or an unreadable reply
             Log.w("Datebook", "NJ Transit board failed for $station: ${error.message}")
-            emptyList()
+            null
         }
     }
 

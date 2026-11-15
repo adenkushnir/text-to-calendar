@@ -23,6 +23,8 @@ import java.time.Instant
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+private const val LEFT_EARLY_MILLIS = 5L * 60 * 1000  // a train gone from the board this close to its time left
+private const val SEEN_FOR_MILLIS = 3L * 60 * 60 * 1000  // how long seen trains are remembered
 const val ON_THE_DAY = "Trains show on the day of the plan"
 private const val MINUTE = 60_000L
 private const val PLAN_AHEAD_MILLIS = 3 * 60 * MINUTE
@@ -256,7 +258,7 @@ fun trainChoices(context: Context, plan: Suggestion, stations: List<Station> = A
     if (destinations.isEmpty()) {
         return TrainChoices(from, origins, null, emptyList(), "No NJ Transit station near this plan.")
     }
-    val (to, rows) = trainRows(from, graph.railData.departures(from.code), destinations, start,
+    val (to, rows) = trainRows(from, graph.railData.departures(from.code).orEmpty(), destinations, start,
         graph.trainStore.choice(key))
     val note = if (rows.isEmpty()) "No trains from ${from.name} toward this plan right now." else ""  // board empty
     return TrainChoices(from, (origins + from).distinct(), to, rows, note)
@@ -278,15 +280,13 @@ fun scheduleTrains(context: Context) {
 }
 
 // The train board's contents: the trip's station names, up to 3 trains (or a note saying why there are none), the
-// train that just left (blank when unknown), whether the trains are made up, and when the next one leaves (0 when
-// unknown)
+// train that just left (blank when unknown), and when the next one leaves (0 when unknown)
 data class TrainBoard(
     val fromName: String,
     val toName: String,
     val lines: List<String>,
     val note: String = "",
     val last: String = "",
-    val sample: Boolean = false,
     val nextDeparture: Long = 0,
 )
 
@@ -304,20 +304,53 @@ fun boardLine(train: Train): String {
     return "$time$track · $state"
 }
 
-// Read the train board for a trip: the next 3 trains from the first station that stop at the second (sample trains,
-// with the one that just left, until NJ Transit approves the account); this waits on the network, so call it off the
-// main thread
-fun nextTrains(graph: AppGraph, from: String, to: String, nowMillis: Long = System.currentTimeMillis()): TrainBoard {
-    val stations = pickableStations(graph.trainSettings)
+// A train seen on a trip's board: its number, when it leaves (with any delay) and how it reads once it has left
+data class SeenTrain(val id: String, val leaves: Long, val line: String)
 
-    // Made-up trains until the real ones can be tested
-    if (SAMPLE_TRAINS) {
-        return sampleBoard(stations, from, to, nowMillis)
-    }
+// When a train really leaves: its time plus how late it is
+fun leaves(train: Train): Long {
+    return (train.departs?.toEpochMilli() ?: 0) + train.secondsLate * 1000L
+}
+
+// The train that left in words, like "4:42 PM · Track 1 · Departed"
+fun departedLine(train: Train): String {
+    return boardLine(train).substringBeforeLast(" · ") + " · Departed"
+}
+
+// The board for a trip from its first station's live trains: the next 3 that stop at the trip's end, and the
+// latest remembered train that has since left the board (NJ Transit only lists trains still to leave); also returns
+// the trains to remember next time (the last 3 hours, never cancelled ones, which don't leave)
+fun tripBoard(fromName: String, toName: String, to: String, live: List<Train>, seen: List<SeenTrain>,
+    nowMillis: Long): Pair<TrainBoard, List<SeenTrain>> {
+    val trip = live.filter { arrivalAt(it, to) != null }
+    val next = trip.take(3)
+    val onBoard = trip.map { it.id }.toSet()
+    val gone = seen.filter { it.id !in onBoard && it.leaves <= nowMillis + LEFT_EARLY_MILLIS }  // left, not dropped
+    val last = gone.maxByOrNull { it.leaves }?.line.orEmpty()
+    val fresh = trip.filter { !isCancelled(it) }.map { SeenTrain(it.id, leaves(it), departedLine(it)) }
+    val remember = (fresh + seen).distinctBy { it.id }.filter { it.leaves > nowMillis - SEEN_FOR_MILLIS }
+    val note = if (next.isEmpty()) "No trains found right now." else ""  // nothing on the board toward the trip's end
+    val board = TrainBoard(fromName, toName, next.map { boardLine(it) }, note, last,
+        next.firstOrNull()?.let { leaves(it) } ?: 0)
+    return Pair(board, remember)
+}
+
+// Read the train board for a trip: the train that just left and the next 3 from the first station that stop at the
+// second, from NJ Transit's live board; this waits on the network, so call it off the main thread
+fun nextTrains(graph: AppGraph, from: String, to: String, nowMillis: Long = System.currentTimeMillis()): TrainBoard {
+    val settings = graph.trainSettings
+    val stations = settings.stations()
     val fromName = stations.firstOrNull { it.code == from }?.name ?: from
     val toName = stations.firstOrNull { it.code == to }?.name ?: to
-    val trains = graph.railData.departures(from).filter { arrivalAt(it, to) != null }.take(3)
-    val note = if (trains.isEmpty()) "No trains found right now." else ""  // the board was empty or unreachable
-    val next = trains.firstOrNull()?.departs?.toEpochMilli() ?: 0
-    return TrainBoard(fromName, toName, trains.map { boardLine(it) }, note, nextDeparture = next)
+
+    // Without an account there's no board to read
+    if (graph.njtUserStore.load().isNullOrBlank()) {
+        return TrainBoard(fromName, toName, emptyList(),
+            "Add your NJ Transit account in Settings → Flights & trains.")
+    }
+    val live = graph.railData.departures(from)
+        ?: return TrainBoard(fromName, toName, emptyList(), "Can't reach NJ Transit right now.")
+    val (board, remember) = tripBoard(fromName, toName, to, live, settings.seen(from, to), nowMillis)
+    settings.setSeen(from, to, remember)
+    return board
 }
