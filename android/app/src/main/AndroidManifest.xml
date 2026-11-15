@@ -18,6 +18,7 @@
         <package android:name="com.instagram.android" />
         <package android:name="com.discord" />
         <package android:name="com.google.android.gm" />
+        <package android:name="com.njtransit.njtapp" />
     </queries>
     <application
         android:allowBackup="false"
@@ -68,6 +69,29 @@
         <receiver
             android:name=".followups.FollowUpReceiver"
             android:exported="false" />
+        <!-- The Next trains and Lists at a glance home-screen widgets -->
+        <receiver
+            android:name=".widgets.TrainsWidgetReceiver"
+            android:exported="true"
+            android:label="Next trains">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/trains_widget" />
+        </receiver>
+        <receiver
+            android:name=".widgets.ListsWidgetReceiver"
+            android:exported="true"
+            android:label="Lists at a glance">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/lists_widget" />
+        </receiver>
         <!-- Handles the travel-mode buttons on leave-by alerts in the background -->
         <receiver
             android:name=".leaveby.LeaveByModeReceiver"

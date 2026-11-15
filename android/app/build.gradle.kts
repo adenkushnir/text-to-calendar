@@ -53,6 +53,8 @@ dependencies {
     implementation(libs.play.services.auth)
     implementation(libs.haze)
     implementation(libs.haze.blur)
+    implementation(libs.glance.appwidget)
+    implementation(libs.glance.material3)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     testImplementation(libs.junit)

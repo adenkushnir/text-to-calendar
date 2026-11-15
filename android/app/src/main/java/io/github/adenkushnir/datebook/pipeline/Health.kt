@@ -1,8 +1,9 @@
-// Counts problems in a row toward the quiet alerts, with the Python version's thresholds (the alerts arrive in step 12)
+// Counts problems in a row toward the quiet alerts: a key problem alerts at once, Claude failing after 3 in a row, and
+// notification access as soon as a 15-minute check finds it off
 package io.github.adenkushnir.datebook.pipeline
 import io.github.adenkushnir.datebook.data.DatebookDao
 import io.github.adenkushnir.datebook.data.FailureCount
-val ALERT_THRESHOLDS = mapOf(PROBLEM_NOTIFICATIONS to 3, PROBLEM_API_KEY to 1, PROBLEM_API to 3)
+val ALERT_THRESHOLDS = mapOf(PROBLEM_NOTIFICATIONS to 1, PROBLEM_API_KEY to 1, PROBLEM_API to 3)
 val ALERT_TITLES = mapOf(
     PROBLEM_NOTIFICATIONS to "Can't read notifications",
     PROBLEM_API_KEY to "Claude API key or credit problem",

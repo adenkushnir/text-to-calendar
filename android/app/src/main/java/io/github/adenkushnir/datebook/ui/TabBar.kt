@@ -1,4 +1,4 @@
-// The glass tab bar along the bottom of the main screens (Home · Lists · Notes · Ask): each tab's icon above its
+// The glass tab bar along the bottom of the main screens (Home · Lists · Notes): each tab's icon above its
 // name, the open one lit in aqua
 package io.github.adenkushnir.datebook.ui
 import androidx.compose.foundation.background

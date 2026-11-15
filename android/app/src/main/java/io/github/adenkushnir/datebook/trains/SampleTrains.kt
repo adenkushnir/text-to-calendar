@@ -85,5 +85,5 @@ fun sampleBoard(stations: List<Station>, from: String, to: String, nowMillis: Lo
     val last = trains.lastOrNull { leaves(it) <= nowMillis && !isCancelled(it) }  // a cancelled train never left
     val next = trains.filter { leaves(it) > nowMillis }.take(3)
     return TrainBoard(start.name, end.name, next.map { boardLine(it) }, last = last?.let { departedLine(it) } ?: "",
-        sample = true)
+        sample = true, nextDeparture = next.firstOrNull()?.let { leaves(it) } ?: 0)
 }

@@ -3,6 +3,8 @@
 <resources>
     <string name="app_name">Datebook</string>
     <string name="add_to_calendar">Add to calendar</string>
+    <string name="trains_widget_description">Your NJ Transit trip: the train that just left and the next 3</string>
+    <string name="lists_widget_description">Packages on the way, the next bill and the next assignment</string>
     <string name="automatic_mode_label">Datebook automatic mode</string>
     <string name="automatic_mode_description">Lets Datebook suggest calendar plans from texts you send and new messages in an open chat, in the messaging apps switched on in Datebook. It never reads what you are typing, other apps, or the messages already showing when you open a chat, and never takes screenshots.</string>
 </resources>

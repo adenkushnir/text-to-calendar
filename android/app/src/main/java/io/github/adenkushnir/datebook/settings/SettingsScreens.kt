@@ -1,5 +1,5 @@
 // The Settings screens from the mockup: a category menu, then Apps to watch, Claude & API key, Notifications &
-// alerts, Privacy & history and About (Smart features and Automatic mode appear once their steps are built)
+// alerts, Privacy & history, About and the rest
 package io.github.adenkushnir.datebook.settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement

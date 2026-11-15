@@ -1,6 +1,5 @@
 // The Lists tab: a segmented glass bar switching between Packages (with Track and Got it), Due soon (assignments with
-// Done), Trips (bookings grouped by destination) and Bills (with Paid); plus the Ask tab's placeholder until Ask
-// arrives
+// Done), Trips (bookings grouped by destination) and Bills (with Paid)
 package io.github.adenkushnir.datebook.lists
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -32,7 +31,6 @@ import io.github.adenkushnir.datebook.tracking.trackLinkFor
 import io.github.adenkushnir.datebook.ui.DatebookIcons
 import io.github.adenkushnir.datebook.ui.GelButton
 import io.github.adenkushnir.datebook.ui.GlassButton
-import io.github.adenkushnir.datebook.ui.GlassField
 import io.github.adenkushnir.datebook.ui.Segment
 import io.github.adenkushnir.datebook.ui.SegmentedBar
 import io.github.adenkushnir.datebook.whenAndWhere
@@ -213,24 +211,6 @@ private fun Bills(bills: List<FollowUp>, today: LocalDate, actions: ListsActions
                     Text("Paid")
                 }
             }
-        }
-    }
-}
-
-// The Ask tab until Ask Datebook arrives: what it will do, and a greyed-out box
-@Composable
-fun AskComingSoon() {
-    Column(Modifier.fillMaxSize()) {  // see-through, so the scene behind shows
-        TopBar("Ask Datebook")
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            DatebookCard(accent = true) {
-                SectionLabel("Coming in a later update")
-                Text("Ask in plain words, by typing or speaking: \"when am I free Thursday?\", \"what did Sam say " +
-                    "about Saturday?\", \"remind me to call the dentist tomorrow\". Later it answers through your " +
-                    "Google Home too.")
-            }
-            GlassField(value = "", onValueChange = {}, label = { Text("Ask Datebook…") }, singleLine = true,
-                modifier = Modifier.fillMaxWidth())
         }
     }
 }
