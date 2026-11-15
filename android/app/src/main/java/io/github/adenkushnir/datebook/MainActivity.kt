@@ -127,6 +127,7 @@ import io.github.adenkushnir.datebook.setup.readSetupStatus
 import io.github.adenkushnir.datebook.setup.setupFinished
 import io.github.adenkushnir.datebook.setup.showSamplePrompt
 import io.github.adenkushnir.datebook.summary.scheduleSummary
+import io.github.adenkushnir.datebook.extras.scheduleEvening
 import io.github.adenkushnir.datebook.trains.ON_THE_DAY
 import io.github.adenkushnir.datebook.trains.TrainBoard
 import io.github.adenkushnir.datebook.trains.TrainChoices
@@ -306,6 +307,7 @@ class MainActivity : ComponentActivity() {
         LaunchedEffect(Unit) {
             graph.pipeline.cleanUp()
             scheduleSummary(applicationContext)  // book the morning summary if it isn't already
+            scheduleEvening(applicationContext)  // book the evening weather and bring heads-ups if they aren't already
             scheduleLeaveBy(applicationContext)  // start planning leave-by alerts if it isn't already
             scheduleFlightChecks(applicationContext)  // start the flight checks if they aren't running
             scheduleTrains(applicationContext)  // start the NJ Transit train checks if they aren't running

@@ -62,10 +62,12 @@ private val EVENT_ITEM = mapOf(
             KIND_REMINDER)),
         "amount" to mapOf("type" to "string"),
         "trip" to mapOf("type" to "string"),
+        "bring" to mapOf("type" to "array", "items" to mapOf("type" to "string")),
+        "outdoor" to mapOf("type" to "boolean"),
     ),
     "required" to listOf("title", "start", "end", "all_day", "location", "repeat", "timezone", "change",
         "calendar_event", "flight", "package_carrier", "tracking_number", "confirmation_code", "kind", "amount",
-        "trip"),
+        "trip", "bring", "outdoor"),
     "additionalProperties" to false,
 )
 val EVENTS_SCHEMA = mapOf(
@@ -240,6 +242,8 @@ fun parseResponse(stopped: Boolean, json: String, phoneZone: String): List<Event
             kind = item.path("kind").asText(KIND_EVENT).ifBlank { KIND_EVENT },
             amount = item.path("amount").asText("").trim(),
             trip = item.path("trip").asText("").trim(),
+            bring = item.path("bring").map { it.asText("").trim() }.filter { it.isNotBlank() }.joinToString(", "),
+            outdoor = item.path("outdoor").asBoolean(false),
         )
 
         // A plan or bill without a start has nothing to go on; a loose plan or reminder may have no day yet

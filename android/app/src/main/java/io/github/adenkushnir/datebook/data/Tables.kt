@@ -17,7 +17,8 @@ data class SeenText(
 // warning shown with it, for a changed or cancelled plan which calendar event it changes, and its flight, package
 // and place coordinates, its start before it changed in the chat while waiting, whether you sent the text, and for an
 // offline guess the retry-queue text Claude is still to check (0 for plans Claude read), its confirmation code, and
-// for a travel booking the trip it belongs to, like "Chicago" (kept 1 year; never the message text)
+// for a travel booking the trip it belongs to, like "Chicago", what to bring and whether it's outdoors (kept 1 year;
+// never the message text)
 @Entity(tableName = "suggestions")
 data class Suggestion(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -47,12 +48,14 @@ data class Suggestion(
     @ColumnInfo(defaultValue = "0") val retryId: Long = 0,
     @ColumnInfo(defaultValue = "") val confirmation: String = "",
     @ColumnInfo(defaultValue = "") val trip: String = "",
+    @ColumnInfo(defaultValue = "") val bring: String = "",
+    @ColumnInfo(defaultValue = "0") val outdoor: Boolean = false,
 ) {
     // Turn the saved row back into an event
     fun toEvent(): Event {
         return Event(title, start, end, allDay, location, repeat, timezone, phoneTimezone, flight = flight,
             packageCarrier = packageCarrier, trackingNumber = trackingNumber, placeLat = placeLat, placeLng = placeLng,
-            confirmation = confirmation, trip = trip)
+            confirmation = confirmation, trip = trip, bring = bring, outdoor = outdoor)
     }
 
     // Names for the three states a suggestion can be in, plus the one for a calendar event shown on its card (never
@@ -92,6 +95,8 @@ fun suggestionOf(event: Event, incoming: IncomingText, now: Long, clash: String 
         fromMe = incoming.fromMe,
         confirmation = event.confirmation,
         trip = event.trip,
+        bring = event.bring,
+        outdoor = event.outdoor,
     )
 }
 

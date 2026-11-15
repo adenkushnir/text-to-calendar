@@ -3,6 +3,7 @@
 package io.github.adenkushnir.datebook.prompts
 import android.content.ContentUris
 import android.content.Intent
+import io.github.adenkushnir.datebook.extras.bringLine
 import android.provider.CalendarContract
 import io.github.adenkushnir.datebook.capture.WATCHABLE_APPS
 import io.github.adenkushnir.datebook.data.Suggestion
@@ -98,12 +99,14 @@ fun calendarEventIntent(suggestion: Suggestion): Intent {
     return Intent(Intent.ACTION_VIEW, uri)
 }
 
-// The calendar notes, then the confirmation code and the Track link (packages and flights) on their own lines, so
+// The calendar notes, then what to bring, the confirmation code and the Track link (packages and flights) on their
+// own lines, so
 // they're in the event too
 fun notesWithTrackLink(suggestion: Suggestion): String {
     val link = trackLinkFor(suggestion.flight, suggestion.packageCarrier, suggestion.trackingNumber)
     val code = if (suggestion.confirmation.isNotBlank()) "\nConfirmation: ${suggestion.confirmation}" else ""
-    return calendarNotes(suggestion) + code + (link?.let { "\nTrack: ${it.url}" } ?: "")
+    val bring = bringLine(suggestion.bring).let { if (it.isBlank()) "" else "\n$it" }  // only when there's a list
+    return calendarNotes(suggestion) + bring + code + (link?.let { "\nTrack: ${it.url}" } ?: "")
 }
 
 // The intent for the calendar app's new-event screen: title, start and end, all-day, place, repeat, zone and notes
