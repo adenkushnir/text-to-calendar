@@ -278,7 +278,8 @@ fun scheduleTrains(context: Context) {
 }
 
 // The train board's contents: the trip's station names, up to 3 trains (or a note saying why there are none), the
-// train that just left (blank when unknown), and whether the trains are made up
+// train that just left (blank when unknown), whether the trains are made up, and when the next one leaves (0 when
+// unknown)
 data class TrainBoard(
     val fromName: String,
     val toName: String,
@@ -286,6 +287,7 @@ data class TrainBoard(
     val note: String = "",
     val last: String = "",
     val sample: Boolean = false,
+    val nextDeparture: Long = 0,
 )
 
 // One train on the Next trains card, like "5:12 PM · Track 2 · On time" or "5:42 PM · 3 min late"
@@ -316,5 +318,6 @@ fun nextTrains(graph: AppGraph, from: String, to: String, nowMillis: Long = Syst
     val toName = stations.firstOrNull { it.code == to }?.name ?: to
     val trains = graph.railData.departures(from).filter { arrivalAt(it, to) != null }.take(3)
     val note = if (trains.isEmpty()) "No trains found right now." else ""  // the board was empty or unreachable
-    return TrainBoard(fromName, toName, trains.map { boardLine(it) }, note)
+    val next = trains.firstOrNull()?.departs?.toEpochMilli() ?: 0
+    return TrainBoard(fromName, toName, trains.map { boardLine(it) }, note, nextDeparture = next)
 }

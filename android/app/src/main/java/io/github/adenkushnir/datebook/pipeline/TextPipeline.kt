@@ -89,6 +89,7 @@ class TextPipeline(
     private val guessTimes: (text: String, receivedAt: LocalDateTime, zone: String) -> List<GuessedTime> =
         { _, _, _ -> emptyList() },
     private val onFollowUpsSaved: () -> Unit = {},
+    private val onAlert: (kind: String, showing: Boolean) -> Unit = { _, _ -> },
 ) {
     private val health = Health(dao)
 
@@ -148,6 +149,7 @@ class TextPipeline(
             // Count the problem toward its alert, and note in the log when the alert appears
             if (failure.problem != null && health.failed(failure.problem)) {
                 lines.add("alert: ${ALERT_TITLES.getValue(failure.problem)}")
+                onAlert(failure.problem, true)
             }
             return Outcome(emptyList(), listOf(failure.line) + lines, failure.retry, failure = failure,
                 unread = true)
@@ -589,6 +591,7 @@ class TextPipeline(
             // Note when an alert that was showing goes away
             if (health.succeeded(kind)) {
                 lines.add("alert cleared: ${ALERT_TITLES.getValue(kind)}")
+                onAlert(kind, false)
             }
         }
     }

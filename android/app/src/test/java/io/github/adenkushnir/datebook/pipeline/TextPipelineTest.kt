@@ -47,6 +47,7 @@ class TextPipelineTest {
     private val prompts = mutableListOf<Pair<String, String>>()
     private val asked = mutableListOf<IncomingText>()
     private val withdrawn = mutableListOf<Long>()
+    private val alerts = mutableListOf<String>()
 
     // Open a fresh in-memory database before each test
     @Before
@@ -83,6 +84,7 @@ class TextPipelineTest {
             lookupFlight = { flight, date -> flights["$flight|$date"] },
             onWithdrawn = { withdrawn.add(it) },
             guessTimes = { _, _, _ -> guesses },
+            onAlert = { kind, showing -> alerts.add("$kind ${if (showing) "shown" else "cleared"}") },
         )
     }
 
@@ -303,13 +305,15 @@ class TextPipelineTest {
         assertTrue(prompts.isEmpty())
     }
 
-    // A key problem alerts at once, and the next good answer from Claude clears the alert and its count
+    // A key problem alerts at once, and the next good answer from Claude clears the alert, its notification and its
+    // count
     @Test
     fun keyAlertAndClear() = runTest {
         assertTrue(Health(dao).failed(PROBLEM_API_KEY))
         val lines = pipeline(listOf(dinner)).handle(incoming).lines
         assertTrue(lines.contains("alert cleared: Claude API key or credit problem"))
         assertEquals(0, dao.failures(PROBLEM_API_KEY))
+        assertEquals(listOf("$PROBLEM_API_KEY cleared"), alerts)  // its notification is removed
     }
 
     // Other API problems alert only on the third failure in a row, and only once

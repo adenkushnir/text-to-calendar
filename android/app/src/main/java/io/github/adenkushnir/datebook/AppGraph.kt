@@ -12,6 +12,8 @@ import io.github.adenkushnir.datebook.data.DatebookDatabase
 import io.github.adenkushnir.datebook.email.promptQuote
 import io.github.adenkushnir.datebook.flights.FlightStore
 import io.github.adenkushnir.datebook.flights.lookupFlight
+import io.github.adenkushnir.datebook.alerts.clearProblemAlert
+import io.github.adenkushnir.datebook.alerts.showProblemAlert
 import io.github.adenkushnir.datebook.followups.bookNextFollowUp
 import io.github.adenkushnir.datebook.offline.OfflineDates
 import io.github.adenkushnir.datebook.pipeline.ApiKeyStore
@@ -70,6 +72,10 @@ class AppGraph private constructor(context: Context) {
         onWithdrawn = { notifier.cancel(it) },
         guessTimes = { text, receivedAt, zone -> offlineDates.find(text, receivedAt, ZoneId.of(zone)) },
         onFollowUpsSaved = { CoroutineScope(Dispatchers.IO).launch { bookNextFollowUp(context) } },
+        // Show a problem's quiet alert when it reaches its limit, and clear it once it's fixed
+        onAlert = { kind, showing ->
+            if (showing) showProblemAlert(context, kind) else clearProblemAlert(context, kind)
+        },
     )
 
     // Return a Claude client for the key, reusing it while the key stays the same

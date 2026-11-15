@@ -131,6 +131,15 @@ import io.github.adenkushnir.datebook.trains.ON_THE_DAY
 import io.github.adenkushnir.datebook.trains.TrainBoard
 import io.github.adenkushnir.datebook.trains.TrainChoices
 import io.github.adenkushnir.datebook.trains.nextTrains
+import io.github.adenkushnir.datebook.widgets.EXTRA_OPEN_LIST
+import io.github.adenkushnir.datebook.widgets.scheduleWidgetRefresh
+import io.github.adenkushnir.datebook.widgets.updateWidgets
+import io.github.adenkushnir.datebook.alerts.activeProblems
+import io.github.adenkushnir.datebook.alerts.alertRoute
+import io.github.adenkushnir.datebook.alerts.resetClaudeProblems
+import io.github.adenkushnir.datebook.pipeline.ALERT_TITLES
+import io.github.adenkushnir.datebook.pipeline.PROBLEM_NOTIFICATIONS
+import androidx.lifecycle.lifecycleScope
 import io.github.adenkushnir.datebook.trains.pickableStations
 import io.github.adenkushnir.datebook.today.todayOf
 import io.github.adenkushnir.datebook.weather.Forecast
@@ -140,7 +149,6 @@ import io.github.adenkushnir.datebook.trains.scheduleTrains
 import io.github.adenkushnir.datebook.trains.trainChoices
 import io.github.adenkushnir.datebook.trains.wantsTrain
 import io.github.adenkushnir.datebook.data.noteTitle
-import io.github.adenkushnir.datebook.lists.AskComingSoon
 import io.github.adenkushnir.datebook.notes.NotesActions
 import io.github.adenkushnir.datebook.notes.NotesScreen
 import io.github.adenkushnir.datebook.lists.LIST_PACKAGES
@@ -173,7 +181,6 @@ const val ROUTE_SETUP = "setup"
 const val ROUTE_HOME = "home"
 const val ROUTE_LISTS = "lists"
 const val ROUTE_NOTES = "notes"
-const val ROUTE_ASK = "ask"
 const val ROUTE_SUGGESTION = "suggestion/{id}"
 const val ROUTE_EVENT = "event/{eventId}/{begin}"
 const val ROUTE_SETTINGS = "settings"
@@ -191,8 +198,7 @@ const val ROUTE_SETTINGS_AUTOMATIC = "settings/automatic"
 const val ROUTE_SETTINGS_LOOK = "settings/look"
 private const val TICK_MILLIS = 30_000L  // how often Home moves "now" on
 private val MAIN_TABS = listOf(TabItem(ROUTE_HOME, DatebookIcons.Home, "Home"),
-    TabItem(ROUTE_LISTS, DatebookIcons.List, "Lists"), TabItem(ROUTE_NOTES, DatebookIcons.Note, "Notes"),
-    TabItem(ROUTE_ASK, DatebookIcons.Sparkle, "Ask"))
+    TabItem(ROUTE_LISTS, DatebookIcons.List, "Lists"), TabItem(ROUTE_NOTES, DatebookIcons.Note, "Notes"))
 private const val WEATHER_CHECK_MILLIS = 15 * 60_000L  // how often Home asks if the forecast needs refreshing
 private const val RELOAD_MILLIS = 5 * 60_000L  // how often Home re-reads the calendar even without a change
 
@@ -200,6 +206,7 @@ private const val RELOAD_MILLIS = 5 * 60_000L  // how often Home re-reads the ca
 class MainActivity : ComponentActivity() {
     private var promptSuggestion by mutableStateOf<Long?>(null)
     private var openRoute by mutableStateOf<String?>(null)  // a page a notification asked to open
+    private var openList by mutableStateOf<String?>(null)  // a list the Lists widget asked to open
     private var screenRoute by mutableStateOf<String?>(null)  // the open screen, so the scene behind can follow it
 
     // Draw edge to edge and show the app, opening the suggestion a prompt asked for
@@ -209,6 +216,7 @@ class MainActivity : ComponentActivity() {
         movingSwitch.value = MotionSettings(this).isOn()
         promptSuggestion = suggestionIn(intent)
         openRoute = intent?.getStringExtra(EXTRA_OPEN_ROUTE)
+        openList = intent?.getStringExtra(EXTRA_OPEN_LIST)
         setContent {
             DatebookTheme {
                 val light = rememberSceneLight()
@@ -235,6 +243,13 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         promptSuggestion = suggestionIn(intent) ?: promptSuggestion
         openRoute = intent.getStringExtra(EXTRA_OPEN_ROUTE) ?: openRoute
+        openList = intent.getStringExtra(EXTRA_OPEN_LIST) ?: openList
+    }
+
+    // Redraw the widgets when you leave the app, so they show what you just changed
+    override fun onStop() {
+        super.onStop()
+        lifecycleScope.launch { updateWidgets(applicationContext) }
     }
 
     // Return the suggestion id a prompt's intent carries, or null
@@ -296,6 +311,7 @@ class MainActivity : ComponentActivity() {
             scheduleFlightChecks(applicationContext)  // start the flight checks if they aren't running
             scheduleTrains(applicationContext)  // start the NJ Transit train checks if they aren't running
             scheduleFollowUps(applicationContext)  // start the follow-up nudges and reminders if they aren't running
+            scheduleWidgetRefresh(applicationContext)  // start the widget refresh and access check if it isn't running
             bookNextFollowUp(applicationContext)  // and book the next one due, on time
             graph.offlineDates.prepare()  // download the offline date model the first time there's internet
 
@@ -312,6 +328,15 @@ class MainActivity : ComponentActivity() {
             askCalendar = { askPermission.launch(Manifest.permission.READ_CALENDAR) },
             saveMapsKey = { key -> graph.mapsKeyStore.save(key); refresh() },
         )
+        LaunchedEffect(openList) {
+            val list = openList
+
+            // Show the list the Lists widget's row named
+            if (list != null) {
+                listShown = list
+                openList = null
+            }
+        }
         LaunchedEffect(openRoute) {
             val asked = openRoute
 
@@ -370,6 +395,9 @@ class MainActivity : ComponentActivity() {
                         day.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli())
                 }
                 val todayReminders by todayRemindersFlow.collectAsState(initial = emptyList())
+                val problems by produceState(emptyList<String>(), reload, waiting) {
+                    value = activeProblems(graph.dao)
+                }
                 val forecast by produceState<Forecast?>(null, now / WEATHER_CHECK_MILLIS) {
                     value = withContext(Dispatchers.IO) { homeForecast(applicationContext, now, zone) }
                 }
@@ -383,6 +411,12 @@ class MainActivity : ComponentActivity() {
                     while (true) {
                         trains = withContext(Dispatchers.IO) { nextTrains(graph, saved.first, saved.second) }
                         delay(60_000)
+                        val current = graph.trainSettings.trip()
+
+                        // Follow a flip made on the widget
+                        if (current != trip) {
+                            trip = current
+                        }
                     }
                 }
                 Tabbed(ROUTE_HOME, openTab) {
@@ -399,7 +433,9 @@ class MainActivity : ComponentActivity() {
                         onAdd = add,
                         onIgnore = ignore,
                         onSettings = { nav.navigate(ROUTE_SETTINGS) },
-                        fixes = fixesFor(status, actions, openKeySetup = { nav.navigate(ROUTE_SETUP) }),
+                        fixes = fixesFor(status, actions, openKeySetup = { nav.navigate(ROUTE_SETUP) }) +
+                            problems.filter { it != PROBLEM_NOTIFICATIONS }  // access has its own banner
+                                .map { Pair(ALERT_TITLES.getValue(it), { nav.navigate(alertRoute(it)) }) },
                         trains = trains,
                         checking = checking.toSet(),
                         loosePlans = loosePlans,
@@ -448,11 +484,6 @@ class MainActivity : ComponentActivity() {
                 )
                 Tabbed(ROUTE_NOTES, openTab) {
                     NotesScreen(reminders, notes, ZoneId.systemDefault(), notesActions)
-                }
-            }
-            composable(ROUTE_ASK) {
-                Tabbed(ROUTE_ASK, openTab) {
-                    AskComingSoon()
                 }
             }
             composable(ROUTE_SUGGESTION, arguments = listOf(navArgument("id") { type = NavType.LongType })) { entry ->
@@ -790,6 +821,7 @@ class MainActivity : ComponentActivity() {
         // Save keys that work, then re-check the setup steps
         if (problem == null) {
             graph.keyStore.save(key)
+            resetClaudeProblems(applicationContext, graph.dao)  // a new key starts the Claude alerts over
             refresh()
         }
         return problem

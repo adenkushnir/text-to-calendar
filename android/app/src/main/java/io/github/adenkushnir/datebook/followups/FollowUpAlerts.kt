@@ -29,6 +29,7 @@ import io.github.adenkushnir.datebook.data.KIND_ASSIGNMENT
 import io.github.adenkushnir.datebook.data.KIND_DUE
 import io.github.adenkushnir.datebook.data.KIND_LOOSE
 import io.github.adenkushnir.datebook.data.KIND_REMINDER
+import io.github.adenkushnir.datebook.widgets.updateWidgets
 import io.github.adenkushnir.datebook.data.nextRepeat
 import io.github.adenkushnir.datebook.data.repeatLabel
 import io.github.adenkushnir.datebook.data.NUDGE_HOUR
@@ -465,6 +466,7 @@ class FollowUpReceiver : BroadcastReceiver() {
                     ACTION_PAID -> dao.setFollowUpStatus(id, FollowUp.DONE)
                 }
                 bookNextFollowUp(context)
+                updateWidgets(context)  // the Lists widget shows bills and assignments
             } finally {
                 pending.finish()
             }
