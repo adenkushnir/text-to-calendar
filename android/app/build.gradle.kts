@@ -1,4 +1,4 @@
-// Build settings for the Datebook app: Android versions, Compose, and the libraries it uses
+// Build settings for the Datebook app: Android versions, release signing, Compose, and the libraries it uses
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -18,6 +18,9 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // Signed with this PC's debug key, so a release installs over the app already on the phone and the Maps
+            // and Gmail setups (which know that key's fingerprint) keep working; it's never going on the Play Store
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {

@@ -51,8 +51,10 @@ private val SPACES = Regex("[ \\t\\u00a0]+")
 private val BLANK_LINES = Regex("\\n\\s*\\n\\s*\\n+")
 private val NAME_AND_ADDRESS = Regex("^\\s*\"?([^\"<]*?)\"?\\s*<([^>]+)>\\s*$")
 
-// One email: its id, who it's from (as the From line reads), subject, plain-text body, and when it arrived
-data class Email(val id: String, val from: String, val subject: String, val body: String, val receivedMillis: Long)
+// One email: its id, who it's from (as the From line reads), subject, plain-text body, when it arrived, and whether
+// it's one you sent to someone else (not to yourself), which Datebook skips
+data class Email(val id: String, val from: String, val subject: String, val body: String, val receivedMillis: Long,
+    val sentByYou: Boolean = false)
 
 // What the last check found: the new emails, or why there were none ("not signed in", "sign-in lapsed")
 data class GmailCheck(val emails: List<Email>, val note: String = "")
@@ -119,9 +121,10 @@ class GmailSettings(context: Context) {
     }
 }
 
-// The Gmail search for new mail since a time: the inbox without Promotions and Social
+// The Gmail search for new mail since a time: all mail, archived too (so swiping an email away in Gmail before
+// Datebook checks doesn't hide it), without drafts, chats, Promotions and Social; Gmail leaves out spam and trash
 fun searchQuery(sinceSeconds: Long): String {
-    return "in:inbox -category:promotions -category:social after:$sinceSeconds"
+    return "-in:drafts -in:chats -category:promotions -category:social after:$sinceSeconds"
 }
 
 // The sender's name from a From line: "OpenTable <info@opentable.com>" gives "OpenTable", a bare address stays as it is
@@ -148,8 +151,10 @@ fun parseEmail(json: String): Email? {
     val headers = root.path("payload").path("headers")
     val header = { name: String -> headers.firstOrNull { it.path("name").asText().equals(name, true) }
         ?.path("value")?.asText("").orEmpty() }
+    val labels = root.path("labelIds").map { it.asText() }
+    val sentByYou = "SENT" in labels && "INBOX" !in labels  // sent to someone else; one to yourself is in the inbox
     return Email(id, header("From"), header("Subject"), bodyText(root.path("payload")),
-        root.path("internalDate").asText("0").toLongOrNull() ?: 0)
+        root.path("internalDate").asText("0").toLongOrNull() ?: 0, sentByYou)
 }
 
 // An email's text: its plain-text part if it has one, else its HTML part turned into text

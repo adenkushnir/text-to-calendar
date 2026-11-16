@@ -76,13 +76,27 @@ class GmailTest {
         assertEquals("Pickup ready\nSat & Sun, 10:00", email.body)
     }
 
-    // Senders' names from different From lines; the search skips Promotions and Social; ids come from a list reply
+    // An email you sent to someone else is skipped; one you sent yourself (also in the inbox) and archived mail aren't
+    @Test
+    fun sentByYou() {
+        val body = """"mimeType": "text/plain", "body": {"data": "${encoded("Lunch Tue at 1?")}"}"""
+        val labelled = { labels: String ->
+            parseEmail(reply("Me <me@example.com>", "Lunch", body).replaceFirst("{", "{\"labelIds\": [$labels], "))!!
+        }
+        assertTrue(labelled("\"SENT\"").sentByYou)
+        assertFalse(labelled("\"SENT\", \"INBOX\"").sentByYou)
+        assertFalse(labelled("\"CATEGORY_UPDATES\"").sentByYou)
+    }
+
+    // Senders' names from different From lines; the search covers archived mail but skips drafts, chats, Promotions
+    // and Social; ids come from a list reply
     @Test
     fun namesSearchAndIds() {
         assertEquals("Sam K", senderName("\"Sam K\" <sam@example.com>"))
         assertEquals("only@example.com", senderName("<only@example.com>"))
         assertEquals("plain@example.com", senderName("plain@example.com"))
-        assertEquals("in:inbox -category:promotions -category:social after:1700000000", searchQuery(1_700_000_000))
+        assertEquals("-in:drafts -in:chats -category:promotions -category:social after:1700000000",
+            searchQuery(1_700_000_000))
         assertEquals(listOf("a1", "b2"), parseIds("""{"messages": [{"id": "a1"}, {"id": "b2"}]}"""))
         assertEquals(emptyList<String>(), parseIds("""{"resultSizeEstimate": 0}"""))
     }

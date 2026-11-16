@@ -47,9 +47,14 @@ class GmailCheckWorker(context: Context, params: WorkerParameters) : CoroutineWo
 
         // Handle each new email, oldest first
         for (email in check.emails) {
-            val outcome = graph.pipeline.receive(incomingFrom(email, ZoneId.systemDefault()))
             settings.markSeen(email.id)
             settings.setSince(maxOf(settings.since(), email.receivedMillis / 1000 - SINCE_MARGIN_SECONDS))
+
+            // Emails you sent to someone else aren't read
+            if (email.sentByYou) {
+                continue
+            }
+            val outcome = graph.pipeline.receive(incomingFrom(email, ZoneId.systemDefault()))
             val lines = outcome?.lines ?: listOf("no date")  // emails without a date leave no trace
             lines.forEach { Log.i(TAG, "[gmail] ${senderName(email.from)} -> $it") }
         }

@@ -1,226 +1,161 @@
-# text-to-calendar
+# Datebook
 
-Turns dates in your texts into Google Calendar events on Android.
+An Android app that turns plans in your texts and emails into calendar events, and keeps your day in one place.
 
-A Python script runs on the phone in [Termux](https://termux.dev). It watches Samsung Messages and Google Messages notifications. When a text mentions a date or time, it asks Claude to work out the event and shows an **Add to calendar?** notification. Tapping **Add** opens Google Calendar's new-event screen already filled in, ready to save.
+When a text says "dinner fri 7pm at Luigi's", Datebook asks Claude to read it and shows an **Add to calendar?**
+notification. Tapping **Add** opens your calendar app's new-event screen already filled in: title, time, full
+address, and notes saying who it came from. Datebook never writes to your calendar itself; nothing is saved until you
+tap **Save** there.
 
-## How it works
+Datebook started as a Python script running in Termux (see [Legacy](#legacy-the-termux-script-v020) at the end).
+Version 1.0.0 is a full Kotlin app, built with Jetpack Compose, in [`android/`](android/).
 
-1. Every 5 seconds, it reads the phone's notifications with `termux-notification-list` and keeps new texts from the messaging apps. After 10 minutes with no new texts it checks every 30 seconds instead, to save battery, and goes back to every 5 seconds as soon as a text arrives.
-2. It skips any text without a date-like word, so most texts never leave the phone.
-3. It sends the rest to the Claude API, which returns each event in the text: title, start, end, all-day, location, repeat rule and time zone. A text with several plans ("dinner at 7:30, then a movie at 10") gives one event per plan. When a text offers a first choice and a fallback ("wed at 5:45? if not then 12/2"), only the first choice is used.
+## What it does
 
-   **Birthdays:** a text giving someone's birthday ("it's my birthday march 3", or "jakes birthday is saturday") also offers a yearly all-day event, like `Sam's birthday · Wed Mar 3 · repeats yearly`. A party in the same text gets its own prompt. Birthday wishes like "happy birthday!" are ignored.
+**Catching plans**
+- Reads new messages from the apps you choose: Google Messages, Samsung Messages, GroupMe, WhatsApp, Instagram,
+  Discord and Gmail. Only messages with a date or time in them are sent to Claude; group chats need a clear one.
+- **Share → Datebook** for any text, picture or PDF. A schedule (a syllabus, a team schedule) becomes a list you
+  tick through and add in one go.
+- **Gmail sign-in** (read-only) for reservations, tickets and appointments, with the confirmation code in the notes.
+- **Automatic mode** (optional, off by default): also catches texts you send and new messages in an open chat.
+- **Offline backup:** without internet, an on-phone guess waits on Home and Claude checks it once you're back online.
 
-   **Time zones:** times are in the phone's current time zone, so they're right while you travel. If the text names a zone ("call at 3pm PT"), or is about a flight landing somewhere else, the time is converted and the prompt shows both: `6:00 PM (3:00 PM PST)`.
-4. It shows a notification with **Add** and **Ignore** buttons for each event.
-5. **Add** opens the prefilled event in Google Calendar. Nothing is saved until you tap **Save** there.
+**Knowing your calendar**
+- Warns about clashes, skips plans already on your calendar, and turns "moved to 8" or "cancelled" into a
+  **Move Dinner to 8 PM?** prompt that opens the event.
+- **Leave-by alerts** with travel time (drive, transit, walk or bike) and **Open in Maps**.
+- **Flights** filled in from live flight data, with delay and gate alerts. **NJ Transit** trains toward a plan, with
+  your train on the leave-by alert. **Track** links for UPS, FedEx, USPS, Amazon and DHL packages.
+- Bills and assignments become reminders, not events. Loose plans ("we should get lunch next week") get a nudge to
+  pin them down.
 
-## Status
+**Your day**
+- **Home:** the Today card with the weather, today's events, reminders, bills and assignments, the next one lit and
+  finished ones dimmed; plans waiting for you; the next few days; and a live NJ Transit board for your trip.
+- **Lists:** packages on the way, assignments due soon, trips, and bills.
+- **Notes:** notes and reminders. A reminder is a notification at a time, typed in Datebook or sent in a text
+  ("remind me to call the dentist tomorrow at 9").
+- **Widgets:** Next trains (the train that just left and the next 3; tapping a train opens the NJ Transit app) and
+  Lists at a glance. They use your wallpaper's colours.
+- **Quiet notifications:** an 8 AM summary on days with events, a Friday week ahead, and the evening before, what to
+  bring ("Bring: cleats, $20") and a heads-up when an outdoor plan looks rainy or cold.
+- **Problem alerts:** one quiet notification (and a banner on Home) if your Claude key stops working, Claude keeps
+  failing, or notification access is turned off. Both clear themselves.
 
-- [x] Notification reader
-- [x] Date pre-filter
-- [x] Claude extraction
-- [x] Add to calendar (including repeating events)
-- [x] Start on boot
+## Install
 
-## Setup
+Datebook needs Android 10 or newer.
 
-These steps are needed once per phone.
+1. Download `datebook-1.0.0.apk` from the [latest release](https://github.com/adenkushnir/text-to-calendar/releases/latest)
+   on your phone.
+2. Open it and allow your browser or Files app to install apps when Android asks.
+3. Open Datebook and follow the six setup pages:
+   1. **Let Datebook read your notifications**, so it sees new messages.
+   2. **Allow Datebook to show notifications**, for the prompts and alerts.
+   3. **Paste your Claude API key** (see below).
+   4. **Keep Datebook running**: set its battery use to Unrestricted, so Android doesn't put it to sleep.
+   5. **Let Datebook see your calendar**, for clashes, Home and leave-by alerts.
+   6. **Add a Google Maps key** (optional), for addresses and travel times.
 
-### 1. Install the apps
+On Android 13 and newer, an app installed from a file may need **Allow restricted settings** (in the app's info page,
+⋮ menu) before you can turn on notification access or automatic mode.
 
-Install **Termux**, **Termux:API** and **Termux:Boot** from [F-Droid](https://f-droid.org). All three must come from the same place: the Play Store versions are outdated and can't work with the F-Droid ones. Open **Termux:Boot** once after installing it. Android only lets it run at start-up after it has been opened.
+## Keys and accounts
 
-### 2. Install the packages and the code
+Datebook has no server. Everything runs on your phone with your own keys, stored encrypted with the Android Keystore.
 
-In Termux:
-
-```bash
-pkg upgrade -y && pkg install -y python git termux-api rust binutils
-export ANDROID_API_LEVEL=$(getprop ro.build.version.sdk)
-git clone https://github.com/adenkushnir/text-to-calendar.git ~/text-to-calendar
-cd ~/text-to-calendar && pip install -r requirements.txt
-```
-
-`rust` is needed because two of the Anthropic SDK's libraries are compiled on the phone. The first `pip install` can take 10–20 minutes; keep Termux open.
-
-### 3. Phone permissions
-
-| Setting | Why | How |
+| What | Needed for | Where to get it |
 |---|---|---|
-| Notification access for **Termux:API** | Read message notifications | Run `am start -a android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS` and turn on Termux:API. If Android says "Restricted setting", open Settings → Apps → Termux:API → ⋮ → **Allow restricted settings** first. |
-| Notifications for **Termux:API** | Show the **Add to calendar?** prompt | Settings → Apps → Termux:API → Notifications → on |
-| **Display over other apps** for Termux | Let the **Add** button open Google Calendar | Run `am start -a android.settings.action.MANAGE_OVERLAY_PERMISSION -d package:com.termux` and turn it on |
-| `allow-external-apps` in Termux | Let notification buttons run commands | Run `mkdir -p ~/.termux && echo "allow-external-apps = true" >> ~/.termux/termux.properties && termux-reload-settings` |
-| Battery **Unrestricted** for Termux, Termux:API and Termux:Boot | Stop Samsung from closing the app in the background | Settings → Apps → each app → Battery → **Unrestricted**. Also make sure none of them is in Settings → Battery → Background usage limits → **Sleeping / Deep sleeping apps**. |
+| **Claude API key** (required) | Reading texts, emails, pictures and PDFs | [console.anthropic.com](https://console.anthropic.com) |
+| Google Maps key (optional) | Full addresses, travel times, leave-by alerts | Google Cloud: enable Places API (New) and Routes API |
+| AeroDataBox key (optional) | Live flight times, delays and gates | RapidAPI, free Basic plan |
+| NJ Transit account (optional) | Live trains | [developer.njtransit.com](https://developer.njtransit.com) (RailData and GTFS-RAIL) |
+| Gmail (optional) | Plans from email | Sign in from Settings → Gmail |
 
-Check notification access with `timeout 10 termux-notification-list; echo $?`. It should print your notifications and `0`. `124` means it hung, which usually means access isn't really granted.
+If you restrict your Maps key to Android apps, use the package name `io.github.adenkushnir.datebook` and the release
+certificate's SHA-1:
 
-### 4. Claude API key
-
-This repo doesn't include an API key. Each person who runs the app uses their own key, and API usage is billed to that key's account.
-
-1. Create a key at [console.anthropic.com](https://console.anthropic.com) under **API keys**, and add credit to the account.
-2. Save it on the phone in `~/.t2c_env`, in your Termux home folder, outside the repo:
-
-   ```bash
-   pkg install -y nano
-   rm -f ~/.t2c_env && nano ~/.t2c_env
-   ```
-
-   Type `export ANTHROPIC_API_KEY='`, paste your key (long-press → Paste), and type a closing `'`, all on one line. Save with **Volume Down + O**, then Enter, and exit with **Volume Down + X**. Volume Down works as CTRL in Termux.
-3. Lock the file and check the key works:
-
-   ```bash
-   chmod 600 ~/.t2c_env && source ~/.t2c_env
-   echo "${ANTHROPIC_API_KEY:0:7}... length ${#ANTHROPIC_API_KEY}"
-   python -c "import anthropic; print(anthropic.Anthropic().models.list().data[0].id)"
-   ```
-
-   A real key is about 100 characters long, and the last line prints a model name. `invalid x-api-key` means the key was mistyped or is only a placeholder.
-
-Never put the key in a file inside the repo or commit it.
-
-**Without a key**, the app still runs. It reads notifications and runs the on-phone date check, but sends nothing to Claude and costs nothing. Texts with a date are logged as `date found, no API key`, and no **Add to calendar?** prompt appears.
-
-**Cost:** only texts that pass the on-phone date check are sent to Claude, using Claude Opus 5.5 on low effort, typically under a cent per text. You can set a monthly spend limit in the Anthropic Console.
-
-### 5. Start on boot
-
-Link the start script into Termux:Boot's folder, then start it once now:
-
-```bash
-mkdir -p ~/.termux/boot
-ln -sf ~/text-to-calendar/boot/start.sh ~/.termux/boot/start-t2c.sh
-sh ~/text-to-calendar/boot/start.sh
+```
+CA:E1:CF:38:51:8C:2C:2A:14:29:BF:18:DA:7B:4C:4F:8B:20:2F:77
 ```
 
-From then on, Termux:Boot runs it whenever the phone starts. Because it's a link, a `git pull` updates the boot script too.
+Gmail sign-in uses this project's Google Cloud app, which is in Google's testing mode: it only works for Google
+accounts added as testers, and signing in lapses about once a week (Datebook reminds you).
 
-### 6. Check it works
+**Cost:** Claude is the only paid part, usually about $3–8 a month with Claude Opus 5.5, less with a smaller model
+(Settings → Claude & API key). Google Maps normally stays within its free monthly allowance for one person.
 
-- A pinned **text-to-calendar is running** notification appears, showing "Last checked" with a time that updates every minute.
-- `tail ~/t2c.log` shows `text-to-calendar: watching for messages`.
-- Have someone text you "dinner fri 7pm". Within a few seconds an **Add to calendar?** prompt appears.
-- Restart the phone, wait a minute, and check the running notification is back.
+## Privacy
 
-## Everyday use
-
-There's nothing to do day to day. Two notifications stay in the notification bar:
-
-- **text-to-calendar is running**, with the time of its last check and how often it is checking (every 5 s or every 30 s). If that time stops updating, the app has stopped.
-- Termux's own notification ("wake lock held"). It keeps Termux alive; don't tap **Exit** on it.
-
-| Command (in Termux) | What it does |
-|---|---|
-| `sh ~/text-to-calendar/boot/start.sh` | Start it (does nothing if it's already running) |
-| `sh ~/text-to-calendar/boot/stop.sh` | Stop it |
-| `sh ~/text-to-calendar/boot/restart.sh` | Restart it |
-| `tail -f ~/t2c.log` | Watch the log live (stop watching with Volume Down + C) |
-| `pgrep -f t2c.main` | Prints a number if it's running |
-
-If the app crashes, it restarts itself after 30 seconds. If a text with a date arrives while there's no internet, or while Claude is busy or having problems, the text is saved and tried again every minute for up to 24 hours, and the prompt appears once it goes through. The log is in `~/t2c.log`, and starts over in a new file once it passes 1 MB. It stays on the phone and is never committed.
-
-The log records which app and sender each text came from and what happened to it, including any event Claude found (title, time, location). It does **not** record the text itself. To include message texts while testing, add `export T2C_LOG_TEXT=1` to `~/.t2c_env` and restart. Delete that line again afterwards.
-
-## Alerts
-
-The app shows a quiet notification, once per problem, when it notices something wrong. The alert goes away by itself once things work again.
-
-| Alert | When it appears | What to do |
-|---|---|---|
-| **Can't read notifications** | Reading notifications failed 3 times in a row, usually because an Android update turned off notification access | Turn notification access for Termux:API back on (see Setup step 3) |
-| **Claude API key or credit problem** | The first time the key is rejected or the account is out of credit | Check the key in `~/.t2c_env`, or add credit in the Anthropic Console |
-| **Claude API keeps failing** | 3 API errors in a row, such as rate limits or Anthropic outages | Nothing. Texts with a date are retried every minute. |
-
-What it can't tell you:
-
-- **The phone is off, or Termux was killed.** Nothing on the phone is running to notice. The sign is the **text-to-calendar is running** notification disappearing, or its "Last checked" time not updating.
-- **No internet.** This doesn't raise an alert, because texts are saved and retried automatically once the connection is back.
-
-## When it has to be started again
-
-| Situation | What to do |
-|---|---|
-| The phone restarts or the battery dies | Nothing. Termux:Boot starts it. |
-| The app crashes | Nothing. It restarts after 30 seconds. |
-| You tapped **Exit** on Termux's notification, or force-stopped Termux | Run `start.sh`, or restart the phone. |
-| Samsung closed it anyway (often after a One UI update resets battery settings) | Set the three apps back to **Unrestricted**, then run `start.sh`. |
-| An Android update turned off notification access | Turn notification access for Termux:API back on (see Setup step 3), then run `restart.sh`. |
-| New code version | `cd ~/text-to-calendar && git pull`, then run `restart.sh`. |
-| New API key, or the account ran out of credit | Edit `~/.t2c_env` (or add credit), then run `restart.sh`. |
-| Termux reinstalled, or a new phone | Do the whole setup again. |
-
-## Battery settings
-
-Checking notifications often is what uses most of the battery. These settings go in `~/.t2c_env`, one `export` line each, and take effect after `restart.sh`:
-
-| Setting | Default | What it does |
-|---|---|---|
-| `T2C_POLL_SECONDS` | `5` | How often it checks while texts are coming in. Higher saves battery, but texts sent close together are more likely to be missed. |
-| `T2C_SLOW_POLL_SECONDS` | `30` | How often it checks once it has been quiet. A text that arrives then gets its prompt up to this many seconds later. |
-| `T2C_IDLE_MINUTES` | `10` | How long without a new text before it switches to the slow checks. |
-
-For example, to check every 10 seconds normally and every minute when quiet:
-
-```bash
-echo "export T2C_POLL_SECONDS=10" >> ~/.t2c_env
-echo "export T2C_SLOW_POLL_SECONDS=60" >> ~/.t2c_env
-sh ~/text-to-calendar/boot/restart.sh
-```
-
-The log shows each switch (`now checking every 30 s`). To see how much battery the app uses, open Settings → Battery and check **Termux** and **Termux:API**.
-
-## Changing the model
-
-The app uses `claude-opus-5-5` by default. The default is set near the top of [`t2c/extractor.py`](t2c/extractor.py):
-
-```python
-MODEL = os.environ.get("T2C_MODEL", "claude-opus-5-5")
-```
-
-To use a different model without editing the code, which would conflict with the next `git pull`, add a `T2C_MODEL` line to `~/.t2c_env` and restart:
-
-```bash
-echo "export T2C_MODEL=claude-haiku-5-5" >> ~/.t2c_env
-sh ~/text-to-calendar/boot/restart.sh
-```
-
-`claude-haiku-5-5` costs much less per text but may be less accurate on casual or unclear messages. The current models and prices are listed at [docs.claude.com](https://docs.claude.com/en/docs/about-claude/models). To go back to the default, delete the `T2C_MODEL` line from `~/.t2c_env`.
+- Messages without a date or time never leave the phone. A message that does is sent to Claude on its own: never
+  other messages from the chat, and for group chats only the group's name, not the sender's.
+- Datebook keeps what it suggested and what you did with it for 1 year, never the message text itself (except a
+  message waiting up to a day for Claude while you're offline).
+- Other services only get what they need: place names (Google Maps), flight numbers and dates (AeroDataBox), station
+  codes (NJ Transit), and your rough location for the weather ([Open-Meteo](https://open-meteo.com), no account).
 
 ## Known limits
 
-- Texts you **send**, and texts that arrive while their chat is open, don't post a notification, so the app never sees them.
-- If someone sends several texts between two checks (5 seconds, or 30 seconds when quiet), only the newest may be read.
+- Datebook can't add events by itself; every event goes through your calendar app's **Save**.
 - Numeric dates are read as month/day (1/6 = January 6).
-- A text from someone in another time zone who writes "7pm" without naming a zone is read as 7 PM in your zone.
+- "Remind me to buy milk" in a text you send has no date, so it isn't caught; type it in the Notes tab instead.
+- The NJ Transit app has no link to a single train, so tapping a train on the widget opens the app's start screen.
 
 ## Development
 
-```bash
-pip install -r requirements-dev.txt
-python -m pytest
-```
-
-The tests use a fake Claude client and fake Termux commands, so they run on any computer and never call the API.
-
-To try a text on the phone without anyone texting you, pretend one arrived:
+The app is in [`android/`](android/). Open it in Android Studio, or build from Git Bash:
 
 ```bash
-cd ~/text-to-calendar && source ~/.t2c_env
-python -m t2c.simulate "dinner fri 7pm at joes"
-python -m t2c.simulate "lunch tomorrow at noon" "Sam"
+cd android
+./gradlew test assembleDebug
 ```
 
-It goes through the same date check, Claude call, retry queue and **Add to calendar?** prompt as a real text, but doesn't read the phone's notifications. The second argument is the sender's name. The default is "Test sender". To see the text in its output too, run it with `T2C_LOG_TEXT=1` in front, like `T2C_LOG_TEXT=1 python -m t2c.simulate "..."`.
+GitHub Actions runs the unit tests and builds the debug app on every pull request.
+
+Debug builds have a **Pretend a text arrived** box in Settings → About, and adb commands that run things now instead
+of waiting for their time:
+
+```bash
+adb shell am broadcast -a io.github.adenkushnir.datebook.SHOW_SUMMARY -n io.github.adenkushnir.datebook/.ShowSummaryReceiver
+adb shell am broadcast -a io.github.adenkushnir.datebook.LEAVE_BY_NOW -n io.github.adenkushnir.datebook/.LeaveByNowReceiver
+adb shell am broadcast -a io.github.adenkushnir.datebook.CHECK_GMAIL -n io.github.adenkushnir.datebook/.CheckGmailReceiver
+adb shell am broadcast -a io.github.adenkushnir.datebook.FOLLOW_UPS_NOW -n io.github.adenkushnir.datebook/.FollowUpsNowReceiver
+adb shell am broadcast -a io.github.adenkushnir.datebook.EVENING_NOW -n io.github.adenkushnir.datebook/.EveningNowReceiver
+```
+
+**Release builds** (`./gradlew assembleRelease`, giving `app/build/outputs/apk/release/app-release.apk`) leave out
+the debug tools and are signed with the developer PC's debug key. Datebook isn't on the Play Store, so this keeps
+one key for every version: a new release installs over the old one, and the SHA-1 above stays the same. A release
+built on another PC is signed with that PC's key and can't update an install from this one.
+
+The design notes are in [`design/DESIGN.md`](design/DESIGN.md), and the clickable mockup the app was built from is in
+[`android/mockup/`](android/mockup/).
+
+## Legacy: the Termux script (v0.2.0)
+
+Before Datebook, this project was a Python script that ran on the phone in [Termux](https://termux.dev). It read
+notifications every few seconds, asked Claude about texts with dates, and showed the same **Add to calendar?**
+prompt. The code is still in [`t2c/`](t2c/), [`tests/`](tests/) and [`boot/`](boot/), but it's frozen and no longer
+updated.
+
+Its full setup and usage instructions are in the
+[v0.2.0 README](https://github.com/adenkushnir/text-to-calendar/tree/v0.2.0#readme). To stop an old install:
+
+```bash
+sh ~/text-to-calendar/boot/stop.sh
+rm ~/.termux/boot/start-t2c.sh
+```
 
 ## Credits
 
-Built by [adenkushnir](https://github.com/adenkushnir), with help from [Claude](https://claude.com/claude-code), Anthropic's AI assistant, using Claude Code. Claude helped with:
+Built by [adenkushnir](https://github.com/adenkushnir), with help from [Claude](https://claude.com/claude-code),
+Anthropic's AI assistant, using Claude Code. Claude helped with:
 
 - **All the tests:** the Python test suite in `tests/` and the Kotlin unit tests for the Android app.
-- **The design:** the app's look and screens, and the clickable mockup in `android/mockup/`.
+- **The design:** the app's look and screens, and the clickable mockups in `android/mockup/`.
 - **Building the Android app**, Datebook, in `android/`.
 
 Commits Claude made end with a `Co-Authored-By: Claude` line. All other commits are by adenkushnir.
+
+Weather data by [Open-Meteo](https://open-meteo.com). Train data from NJ Transit's RailData API.
