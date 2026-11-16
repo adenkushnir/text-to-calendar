@@ -78,10 +78,10 @@ private val PAGES = listOf(
         "Set battery to Unrestricted so Samsung doesn't put Datebook to sleep. It uses almost no battery: Android " +
             "tells it about new texts.", false) { it.battery },
     SetupPage(DatebookIcons.Calendar, TILE_BLUE, "Let Datebook see your calendar",
-        "For clash warnings, changed plans and your morning summary (coming in a later update). Datebook never adds " +
+        "For clash warnings, changed plans, Home and your morning summary. Datebook never adds " +
             "or changes events itself.", false) { it.calendar },
     SetupPage(DatebookIcons.Pin, TILE_LEAF, "Add a Google Maps key",
-        "For full addresses, travel times and \"leave by\" alerts (coming in a later update). You can skip this and " +
+        "For full addresses, travel times and \"leave by\" alerts. You can skip this and " +
             "add it later in Settings.", false) { it.mapsKey },
 )
 

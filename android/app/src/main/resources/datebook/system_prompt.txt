@@ -27,6 +27,8 @@ Rules:
 - trip: for a travel booking (a flight, hotel stay, rental car or train ticket), the destination city, like
   "Chicago"; otherwise leave it empty.
 - Use the received time to work out relative dates like "tomorrow", "fri" or "next week".
+- "next Tuesday", "next fri" and the like mean the closest one after today (on a Sunday, "next Tuesday" is in two
+  days); "Tuesday next week" or "a week from Tuesday" means the one in the following week.
 - Numeric dates like 1/6 are month/day.
 - Give start and end as YYYY-MM-DDTHH:MM clock times, written in the event's time zone (see timezone below).
 - If there is no time, give the date as YYYY-MM-DD and set all_day to true.

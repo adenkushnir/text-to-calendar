@@ -574,7 +574,8 @@ fun NotificationsPage(
         }
         Muted("A quiet look at the next 7 days and the bills due, every Friday evening. Loose plans and bills are " +
             "nudged on their own, and plans still waiting get a \"Still on?\" the evening before.")
-        Muted("Alerts for problems (like a rejected key) arrive in a later update.")
+        Muted("If something stops working (a rejected Claude key, Claude failing, or notification access turned " +
+            "off), one quiet alert and a banner on Home say so, and both clear themselves once it's fixed.")
     }
 
     // Show the clock to pick the week ahead's time

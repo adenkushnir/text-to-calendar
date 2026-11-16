@@ -157,9 +157,11 @@ fun tripText(minutes: Int, mode: String): String {
     }
 }
 
-// The alert's title, like "Leave by 6:37 PM"
-fun leaveByTitle(begin: Long, minutes: Int, zone: ZoneId): String {
-    return "Leave by ${Instant.ofEpochMilli(leaveTime(begin, minutes)).atZone(zone).format(CLOCK)}"
+// The alert's title, like "Leave by 6:37 PM", or "Leave now" when the alert comes after the leave time (an event
+// added or moved at the last minute)
+fun leaveByTitle(begin: Long, minutes: Int, zone: ZoneId, nowMillis: Long = System.currentTimeMillis()): String {
+    val leave = leaveTime(begin, minutes)
+    return if (nowMillis > leave) "Leave now" else "Leave by ${Instant.ofEpochMilli(leave).atZone(zone).format(CLOCK)}"
 }
 
 // The two other modes offered as buttons on the alert (there's room for two next to Open in Maps)

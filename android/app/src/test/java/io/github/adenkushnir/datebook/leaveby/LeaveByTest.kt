@@ -33,6 +33,7 @@ class LeaveByTest {
         assertEquals(sevenPm - 23 * 60_000, leaveTime(sevenPm, 18))
         assertEquals(sevenPm - 33 * 60_000, alertTime(sevenPm, 18))
         assertEquals("Leave by 6:37 PM", leaveByTitle(sevenPm, 18, zone))
+        assertEquals("Leave now", leaveByTitle(sevenPm, 18, zone, sevenPm - 15 * 60_000))
     }
 
     // The trip reads naturally for each mode, and the alert offers the other two common modes

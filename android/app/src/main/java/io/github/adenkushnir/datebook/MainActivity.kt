@@ -246,6 +246,16 @@ class MainActivity : ComponentActivity() {
         openList = intent.getStringExtra(EXTRA_OPEN_LIST) ?: openList
     }
 
+    // Check Gmail each time Datebook comes to the front, so new emails (even ones Gmail didn't notify about) show up
+    override fun onStart() {
+        super.onStart()
+
+        // Only while signed in to Gmail
+        if (GmailSettings(applicationContext).signedIn()) {
+            checkGmailNow(applicationContext)
+        }
+    }
+
     // Redraw the widgets when you leave the app, so they show what you just changed
     override fun onStop() {
         super.onStop()
