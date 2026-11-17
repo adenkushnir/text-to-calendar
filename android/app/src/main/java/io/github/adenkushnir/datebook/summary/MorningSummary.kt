@@ -15,6 +15,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import io.github.adenkushnir.datebook.AppGraph
+import io.github.adenkushnir.datebook.deliberate.PAUSE_SUMMARY
 import io.github.adenkushnir.datebook.MainActivity
 import io.github.adenkushnir.datebook.R
 import io.github.adenkushnir.datebook.calendar.CalendarEvent
@@ -168,8 +169,10 @@ suspend fun showSummary(context: Context): Int {
 class SummaryWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     // Show today's summary and book the next one
     override suspend fun doWork(): Result {
-        // Only post while the summary is switched on
-        if (AppGraph.get(applicationContext).summarySettings.isOn()) {
+        val graph = AppGraph.get(applicationContext)
+
+        // Only post while the summary is switched on and Deliberate hasn't paused it
+        if (graph.summarySettings.isOn() && !graph.deliberateSettings.paused(PAUSE_SUMMARY)) {
             showSummary(applicationContext)
         }
         scheduleSummary(applicationContext, ExistingWorkPolicy.APPEND_OR_REPLACE)

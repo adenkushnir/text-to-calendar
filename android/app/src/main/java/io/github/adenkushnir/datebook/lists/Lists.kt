@@ -88,4 +88,10 @@ class PackageStore(context: Context) {
         val all = (prefs.getStringSet("received", emptySet()).orEmpty() + id.toString()).toList().takeLast(300)
         prefs.edit().putStringSet("received", all.toSet()).apply()
     }
+
+    // Put a package back on the list (Deliberate's Undo)
+    fun unmarkReceived(id: Long) {
+        val all = prefs.getStringSet("received", emptySet()).orEmpty() - id.toString()
+        prefs.edit().putStringSet("received", all).apply()
+    }
 }

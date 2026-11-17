@@ -67,7 +67,8 @@ class TextPipelineTest {
     // full addresses Google would find, the flights the flight data knows, and the times found offline on the phone
     private fun pipeline(events: List<Event> = emptyList(), error: Exception? = null, key: String? = "sk-test",
         onCalendar: List<CalendarEvent> = emptyList(), places: Map<String, FoundPlace> = emptyMap(),
-        flights: Map<String, FlightInfo> = emptyMap(), guesses: List<GuessedTime> = emptyList()): TextPipeline {
+        flights: Map<String, FlightInfo> = emptyMap(), guesses: List<GuessedTime> = emptyList(),
+        keepTexts: Boolean = false, ignoreFrom: String = ""): TextPipeline {
         return TextPipeline(
             dao = dao,
             apiKey = { key },
@@ -85,7 +86,26 @@ class TextPipelineTest {
             onWithdrawn = { withdrawn.add(it) },
             guessTimes = { _, _, _ -> guesses },
             onAlert = { kind, showing -> alerts.add("$kind ${if (showing) "shown" else "cleared"}") },
+            keepTexts = { keepTexts },
+            ignored = { sender, _, _, _ -> ignoreFrom.isNotBlank() && sender == ignoreFrom },
         )
+    }
+
+    // With message texts kept, a plan keeps the text it came from; without, it never does
+    @Test
+    fun keepsMessageText() = runTest {
+        val kept = pipeline(listOf(dinner), keepTexts = true).handle(incoming)
+        assertEquals("dinner fri 7pm at joes", dao.suggestion(kept.suggestionIds.single())!!.message)
+        val plain = pipeline(listOf(movie)).handle(incoming.copy(text = "movie fri 10pm"))
+        assertEquals("", dao.suggestion(plain.suggestionIds.single())!!.message)
+    }
+
+    // A plan from someone a Deliberate rule ignores is saved as ignored, with no prompt
+    @Test
+    fun ignoredByRule() = runTest {
+        val outcome = pipeline(listOf(dinner), ignoreFrom = "Sam").handle(incoming)
+        assertEquals(Suggestion.STATUS_IGNORED, dao.suggestion(outcome.suggestionIds.single())!!.status)
+        assertTrue(prompts.isEmpty())
     }
 
     // Texts with no date are never sent to Claude

@@ -21,7 +21,8 @@ private val DAY_NAME = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US)
 // One follow-up: a loose plan, something due or an assignment, who it came from (and which chat), its day
 // (YYYY-MM-DD, "" when none), the amount for a bill, whether it's open, done (paid, handed in, or pinned down) or
 // dropped, when it was found, when its next nudge or reminder is due (0 for none), how many have been sent, its time
-// of day (HH:MM, "" when none), how it repeats (a reminder's rule) and a note's text
+// of day (HH:MM, "" when none), how it repeats (a reminder's or bill's rule), a note's text, and the message it came
+// from when you keep message texts
 @Entity(tableName = "followups")
 data class FollowUp(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -39,6 +40,7 @@ data class FollowUp(
     @ColumnInfo(defaultValue = "") val time: String = "",
     @ColumnInfo(defaultValue = "") val repeat: String = "",
     @ColumnInfo(defaultValue = "") val body: String = "",
+    @ColumnInfo(defaultValue = "") val message: String = "",
 ) {
     // Names for the states a follow-up can be in
     companion object {
@@ -81,6 +83,28 @@ fun firstNudge(kind: String, date: String, createdAt: Long, zone: ZoneId): Long 
         morningOf(day, zone) + DAY_MILLIS > createdAt -> maxOf(morningOf(day, zone), createdAt)
         else -> 0
     }
+}
+
+// The next one of a repeating bill once it's paid: the same bill on its next due day, with its reminders booked; null
+// for bills that don't repeat (and anything that isn't a bill)
+fun nextBill(bill: FollowUp, nowMillis: Long, zone: ZoneId): FollowUp? {
+    val day = runCatching { LocalDate.parse(bill.date) }.getOrNull() ?: return null
+
+    // Only repeating bills come back
+    if (bill.kind != KIND_DUE || bill.repeat.isBlank()) {
+        return null
+    }
+    val next = nextRepeat(bill.repeat, day.atStartOfDay(), day.atStartOfDay())?.toLocalDate() ?: return null
+    return bill.copy(id = 0, date = next.toString(), status = FollowUp.OPEN, createdAt = nowMillis, nudges = 0,
+        nextNudge = firstNudge(KIND_DUE, next.toString(), nowMillis, zone))
+}
+
+// Mark a follow-up done (paid, handed in, finished), and save the next one of a repeating bill
+suspend fun finishFollowUp(dao: DatebookDao, id: Long, nowMillis: Long = System.currentTimeMillis(),
+    zone: ZoneId = ZoneId.systemDefault()) {
+    val followUp = dao.followUp(id) ?: return
+    dao.setFollowUpStatus(id, FollowUp.DONE)
+    nextBill(followUp, nowMillis, zone)?.let { dao.saveFollowUp(it) }
 }
 
 // How a follow-up's day reads, like "Fri Nov 20" ("" when it has none)

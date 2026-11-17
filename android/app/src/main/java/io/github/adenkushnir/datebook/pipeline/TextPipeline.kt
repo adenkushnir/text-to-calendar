@@ -46,6 +46,7 @@ private const val DAY = 24L * 60 * 60 * 1000
 private const val CHANGE_WINDOW = 14 * DAY
 private const val MAX_LISTED = 40
 private const val MAX_GUESSES = 3
+private const val MAX_MESSAGE = 4000  // the longest message text kept with a plan
 private val TITLE_WORDS = Regex("[a-z]{4,}")
 private val COMMON_WORDS = setOf("with", "plan", "plans", "about", "some", "time", "sometime")
 private val LOCAL_MINUTES = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
@@ -72,8 +73,8 @@ data class ShareResult(
     val needsKey: Boolean = false,
 )
 
-// The text pipeline; the Claude call, key, zone, clock, calendar, place lookup, flight lookup and offline date finder
-// are passed in so tests can replace them
+// The text pipeline; the Claude call, key, zone, clock, calendar, place lookup, flight lookup, offline date finder,
+// the message-text switch and Deliberate's ignore rules are passed in so tests can replace them
 class TextPipeline(
     private val dao: DatebookDao,
     private val apiKey: () -> String?,
@@ -90,6 +91,9 @@ class TextPipeline(
         { _, _, _ -> emptyList() },
     private val onFollowUpsSaved: () -> Unit = {},
     private val onAlert: (kind: String, showing: Boolean) -> Unit = { _, _ -> },
+    private val keepTexts: () -> Boolean = { false },
+    private val ignored: suspend (sender: String, group: String, title: String, kind: String) -> Boolean =
+        { _, _, _, _ -> false },
 ) {
     private val health = Health(dao)
 
@@ -356,12 +360,15 @@ class TextPipeline(
             val others = calendarAround(event).filter { it.eventId != event.calendarEventId }  // not the one it moves
             val clashes = if (event.change == CHANGE_CANCELLED) emptyList() else clashesFor(event, others)
             val clash = clashText(clashes, event.phoneTimezone)
-            val suggestion = suggestionOf(event, incoming, now(), clash)
+            val skip = !isShared(incoming.app) && ignored(incoming.sender, incoming.group, event.title, event.kind)
+            val status = if (skip) Suggestion.STATUS_IGNORED else Suggestion.STATUS_WAITING  // a Deliberate rule
+            val suggestion = suggestionOf(event, incoming, now(), clash).copy(status = status,
+                message = messageOf(incoming))
             val id = dao.saveSuggestion(suggestion)
             closeLoosePlans(event, incoming)
 
-            // Show a prompt for it, except for shared things
-            if (announce) {
+            // Show a prompt for it, except for shared things and plans a rule ignores
+            if (announce && !skip) {
                 onSuggested(suggestion.copy(id = id), incoming)
             }
             ids.add(id)
@@ -385,8 +392,9 @@ class TextPipeline(
                 it.title.equals(event.title, ignoreCase = true) && it.date == day
             }
 
-            // Skip repeats, and bills and assignments already past due
-            if (open || (past && (event.kind == KIND_DUE || event.kind == KIND_ASSIGNMENT))) {
+            // Skip repeats, bills and assignments already past due, and what a Deliberate rule ignores
+            if (open || (past && (event.kind == KIND_DUE || event.kind == KIND_ASSIGNMENT)) ||
+                (!isShared(incoming.app) && ignored(incoming.sender, incoming.group, event.title, event.kind))) {
                 continue
             }
             val time = if (event.start.length >= 16) event.start.substring(11, 16) else ""  // HH:MM when given
@@ -395,7 +403,7 @@ class TextPipeline(
             dao.saveFollowUp(FollowUp(kind = event.kind, title = event.title, date = day, amount = event.amount,
                 sender = incoming.sender, app = incoming.app, conversation = incoming.group,
                 status = FollowUp.OPEN, createdAt = now(), nextNudge = first, nudges = 0, time = time,
-                repeat = event.repeat))
+                repeat = event.repeat, message = messageOf(incoming)))
             saved += 1
         }
 
@@ -404,6 +412,11 @@ class TextPipeline(
             onFollowUpsSaved()
         }
         return saved
+    }
+
+    // The message text kept with a plan when message texts are kept (never for typed notes, which are kept anyway)
+    private fun messageOf(incoming: IncomingText): String {
+        return if (keepTexts() && incoming.app != TYPED_APP) incoming.text.trim().take(MAX_MESSAGE) else ""
     }
 
     // Close the open loose plans from a chat once a real plan about the same thing arrives from it ("Lunch with Sam"

@@ -3,6 +3,9 @@
 package io.github.adenkushnir.datebook.extras
 import io.github.adenkushnir.datebook.calendar.CalendarEvent
 import io.github.adenkushnir.datebook.data.Suggestion
+import io.github.adenkushnir.datebook.deliberate.RULE_BRING
+import io.github.adenkushnir.datebook.deliberate.RULE_QUIET
+import io.github.adenkushnir.datebook.deliberate.Rule
 import io.github.adenkushnir.datebook.weather.Forecast
 import io.github.adenkushnir.datebook.weather.HourWeather
 import java.time.ZoneId
@@ -35,6 +38,16 @@ class EveningTest {
         assertEquals("", bringOf("Sam (Messages)"))
         val dinner = soccer.copy(eventId = 2, title = "Dinner", notes = "")
         assertEquals(listOf("Soccer at 6:00 PM: cleats, $20"), bringLines(listOf(soccer, dinner), zone))
+    }
+
+    // Deliberate's bring rules add to an event's list, and a no-alerts rule leaves the event out
+    @Test
+    fun bringRules() {
+        val water = Rule(kind = RULE_BRING, words = "soccer", place = "", sender = "", value = "water, cleats",
+            isOn = true, createdAt = 1)
+        assertEquals(listOf("Soccer at 6:00 PM: cleats, $20, water"), bringLines(listOf(soccer), zone, listOf(water)))
+        val quiet = water.copy(kind = RULE_QUIET, value = "")
+        assertEquals(emptyList<String>(), bringLines(listOf(soccer), zone, listOf(water, quiet)))
     }
 
     // Place words count (not inside other words); so does a plan Claude marked outdoor on the same day

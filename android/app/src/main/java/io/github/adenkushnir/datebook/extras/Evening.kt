@@ -20,6 +20,10 @@ import io.github.adenkushnir.datebook.MainActivity
 import io.github.adenkushnir.datebook.R
 import io.github.adenkushnir.datebook.calendar.CalendarEvent
 import io.github.adenkushnir.datebook.calendar.calendarEvents
+import io.github.adenkushnir.datebook.deliberate.PAUSE_EVENING
+import io.github.adenkushnir.datebook.deliberate.Rule
+import io.github.adenkushnir.datebook.deliberate.effectsFor
+import io.github.adenkushnir.datebook.deliberate.mergeBring
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.prompts.canNotify
 import io.github.adenkushnir.datebook.summary.delayUntilNext
@@ -125,9 +129,14 @@ fun weatherWarning(event: CalendarEvent, forecast: Forecast, fahrenheit: Boolean
     return if (parts.isEmpty()) null else "${nameOf(event, zone)}: ${parts.joinToString(", ")}"
 }
 
-// One bring line per event, like "Soccer at 6:00 PM: cleats, $20", for the events whose notes say what to bring
-fun bringLines(events: List<CalendarEvent>, zone: ZoneId): List<String> {
-    return events.filter { bringOf(it.notes).isNotBlank() }.map { "${nameOf(it, zone)}: ${bringOf(it.notes)}" }
+// One bring line per event, like "Soccer at 6:00 PM: cleats, $20", for the events whose notes (or Deliberate's bring
+// rules) say what to bring; events a rule keeps quiet are left out
+fun bringLines(events: List<CalendarEvent>, zone: ZoneId, rules: List<Rule> = emptyList()): List<String> {
+    return events.mapNotNull { event ->
+        val effects = effectsFor(rules, event.title, event.location)
+        val bring = mergeBring(bringOf(event.notes), effects.bring)
+        if (bring.isBlank() || effects.quiet) null else "${nameOf(event, zone)}: $bring"
+    }
 }
 
 // Tomorrow's events on the calendars that are switched on
@@ -174,8 +183,16 @@ private fun showHeadsUp(context: Context, id: Int, title: String, lines: List<St
 suspend fun showWeatherHeadsUp(context: Context) {
     val zone = ZoneId.systemDefault()
     val now = System.currentTimeMillis()
-    val outdoorPlans = AppGraph.get(context).dao.suggestionsWithStatus(Suggestion.STATUS_ADDED).filter { it.outdoor }
+    val graph = AppGraph.get(context)
+
+    // Paused by Deliberate
+    if (graph.deliberateSettings.paused(PAUSE_EVENING, now)) {
+        return
+    }
+    val rules = graph.deliberateDao.rules()
+    val outdoorPlans = graph.dao.suggestionsWithStatus(Suggestion.STATUS_ADDED).filter { it.outdoor }
     val outdoor = tomorrowsEvents(context, zone).filter { isOutdoor(it, outdoorPlans, zone) }
+        .filter { !effectsFor(rules, it.title, it.location).quiet }
 
     // No outdoor plans tomorrow: no need for the forecast
     if (outdoor.isEmpty()) {
@@ -186,10 +203,18 @@ suspend fun showWeatherHeadsUp(context: Context) {
     showHeadsUp(context, WEATHER_NOTIFICATION, "Weather for tomorrow's plans", lines)
 }
 
-// Remind what to bring to tomorrow's plans
-fun showBringHeadsUp(context: Context) {
-    showHeadsUp(context, BRING_NOTIFICATION, "What to bring tomorrow", bringLines(tomorrowsEvents(context,
-        ZoneId.systemDefault()), ZoneId.systemDefault()))
+// Remind what to bring to tomorrow's plans (from their notes and Deliberate's bring rules), unless Deliberate paused
+// the evening heads-ups
+suspend fun showBringHeadsUp(context: Context) {
+    val graph = AppGraph.get(context)
+
+    // Paused by Deliberate
+    if (graph.deliberateSettings.paused(PAUSE_EVENING)) {
+        return
+    }
+    val zone = ZoneId.systemDefault()
+    showHeadsUp(context, BRING_NOTIFICATION, "What to bring tomorrow", bringLines(tomorrowsEvents(context, zone), zone,
+        graph.deliberateDao.rules()))
 }
 
 // Runs at 7 PM: the weather heads-up, then books tomorrow's

@@ -107,6 +107,15 @@ object DatebookIcons {
         "M12 3l1.8 6.2L20 11l-6.2 1.8L12 19l-1.8-6.2L4 11l6.2-1.8z",
         "M19 3.5v3M17.5 5h3",
     )
+    // A clock face, for past chats
+    val Clock = icon("clock", filled = false,
+        "M3.5 12a8.5 8.5 0 1 0 17 0a8.5 8.5 0 1 0 -17 0",
+        "M12 7.5V12l3 2",
+    )
+    // A plus, for a new chat
+    val Plus = icon("plus", filled = false,
+        "M12 5v14M5 12h14",
+    )
     // A padlock, for privacy
     val Lock = icon("lock", filled = false,
         "M7.2 10.5h9.6a2.2 2.2 0 0 1 2.2 2.2v5.6a2.2 2.2 0 0 1 -2.2 2.2h-9.6a2.2 2.2 0 0 1 -2.2 -2.2v-5.6" +

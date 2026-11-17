@@ -67,9 +67,10 @@ class ListsActions(
 
 // Show the Lists tab: the bar, then the chosen list
 @Composable
-fun ListsScreen(selected: String, onSelect: (String) -> Unit, content: ListsContent, actions: ListsActions) {
+fun ListsScreen(selected: String, onSelect: (String) -> Unit, content: ListsContent, actions: ListsActions,
+    onSettings: (() -> Unit)? = null) {
     Column(Modifier.fillMaxSize()) {  // see-through, so the scene behind shows
-        TopBar("Lists")
+        TopBar("Lists", onSettings = onSettings)
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),

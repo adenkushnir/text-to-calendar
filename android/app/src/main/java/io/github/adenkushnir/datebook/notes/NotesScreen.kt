@@ -56,7 +56,8 @@ fun matches(item: FollowUp, search: String): Boolean {
 
 // Show the Notes tab
 @Composable
-fun NotesScreen(reminders: List<FollowUp>, notes: List<FollowUp>, zone: ZoneId, actions: NotesActions) {
+fun NotesScreen(reminders: List<FollowUp>, notes: List<FollowUp>, zone: ZoneId, actions: NotesActions,
+    onSettings: (() -> Unit)? = null) {
     val scope = rememberCoroutineScope()
     var search by remember { mutableStateOf("") }
     var typed by remember { mutableStateOf("") }
@@ -64,7 +65,7 @@ fun NotesScreen(reminders: List<FollowUp>, notes: List<FollowUp>, zone: ZoneId, 
     var busy by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<FollowUp?>(null) }
     Column(Modifier.fillMaxSize()) {  // see-through, so the scene behind shows
-        TopBar("Notes")
+        TopBar("Notes", onSettings = onSettings)
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
