@@ -60,12 +60,16 @@ const val GITHUB_URL = "https://github.com/adenkushnir/text-to-calendar"
 const val PRIVACY_SUMMARY = "Datebook checks texts from the apps you switch on, on this phone. Texts without a date " +
     "are dropped straight away and leave no trace. If you sign in to Gmail, new emails in Primary and Updates are " +
     "checked the same way. Only a text with a date is sent to Claude, on its own, using your " +
-    "API key (for group chats, with the group's name instead of the sender's). Datebook keeps the events it found " +
+    "API key (for group chats, with the group's name instead of the sender's); the exception is a one-to-one text " +
+    "that sounds like a change (\"have to cancel\"), sent with your next 2 weeks of event titles and times so " +
+    "Datebook can offer to move or cancel one. Datebook keeps the events it found " +
     "for a year, with the message each came from so Deliberate can quote it (you can turn that off below), and " +
     "nothing is shared anywhere else. When Claude can't be reached, a text with a date waits on the phone (for up " +
     "to a day) so Claude can check it later, and its offline guess shows it until then. On Fridays, next week's " +
     "event titles and times also go to Claude, so it can write your week ahead. When you ask Deliberate something, " +
     "what it looks up for you (calendar events, plans, kept messages, lists) goes to Claude with your question. " +
+    "If you pair Nestor, your plans, lists, notes, reminders and next 2 weeks of events go to it on your home " +
+    "Wi-Fi only. " +
     "Notes you type in Datebook are kept on this phone."
 
 // One item in the Settings menu: its glass tile icon and the icon's colour, its name, a one-line hint, and the page it
@@ -842,6 +846,89 @@ fun FencingPage(on: Boolean, lastSearched: String, lastResult: String, setOn: (B
         Muted("Claude searches the web with your API key every Monday at 7 AM for the next 3 weeks, and on the " +
             "morning of each event day for that day's stream (including FencingTV's schedule on fencing.tv). That " +
             "costs about \$0.30 to \$1 a week.")
+    }
+}
+
+// Settings → Nestor: whether Nestor is found on this Wi-Fi, the local network permission, pairing with the code
+// Nestor prints, the on/off switch, and Unpair
+@Composable
+fun NestorPage(address: String?, paired: Boolean, lastContact: String, problem: String, on: Boolean,
+    canReach: Boolean, listenerOn: Boolean, askPermission: () -> Unit, onPair: suspend (String) -> String?,
+    onUnpair: suspend () -> Unit, setOn: (Boolean) -> Unit, onBack: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var code by remember { mutableStateOf("") }
+    var result by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    SettingsPage("Nestor", onBack) {
+        Muted("Nestor is your home speaker and wall screen app. On the home Wi-Fi, Datebook keeps it up to date with " +
+            "your plans, lists, notes, reminders, train trip and the next 2 weeks of your calendar, and it says " +
+            "leave-by alerts, travel changes, reminders and the evening heads-ups out loud. Away from home nothing " +
+            "is sent.")
+        DatebookCard {
+            Text(if (address != null) "Nestor found" else "Looking for Nestor…")
+            Muted(when {
+                !canReach -> "Datebook needs permission to find devices on your Wi-Fi."
+                address != null -> "On this Wi-Fi at $address"
+                else -> "Not found on this Wi-Fi. Is Nestor running at home?"
+            })
+
+            // When Nestor last answered, once paired
+            if (paired && lastContact.isNotBlank()) {
+                Muted(lastContact)
+            }
+
+            // What went wrong last
+            if (problem.isNotBlank()) {
+                Muted(problem)
+            }
+        }
+
+        // The permission first, then pairing, then the paired controls
+        if (!listenerOn) {
+            Muted("Turn on Datebook's notification access first: the link runs alongside it.")
+        } else if (!canReach) {
+            GelButton(onClick = askPermission) {
+                Text("Allow finding Nestor")
+            }
+        } else if (!paired) {
+            SectionLabel("Pair")
+            Muted("On the computer running Nestor, run python -m nestor --pair and type the 6-digit code it shows.")
+            GlassField(value = code, onValueChange = { code = it.filter { char -> char.isDigit() }.take(6) },
+                label = { Text("6-digit code") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            GelButton(enabled = code.length == 6 && address != null && !busy, onClick = {
+                busy = true
+                scope.launch {
+                    result = onPair(code) ?: "Paired with Nestor."
+                    code = ""
+                    busy = false
+                }
+            }) {
+                Text(if (busy) "Pairing…" else "Pair")
+            }
+        } else {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Send to Nestor")
+                    Muted(if (on) "Paired and on" else "Paired, switched off")
+                }
+                GelSwitch(on, onCheckedChange = setOn)
+            }
+            GlassButton(enabled = !busy, onClick = {
+                busy = true
+                scope.launch {
+                    onUnpair()
+                    result = "Unpaired. Nestor forgot this phone."
+                    busy = false
+                }
+            }) {
+                Text("Unpair")
+            }
+        }
+
+        // What the last button did
+        if (result.isNotBlank()) {
+            Muted(result)
+        }
     }
 }
 

@@ -27,6 +27,7 @@ import io.github.adenkushnir.datebook.R
 import io.github.adenkushnir.datebook.calendar.CalendarEvent
 import io.github.adenkushnir.datebook.calendar.calendarEvents
 import io.github.adenkushnir.datebook.deliberate.EventEffects
+import io.github.adenkushnir.datebook.nestor.postNotification
 import io.github.adenkushnir.datebook.deliberate.PAUSE_LEAVE_BY
 import io.github.adenkushnir.datebook.deliberate.effectsFor
 import io.github.adenkushnir.datebook.deliberate.mergeBring
@@ -221,7 +222,7 @@ fun showLeaveBy(context: Context, event: CalendarEvent, minutes: Int, mode: Stri
             .putExtra(EXTRA_MODE, other)
         builder.addAction(0, travelMode(other).label, PendingIntent.getBroadcast(context, id + 2 + i, change, flags))
     }
-    NotificationManagerCompat.from(context).notify(id, builder.build())
+    postNotification(context, id, builder.build())
 }
 
 // A notification id for an event's alert, far above suggestion ids and the summary (each alert uses id to id + 3 for

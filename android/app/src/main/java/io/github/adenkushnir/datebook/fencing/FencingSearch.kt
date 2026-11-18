@@ -46,7 +46,7 @@ private const val WORK = "datebook-fencing"
 private const val STREAM_WORK = "datebook-fencing-stream-"
 private const val WEEK_MILLIS = 7L * 24 * 60 * 60 * 1000
 private const val MAX_PAUSES = 4  // how many times a long web search may be continued
-private const val NOTIFICATION_BASE = 1_096_000_000
+private const val NOTIFICATION_BASE = 1_091_000_000  // stream alerts take up to 3.1 million ids, below Canvas's
 private const val EXTRA_KEY = "key"
 private const val SYSTEM = "You find men's foil fencing competitions on the web for someone who follows and watches " +
     "them. Use web search and web fetch, and always look at FencingTV's schedule on fencing.tv for streams. Be " +

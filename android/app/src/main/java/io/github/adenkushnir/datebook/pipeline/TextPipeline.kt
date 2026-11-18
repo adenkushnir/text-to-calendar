@@ -264,9 +264,10 @@ class TextPipeline(
         return ShareResult(ids.mapNotNull { dao.suggestion(it) })
     }
 
-    // Handle something typed in the Notes tab: Claude turns reminders and plans in it into those; anything else (or
-    // everything, when Claude can't be reached) is kept as a note; returns what happened, in words
-    suspend fun typed(text: String): String {
+    // Handle something typed in the Notes tab (or sent by Nestor, which announces its plans with a prompt): Claude
+    // turns reminders and plans in it into those; anything else (or everything, when Claude can't be reached) is kept
+    // as a note; returns what happened, in words
+    suspend fun typed(text: String, announce: Boolean = false): String {
         val zone = zoneOf(phoneZone()) ?: ZoneId.systemDefault()
         val incoming = IncomingText("you", text.trim(), LocalDateTime.ofInstant(Instant.ofEpochMilli(now()), zone),
             TYPED_APP)
@@ -282,7 +283,7 @@ class TextPipeline(
             return "Saved as a note."
         }
         saveFollowUps(outcome!!.followUps, incoming)
-        val plans = saveSuggestions(outcome.events, incoming, announce = false)
+        val plans = saveSuggestions(outcome.events, incoming, announce = announce)
         val reminders = outcome.followUps.count { it.kind == KIND_REMINDER }
         val listed = outcome.followUps.size - reminders
 

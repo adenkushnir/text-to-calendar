@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Datebook's network rules: secure (https) connections everywhere, except plain http, which Nestor on the home
+     Wi-Fi speaks; Datebook only ever sends plain http to home-network addresses it found Nestor at (NestorLink) -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

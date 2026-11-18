@@ -16,6 +16,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import io.github.adenkushnir.datebook.AppGraph
+import io.github.adenkushnir.datebook.nestor.postNotification
 import io.github.adenkushnir.datebook.MainActivity
 import io.github.adenkushnir.datebook.R
 import io.github.adenkushnir.datebook.data.Suggestion
@@ -93,7 +94,7 @@ fun showFlightChange(context: Context, plan: Suggestion, change: String, status:
         .setAutoCancel(true)
         .setContentIntent(PendingIntent.getActivity(context, id, open, flags))
         .build()
-    NotificationManagerCompat.from(context).notify(id, notification)
+    postNotification(context, id, notification)
 }
 
 // Every 15 minutes: run the flight checks that are due
