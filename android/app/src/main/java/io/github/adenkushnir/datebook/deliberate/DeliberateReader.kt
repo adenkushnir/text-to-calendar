@@ -13,6 +13,7 @@ import io.github.adenkushnir.datebook.data.KIND_NOTE
 import io.github.adenkushnir.datebook.data.KIND_REMINDER
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.data.reminderWhen
+import io.github.adenkushnir.datebook.fencing.FencingSettings
 import io.github.adenkushnir.datebook.data.repeatLabel
 import io.github.adenkushnir.datebook.lists.PackageStore
 import io.github.adenkushnir.datebook.places.travelMode
@@ -56,6 +57,7 @@ class DeliberateReader(private val context: Context) {
             TOOL_FIND_ITEMS -> findItems(input["kind"]?.toString().orEmpty(), words)
             TOOL_SETTINGS -> settings()
             TOOL_EXTRAS -> extras()
+            TOOL_TOURNAMENTS -> tournaments()
             else -> "Unknown tool $tool."
         }
     }
@@ -243,6 +245,28 @@ class DeliberateReader(private val context: Context) {
             lines.add("id ${rule.id} · ${if (rule.isOn) "on" else "off"} · ${ruleText(rule)}")
         }
         return lines.joinToString("\n")
+    }
+
+    // The men's foil tournaments found, one per line
+    private fun tournaments(): String {
+        val settings = FencingSettings(context)
+
+        // Say so when the searches are off or found nothing
+        if (!settings.isOn()) {
+            return "Fencing tournaments are off (Settings → Fencing)."
+        }
+        val list = settings.tournaments()
+
+        // One line per tournament
+        return if (list.isEmpty()) "No men's foil tournaments found for the coming weeks." else list.joinToString("\n") {
+            listOf(it.name, it.meet, it.place, "${it.firstDay} to ${it.lastDay}",
+                if (it.startTime.isNotBlank()) "starts ${it.startTime}" else "",
+                if (it.todayDate.isBlank()) ""
+                    else "on ${it.todayDate}: stream ${it.todayStart}–${it.todayEnd} ${it.todayNote}",
+                if (it.streamUrl.isNotBlank()) "watch ${it.streamName} ${it.streamUrl}" else "",
+                if (it.resultsUrl.isNotBlank()) "results ${it.resultsUrl}" else "").filter { part -> part.isNotBlank() }
+                .joinToString(" · ")
+        }
     }
 
     // The forecast for the next days and the saved trip's trains

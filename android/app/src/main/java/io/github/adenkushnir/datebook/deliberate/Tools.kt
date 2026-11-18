@@ -9,6 +9,7 @@ const val TOOL_FIND_PLANS = "find_plans"
 const val TOOL_FIND_ITEMS = "find_items"
 const val TOOL_SETTINGS = "get_settings"
 const val TOOL_EXTRAS = "get_weather_and_trains"
+const val TOOL_TOURNAMENTS = "find_tournaments"
 const val TOOL_ASK = "ask_choice"
 const val TOOL_PROPOSE = "propose_changes"
 const val ACT_NEW_PLAN = "new_plan"
@@ -104,6 +105,9 @@ val DELIBERATE_TOOLS = listOf(
     ToolSpec(TOOL_SETTINGS, "Read Datebook's settings, rules (with ids), habits and pauses.", objectOf(emptyMap())),
     ToolSpec(TOOL_EXTRAS, "Read the weather forecast for the next days and the saved NJ Transit trip's next trains.",
         objectOf(emptyMap())),
+    ToolSpec(TOOL_TOURNAMENTS, "Read the men's foil fencing tournaments Datebook found for the coming weeks (the " +
+        "user follows and watches them): days, start times, today's stream times and stage, and Watch and Results " +
+        "links.", objectOf(emptyMap())),
     ToolSpec(TOOL_ASK, "Ask the user a question with 2 to 4 short choices to tap (they can also type an answer). " +
         "Use it whenever the request is unclear, then wait for the answer.",
         objectOf(mapOf("question" to STRING, "choices" to mapOf("type" to "array", "items" to STRING)),

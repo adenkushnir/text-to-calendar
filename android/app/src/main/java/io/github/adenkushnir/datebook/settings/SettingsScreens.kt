@@ -785,6 +785,66 @@ private fun StatusRow(label: String, on: Boolean, open: () -> Unit) {
     }
 }
 
+// Settings → Fencing: turn the men's foil searches on or off, search now, and see when the last search ran and what
+// it found
+@Composable
+fun FencingPage(on: Boolean, lastSearched: String, lastResult: String, setOn: (Boolean) -> Unit,
+    onSearch: suspend () -> String, onBack: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var result by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+
+    // Search, showing it's busy until it's done
+    val search = {
+        busy = true
+        scope.launch {
+            result = onSearch()
+            busy = false
+        }
+    }
+    SettingsPage("Fencing", onBack) {
+        Muted("Men's foil tournaments to follow and watch: USA Fencing nationals and FIE events, in Junior, " +
+            "Division I or Senior, Division IA and Division II. They show at the bottom of Home for the coming week, with Watch " +
+            "and Results, and a quiet notification when a stream goes live.")
+        DatebookCard {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Find tournaments")
+                    Muted(if (on) lastSearched.ifBlank { "Not searched yet" } else "Off")
+                }
+                GelSwitch(on, onCheckedChange = { turnOn ->
+                    setOn(turnOn)
+
+                    // The first search runs as soon as it's turned on
+                    if (turnOn) {
+                        search()
+                    }
+                })
+            }
+
+            // What the last search found
+            if (on && lastResult.isNotBlank()) {
+                Muted(lastResult)
+            }
+        }
+
+        // Search now, while it's on
+        if (on) {
+            GlassButton(enabled = !busy, onClick = { search() }) {
+                Text(if (busy) "Searching… (up to a few minutes)" else "Search now")
+            }
+        }
+
+        // What the button found
+        if (result.isNotBlank()) {
+            Muted(result)
+        }
+        Muted("Claude searches the web with your API key every Monday at 7 AM for the next 3 weeks, and on the " +
+            "morning of each event day for that day's stream (including FencingTV's schedule on fencing.tv). That " +
+            "costs about \$0.30 to \$1 a week.")
+    }
+}
+
 // Settings → School: paste Canvas's Calendar Feed link (kept encrypted), see when it was last checked and what it
 // found, check now, or remove the link
 @Composable

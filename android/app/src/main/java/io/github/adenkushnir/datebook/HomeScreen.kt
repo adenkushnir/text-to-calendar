@@ -51,6 +51,8 @@ import io.github.adenkushnir.datebook.calendar.HomeEvent
 import io.github.adenkushnir.datebook.calendar.endText
 import io.github.adenkushnir.datebook.calendar.timeText
 import io.github.adenkushnir.datebook.data.FollowUp
+import io.github.adenkushnir.datebook.fencing.FencingSection
+import io.github.adenkushnir.datebook.fencing.FencingTile
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.data.followUpDay
 import io.github.adenkushnir.datebook.pipeline.summary
@@ -133,6 +135,9 @@ fun HomeScreen(
     onPaid: (Long) -> Unit = {},
     onDropLoose: (Long) -> Unit = {},
     onOpenChat: (FollowUp) -> Unit = {},
+    fencing: List<FencingTile>? = null,
+    fencingEmpty: String = "",
+    onOpenLink: (String) -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize()) {  // see-through, so the scene behind shows
         TopBar("Datebook", onSettings = onSettings)
@@ -200,6 +205,11 @@ fun HomeScreen(
             // Show the train board once a trip is saved
             if (trains != null) {
                 TrainBoardCard(trains, onFlipTrains)
+            }
+
+            // Show the men's foil tournaments while fencing is on
+            if (fencing != null) {
+                FencingSection(fencing, fencingEmpty, onOpenLink)
             }
         }
     }

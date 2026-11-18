@@ -86,6 +86,12 @@ import io.github.adenkushnir.datebook.canvas.resultText
 import io.github.adenkushnir.datebook.canvas.scheduleCanvas
 import io.github.adenkushnir.datebook.deliberate.whenText
 import io.github.adenkushnir.datebook.settings.SchoolPage
+import io.github.adenkushnir.datebook.settings.FencingPage
+import io.github.adenkushnir.datebook.fencing.FencingSettings
+import io.github.adenkushnir.datebook.fencing.emptyWeekLine
+import io.github.adenkushnir.datebook.fencing.fencingTiles
+import io.github.adenkushnir.datebook.fencing.scheduleFencing
+import io.github.adenkushnir.datebook.fencing.searchNow
 import io.github.adenkushnir.datebook.deliberate.DeliberateActions
 import io.github.adenkushnir.datebook.deliberate.DeliberateScreen
 import io.github.adenkushnir.datebook.deliberate.VIEW_CHAT
@@ -211,6 +217,7 @@ const val ROUTE_SETTINGS_ABOUT = "settings/about"
 const val ROUTE_SETTINGS_AUTOMATIC = "settings/automatic"
 const val ROUTE_SETTINGS_LOOK = "settings/look"
 const val ROUTE_SETTINGS_SCHOOL = "settings/school"
+const val ROUTE_SETTINGS_FENCING = "settings/fencing"
 private const val TICK_MILLIS = 30_000L  // how often Home moves "now" on
 private val MAIN_TABS = listOf(TabItem(ROUTE_HOME, DatebookIcons.Home, "Home"),
     TabItem(ROUTE_LISTS, DatebookIcons.List, "Lists"), TabItem(ROUTE_NOTES, DatebookIcons.Note, "Notes"),
@@ -343,6 +350,7 @@ class MainActivity : ComponentActivity() {
             scheduleFollowUps(applicationContext)  // start the follow-up nudges and reminders if they aren't running
             scheduleWidgetRefresh(applicationContext)  // start the widget refresh and access check if it isn't running
             scheduleCanvas(applicationContext)  // start the 6-hour Canvas checks while a feed link is saved
+            scheduleFencing(applicationContext)  // book the 7 AM fencing search if it isn't booked
             bookNextFollowUp(applicationContext)  // and book the next one due, on time
             graph.offlineDates.prepare()  // download the offline date model the first time there's internet
 
@@ -450,6 +458,10 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+                val fencingSettings = remember { FencingSettings(applicationContext) }
+                val tournaments = remember(reload, now / TICK_MILLIS) {
+                    if (fencingSettings.isOn()) fencingSettings.tournaments() else null  // re-read as Home ticks
+                }
                 Tabbed(ROUTE_HOME, openTab) {
                     HomeScreen(
                         waiting = waiting,
@@ -472,6 +484,9 @@ class MainActivity : ComponentActivity() {
                         loosePlans = loosePlans,
                         onDropLoose = { id -> scope.launch { graph.dao.setFollowUpStatus(id, FollowUp.DROPPED) } },
                         onOpenChat = { loose -> openApp(loose.app) },
+                        fencing = tournaments?.let { fencingTiles(it, now, zone) },
+                        fencingEmpty = tournaments?.let { emptyWeekLine(it, day) }.orEmpty(),
+                        onOpenLink = { url -> openLink(url) },
                         onFlipTrains = {
                             val saved = trip
 
@@ -713,6 +728,25 @@ class MainActivity : ComponentActivity() {
                 val settings = remember { MotionSettings(applicationContext) }
                 var moving by remember { mutableStateOf(settings.isOn()) }
                 LookPage(moving, setMoving = { on -> settings.set(on); moving = on }, onBack = { nav.popBackStack() })
+            }
+            composable(ROUTE_SETTINGS_FENCING) {
+                val fencing = remember { FencingSettings(applicationContext) }
+                var on by remember { mutableStateOf(fencing.isOn()) }
+                var searched by remember { mutableStateOf(fencing.lastSearch()) }
+                var found by remember { mutableStateOf(fencing.lastResult()) }
+                FencingPage(on, if (searched > 0) "Last searched ${whenText(searched)}" else "", found,
+                    setOn = { turnOn ->
+                        fencing.setOn(turnOn)
+                        on = turnOn
+                        scheduleFencing(applicationContext)
+                    },
+                    onSearch = {
+                        searchNow(applicationContext).also {
+                            searched = fencing.lastSearch()
+                            found = fencing.lastResult()
+                        }
+                    },
+                    onBack = { nav.popBackStack() })
             }
             composable(ROUTE_SETTINGS_SCHOOL) {
                 val canvas = remember { CanvasSettings(applicationContext) }
@@ -963,6 +997,9 @@ class MainActivity : ComponentActivity() {
             },
             SettingsItem(DatebookIcons.Book, TILE_LEAF, "School", "Assignments and classes from Canvas") {
                 open(ROUTE_SETTINGS_SCHOOL)
+            },
+            SettingsItem(DatebookIcons.Sparkle, TILE_BLUE, "Fencing", "Men's foil tournaments to watch") {
+                open(ROUTE_SETTINGS_FENCING)
             },
             SettingsItem(DatebookIcons.Bell, TILE_WARN, "Notifications & alerts", "Reading texts and showing prompts") {
                 open(ROUTE_SETTINGS_NOTIFICATIONS)
