@@ -31,6 +31,7 @@ import androidx.lifecycle.viewModelScope
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import io.github.adenkushnir.datebook.AppGraph
+import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.MainActivity
 import io.github.adenkushnir.datebook.pipeline.IncomingText
 import io.github.adenkushnir.datebook.pipeline.SHARED_IMAGE_APP
@@ -54,6 +55,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+const val EXTRA_REVIEW_IDS = "io.github.adenkushnir.datebook.REVIEW_IDS"
+
 // Keeps the sheet's state when the screen turns, so Claude is only asked once per share
 class ShareModel(application: Application) : AndroidViewModel(application) {
     var result by mutableStateOf<ShareResult?>(null)
@@ -76,6 +79,22 @@ class ShareModel(application: Application) : AndroidViewModel(application) {
             val found = ask(item)
             ticked = found.suggestions.map { it.id }.toSet()  // a schedule starts with every date ticked
             result = found
+        }
+    }
+
+    // Show plans already saved (Canvas's class events) as the review list, without asking Claude; only the ones still
+    // waiting are shown
+    fun review(ids: LongArray) {
+        // Only load them once
+        if (started) {
+            return
+        }
+        started = true
+        viewModelScope.launch {
+            val dao = AppGraph.get(getApplication<Application>()).dao
+            val plans = ids.toList().mapNotNull { dao.suggestion(it) }.filter { it.status == Suggestion.STATUS_WAITING }
+            ticked = plans.map { it.id }.toSet()
+            result = ShareResult(plans, "These class events were already added or ignored.")
         }
     }
 
@@ -119,14 +138,18 @@ class ShareActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val reviewIds = intent.getLongArrayExtra(EXTRA_REVIEW_IDS)
         val item = sharedItemFrom(intent)
 
-        // Close straight away if nothing usable was shared
-        if (item == null) {
+        // Canvas's class events to review, something shared, or nothing usable (close straight away)
+        if (reviewIds != null) {
+            model.review(reviewIds)
+        } else if (item != null) {
+            model.start(item)
+        } else {
             finish()
             return
         }
-        model.start(item)
         movingSwitch.value = MotionSettings(this).isOn()
         enableEdgeToEdge()
         setContent {
@@ -181,7 +204,7 @@ class ShareActivity : ComponentActivity() {
 
     // The plans in the sheet, with what each button does
     @Composable
-    private fun SheetContents(item: SharedItem) {
+    private fun SheetContents(item: SharedItem?) {
         ShareSheet(model.result, model.added, model.ignored,
             onAdd = { id ->
                 model.added += id
@@ -191,7 +214,7 @@ class ShareActivity : ComponentActivity() {
                 model.ignored += id
                 lifecycleScope.launch { ignoreSuggestion(applicationContext, id) }
             },
-            onRetry = { model.start(item, again = true) },
+            onRetry = { item?.let { model.start(it, again = true) } },
             ticked = model.ticked,
             queue = model.queue,
             onTick = { id, on -> model.ticked = if (on) model.ticked + id else model.ticked - id },

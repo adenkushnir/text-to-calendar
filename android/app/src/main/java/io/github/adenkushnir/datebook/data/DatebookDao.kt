@@ -169,6 +169,14 @@ interface DatebookDao {
         "ORDER BY start")
     suspend fun packagesNow(): List<Suggestion>
 
+    // Return every follow-up that came from a source (like Canvas), whatever its status
+    @Query("SELECT * FROM followups WHERE app = :app")
+    suspend fun followUpsFrom(app: String): List<FollowUp>
+
+    // Return every plan that came from a source (like Canvas), whatever its status
+    @Query("SELECT * FROM suggestions WHERE app = :app")
+    suspend fun suggestionsFrom(app: String): List<Suggestion>
+
     // Forget every kept message text (Settings → Privacy → Delete all texts)
     @Query("UPDATE suggestions SET message = ''")
     suspend fun clearPlanMessages()

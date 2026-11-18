@@ -13,6 +13,8 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import io.github.adenkushnir.datebook.AppGraph
+import io.github.adenkushnir.datebook.canvas.CANVAS_PACKAGE
+import io.github.adenkushnir.datebook.canvas.checkCanvasSoon
 import io.github.adenkushnir.datebook.capture.WATCHABLE_APPS
 import io.github.adenkushnir.datebook.pipeline.IncomingText
 import java.time.LocalDateTime
@@ -89,13 +91,23 @@ class AutomaticModeService : AccessibilityService() {
     override fun onServiceConnected() {
         val graph = AppGraph.get(this)
         val info = serviceInfo
-        info.packageNames = WATCHABLE_APPS.map { it.packageName }.filter { graph.appSwitches.isOn(it) }.toTypedArray()
+        info.packageNames = (WATCHABLE_APPS.map { it.packageName }.filter { graph.appSwitches.isOn(it) } +
+            CANVAS_PACKAGE).toTypedArray()  // Canvas only to notice it opening, for a Canvas check
         serviceInfo = info
     }
 
     // Read the chat a moment after one of the chosen apps changes on screen
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         val app = event.packageName?.toString() ?: return
+
+        // Canvas opening only starts a Canvas check; its screen is never read
+        if (app == CANVAS_PACKAGE) {
+            // Only when it comes to the front
+            if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                checkCanvasSoon(this)
+            }
+            return
+        }
 
         // Ignore apps that aren't switched on (the list can change while the service runs)
         if (!AppGraph.get(this).appSwitches.isOn(app)) {
