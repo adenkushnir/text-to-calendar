@@ -33,6 +33,14 @@ class ClaudeExtractorTest {
         assertTrue(buildPrompt(incoming, newYork).contains("(Monday, phone time zone America/New_York)"))
     }
 
+    // Deliberate's habits follow the message, and nothing is added without any
+    @Test
+    fun promptWithHabits() {
+        val prompt = buildPrompt(incoming.copy(habits = listOf("Dinners last 2 hours")), newYork)
+        assertTrue(prompt.contains("<habits>\nThe phone's owner says to assume: Dinners last 2 hours\n</habits>"))
+        assertTrue(!buildPrompt(incoming, newYork).contains("<habits>"))
+    }
+
     // Group chats send the group's name and never the sender's
     @Test
     fun promptForGroup() {

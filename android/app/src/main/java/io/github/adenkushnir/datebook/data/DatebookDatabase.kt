@@ -6,6 +6,11 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import io.github.adenkushnir.datebook.deliberate.DeliberateChange
+import io.github.adenkushnir.datebook.deliberate.DeliberateChat
+import io.github.adenkushnir.datebook.deliberate.DeliberateDao
+import io.github.adenkushnir.datebook.deliberate.DeliberateLine
+import io.github.adenkushnir.datebook.deliberate.Rule
 
 // Version 5 adds the time a waiting plan had before it changed in the chat (the old one is kept)
 val MIGRATION_4_5 = object : Migration(4, 5) {
@@ -70,14 +75,39 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
     }
 }
 
+// Version 12 keeps the message a plan came from (for Deliberate), and adds Deliberate's chats, changes and rules
+val MIGRATION_11_12 = object : Migration(11, 12) {
+    // Add the message columns, empty for everything saved, and create the new tables, empty
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE suggestions ADD COLUMN message TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE followups ADD COLUMN message TEXT NOT NULL DEFAULT ''")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `deliberate_chats` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+            "`title` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `turns` TEXT NOT NULL, " +
+            "`pending` TEXT NOT NULL)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `deliberate_lines` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+            "`chatId` INTEGER NOT NULL, `kind` TEXT NOT NULL, `text` TEXT NOT NULL, `data` TEXT NOT NULL, " +
+            "`state` TEXT NOT NULL, `createdAt` INTEGER NOT NULL)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `deliberate_changes` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+            "`chatId` INTEGER NOT NULL, `summary` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `undo` TEXT NOT NULL, " +
+            "`reverted` INTEGER NOT NULL)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `rules` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+            "`kind` TEXT NOT NULL, `words` TEXT NOT NULL, `place` TEXT NOT NULL, `sender` TEXT NOT NULL, " +
+            "`value` TEXT NOT NULL, `isOn` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL)")
+    }
+}
+
 // The database holding seen texts, suggestions, the retry queue and failure counts; from version 5 on, saved data is
 // converted when the database changes (older versions still start empty)
-@Database(entities = [SeenText::class, Suggestion::class, RetryText::class, FailureCount::class, FollowUp::class],
-    version = 11,
+@Database(entities = [SeenText::class, Suggestion::class, RetryText::class, FailureCount::class, FollowUp::class,
+    DeliberateChat::class, DeliberateLine::class, DeliberateChange::class, Rule::class],
+    version = 12,
     exportSchema = false)
 abstract class DatebookDatabase : RoomDatabase() {
     // The queries for all four tables
     abstract fun dao(): DatebookDao
+
+    // The queries for Deliberate's chats, changes and rules
+    abstract fun deliberateDao(): DeliberateDao
 
     // Opens the one shared database
     companion object {
@@ -89,7 +119,7 @@ abstract class DatebookDatabase : RoomDatabase() {
                 val appContext = context.applicationContext
                 instance ?: Room.databaseBuilder(appContext, DatebookDatabase::class.java, "datebook.db")
                     .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
-                        MIGRATION_9_10, MIGRATION_10_11)
+                        MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                     .fallbackToDestructiveMigration(true)
                     .build()
                     .also { instance = it }

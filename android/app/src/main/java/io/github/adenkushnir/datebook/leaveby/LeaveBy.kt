@@ -1,6 +1,7 @@
 // Leave-by alerts: for each timed calendar event with a place, work out the travel time and, 10 minutes before you
 // need to leave (travel time plus 5 spare minutes before the start), post "Leave by 6:37 PM" with Open in Maps and
-// buttons to switch the travel mode
+// buttons to switch the travel mode; Deliberate's rules can set the travel time, extra early minutes, an earlier
+// alert, the mode and things to bring, or turn an event's alerts off, and it can pause the alerts
 package io.github.adenkushnir.datebook.leaveby
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -25,6 +26,11 @@ import io.github.adenkushnir.datebook.MainActivity
 import io.github.adenkushnir.datebook.R
 import io.github.adenkushnir.datebook.calendar.CalendarEvent
 import io.github.adenkushnir.datebook.calendar.calendarEvents
+import io.github.adenkushnir.datebook.deliberate.EventEffects
+import io.github.adenkushnir.datebook.deliberate.PAUSE_LEAVE_BY
+import io.github.adenkushnir.datebook.deliberate.effectsFor
+import io.github.adenkushnir.datebook.deliberate.mergeBring
+import io.github.adenkushnir.datebook.deliberate.planRuleReminders
 import io.github.adenkushnir.datebook.extras.BRING_LABEL
 import io.github.adenkushnir.datebook.extras.bringOf
 import io.github.adenkushnir.datebook.flights.isFlightTitle
@@ -128,14 +134,14 @@ class LeaveByStore(context: Context) {
     }
 }
 
-// When to leave: the start, less the travel time and 5 spare minutes
-fun leaveTime(begin: Long, minutes: Int): Long {
-    return begin - (minutes + BUFFER_MINUTES) * MINUTE
+// When to leave: the start, less the travel time, 5 spare minutes and any minutes a rule says to arrive early
+fun leaveTime(begin: Long, minutes: Int, early: Int = 0): Long {
+    return begin - (minutes + BUFFER_MINUTES + early) * MINUTE
 }
 
-// When to send the alert: 10 minutes before the leave time
-fun alertTime(begin: Long, minutes: Int): Long {
-    return leaveTime(begin, minutes) - HEADS_UP_MINUTES * MINUTE
+// When to send the alert: 10 minutes before the leave time, or earlier when a rule says so
+fun alertTime(begin: Long, minutes: Int, early: Int = 0, earlier: Int = 0): Long {
+    return leaveTime(begin, minutes, early) - (HEADS_UP_MINUTES + earlier) * MINUTE
 }
 
 // The events that get leave-by alerts: timed ones with a place, starting within the next 4 hours, except flights
@@ -159,8 +165,9 @@ fun tripText(minutes: Int, mode: String): String {
 
 // The alert's title, like "Leave by 6:37 PM", or "Leave now" when the alert comes after the leave time (an event
 // added or moved at the last minute)
-fun leaveByTitle(begin: Long, minutes: Int, zone: ZoneId, nowMillis: Long = System.currentTimeMillis()): String {
-    val leave = leaveTime(begin, minutes)
+fun leaveByTitle(begin: Long, minutes: Int, zone: ZoneId, nowMillis: Long = System.currentTimeMillis(),
+    early: Int = 0): String {
+    val leave = leaveTime(begin, minutes, early)
     return if (nowMillis > leave) "Leave now" else "Leave by ${Instant.ofEpochMilli(leave).atZone(zone).format(CLOCK)}"
 }
 
@@ -177,8 +184,9 @@ private fun freshMinutes(context: Context, event: CalendarEvent, mode: String): 
 }
 
 // Post (or update) an event's leave-by alert, naming the suggested NJ Transit train when there is one and what to
-// bring when the event's notes say
-fun showLeaveBy(context: Context, event: CalendarEvent, minutes: Int, mode: String, trainLine: String? = null) {
+// bring when the event's notes or Deliberate's rules say
+fun showLeaveBy(context: Context, event: CalendarEvent, minutes: Int, mode: String, trainLine: String? = null,
+    effects: EventEffects = EventEffects()) {
     // Nothing can be shown without permission to notify
     if (!canNotify(context)) {
         return
@@ -192,13 +200,14 @@ fun showLeaveBy(context: Context, event: CalendarEvent, minutes: Int, mode: Stri
     val openHome = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     val openMaps = mapsIntent(event.location, mode).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     val text = "${event.title.ifBlank { "Event" }} · ${tripText(minutes, mode)}"
+    val bring = mergeBring(bringOf(event.notes), effects.bring)
     val builder = NotificationCompat.Builder(context, LEAVE_BY_CHANNEL)
         .setSmallIcon(R.drawable.ic_stat_datebook)
         .setColor(ContextCompat.getColor(context, R.color.brand_aqua))
-        .setContentTitle(leaveByTitle(event.begin, minutes, ZoneId.systemDefault()))
+        .setContentTitle(leaveByTitle(event.begin, minutes, ZoneId.systemDefault(), early = effects.earlyMinutes))
         .setContentText(text)
         .setStyle(NotificationCompat.BigTextStyle().bigText(listOfNotNull(text, trainLine?.let { "🚆 $it" },
-            bringOf(event.notes).ifBlank { null }?.let { "🎒 $BRING_LABEL$it" }, event.location).joinToString("\n")))
+            bring.ifBlank { null }?.let { "🎒 $BRING_LABEL$it" }, event.location).joinToString("\n")))
         .setCategory(NotificationCompat.CATEGORY_REMINDER)
         .setPriority(NotificationCompat.PRIORITY_HIGH)
         .setAutoCancel(true)
@@ -229,35 +238,42 @@ private fun findEvent(context: Context, eventId: Long, begin: Long): CalendarEve
 }
 
 // Look at the next 4 hours of events and book each alert for 10 minutes before its leave time, working out travel
-// times once per event (and again if its mode changes); runs every 15 minutes and when the app opens
+// times once per event (and again if its mode changes); a rule's travel time is used instead of Google's, so those
+// events work without a Maps key; runs every 15 minutes and when the app opens, and also books Deliberate's rule
+// reminders
 suspend fun planLeaveBy(context: Context) {
     val graph = AppGraph.get(context)
     val store = LeaveByStore(context)
     val now = System.currentTimeMillis()
+    val rules = graph.deliberateDao.rules()
+    planRuleReminders(context, rules, now)
 
-    // Without a Maps key there are no travel times
-    if (graph.mapsKeyStore.load().isNullOrBlank()) {
+    // Paused by Deliberate ("no leave-by alerts this weekend")
+    if (graph.deliberateSettings.paused(PAUSE_LEAVE_BY, now)) {
         return
     }
+    val hasMaps = !graph.mapsKeyStore.load().isNullOrBlank()
     store.prune(now)
     val events = calendarEvents(context, now, now + LOOK_AHEAD_MILLIS, graph.calendarSwitches.switchedOff())
 
     // Book an alert for each event with a place that hasn't had one
     for (event in leaveByCandidates(events, now)) {
         val key = eventKey(event.title, event.begin)
+        val effects = effectsFor(rules, event.title, event.location)
 
-        // Skip events already alerted
-        if (store.alerted(key)) {
+        // Skip events already alerted, events a rule keeps quiet, and (without a Maps key) events with no rule time
+        if (store.alerted(key) || effects.quiet || (!hasMaps && effects.minutes == null)) {
             continue
         }
-        val mode = store.mode(key) ?: graph.travelSettings.mode()
-        val minutes = store.minutes(key) ?: freshMinutes(context, event, mode)?.also { store.setMinutes(key, it) }
+        val mode = store.mode(key) ?: effects.mode ?: graph.travelSettings.mode()
+        val minutes = effects.minutes ?: store.minutes(key) ?: freshMinutes(context, event, mode)
+            ?.also { store.setMinutes(key, it) }
 
         // Without a travel time there's nothing to book
         if (minutes == null) {
             continue
         }
-        val alertAt = alertTime(event.begin, minutes)
+        val alertAt = alertTime(event.begin, minutes, effects.earlyMinutes, effects.alertEarlier)
 
         // Only re-book when the alert time changed
         if (store.bookedFor(key) != alertAt) {
@@ -285,18 +301,27 @@ class LeaveByAlertWorker(context: Context, params: WorkerParameters) : Coroutine
     // Send one event's alert
     override suspend fun doWork(): Result {
         val store = LeaveByStore(applicationContext)
+        val graph = AppGraph.get(applicationContext)
         val key = inputData.getString(EXTRA_KEY) ?: return Result.success()
         val event = findEvent(applicationContext, inputData.getLong(EXTRA_EVENT, 0), inputData.getLong(EXTRA_BEGIN, 0))
 
-        // Skip events already alerted, moved, deleted or started
-        if (store.alerted(key) || event == null || event.begin <= System.currentTimeMillis()) {
+        // Skip events already alerted, moved, deleted or started, and alerts Deliberate paused
+        if (store.alerted(key) || event == null || event.begin <= System.currentTimeMillis() ||
+            graph.deliberateSettings.paused(PAUSE_LEAVE_BY)) {
             return Result.success()
         }
-        val mode = store.mode(key) ?: AppGraph.get(applicationContext).travelSettings.mode()
-        val minutes = freshMinutes(applicationContext, event, mode) ?: store.minutes(key) ?: return Result.success()
+        val effects = effectsFor(graph.deliberateDao.rules(), event.title, event.location)
+
+        // A rule turned this event's alerts off since it was booked
+        if (effects.quiet) {
+            return Result.success()
+        }
+        val mode = store.mode(key) ?: effects.mode ?: graph.travelSettings.mode()
+        val minutes = effects.minutes ?: freshMinutes(applicationContext, event, mode) ?: store.minutes(key)
+            ?: return Result.success()
         store.setMinutes(key, minutes)
         val train = TrainStore(applicationContext).pick(key)?.let { pickLine(it) }  // only for transit plans
-        showLeaveBy(applicationContext, event, minutes, mode, train)
+        showLeaveBy(applicationContext, event, minutes, mode, train, effects)
         store.setAlerted(key)
         Log.i("Datebook", "leave-by alert: ${event.title} · ${tripText(minutes, mode)}")
         return Result.success()
@@ -318,9 +343,10 @@ class LeaveByModeReceiver : BroadcastReceiver() {
             try {
                 LeaveByStore(appContext).setMode(key, mode)
                 val event = findEvent(appContext, eventId, begin) ?: return@launch
+                val effects = effectsFor(AppGraph.get(appContext).deliberateDao.rules(), event.title, event.location)
                 val minutes = freshMinutes(appContext, event, mode) ?: return@launch
                 LeaveByStore(appContext).setMinutes(key, minutes)
-                showLeaveBy(appContext, event, minutes, mode)
+                showLeaveBy(appContext, event, minutes, mode, effects = effects)
             } finally {
                 pending.finish()
             }

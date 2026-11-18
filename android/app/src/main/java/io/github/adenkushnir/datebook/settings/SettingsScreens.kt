@@ -61,10 +61,12 @@ const val PRIVACY_SUMMARY = "Datebook checks texts from the apps you switch on, 
     "are dropped straight away and leave no trace. If you sign in to Gmail, new emails in Primary and Updates are " +
     "checked the same way. Only a text with a date is sent to Claude, on its own, using your " +
     "API key (for group chats, with the group's name instead of the sender's). Datebook keeps the events it found " +
-    "for a year, never the message text, and nothing is shared anywhere else. The one exception: when Claude " +
-    "can't be reached, a text with a date waits on the phone (for up to a day) so Claude can check it later, and " +
-    "its offline guess shows it until then. On Fridays, next week's event titles and times also go to Claude, " +
-    "so it can write your week ahead. Notes you type in Datebook are kept on this phone."
+    "for a year, with the message each came from so Deliberate can quote it (you can turn that off below), and " +
+    "nothing is shared anywhere else. When Claude can't be reached, a text with a date waits on the phone (for up " +
+    "to a day) so Claude can check it later, and its offline guess shows it until then. On Fridays, next week's " +
+    "event titles and times also go to Claude, so it can write your week ahead. When you ask Deliberate something, " +
+    "what it looks up for you (calendar events, plans, kept messages, lists) goes to Claude with your question. " +
+    "Notes you type in Datebook are kept on this phone."
 
 // One item in the Settings menu: its glass tile icon and the icon's colour, its name, a one-line hint, and the page it
 // opens
@@ -621,12 +623,56 @@ private fun TimeDialog(hour: Int, minute: Int, onDismiss: () -> Unit, onPick: (I
 
 // Privacy & history: what Datebook keeps, and clearing old suggestions
 @Composable
-fun PrivacyPage(clearHistory: suspend () -> Int, onBack: () -> Unit) {
+fun PrivacyPage(clearHistory: suspend () -> Int, onBack: () -> Unit, keepTexts: Boolean = true,
+    setKeepTexts: (Boolean) -> Unit = {}, deleteTexts: suspend () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     var confirming by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf("") }
+    var deletingTexts by remember { mutableStateOf(false) }
+    var textsResult by remember { mutableStateOf("") }
     SettingsPage("Privacy & history", onBack) {
         Muted(PRIVACY_SUMMARY)
+        SectionLabel("Message texts")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Keep message texts")
+                Muted("The message a plan came from, kept with it for a year so Deliberate can quote it.")
+            }
+            GelSwitch(keepTexts, onCheckedChange = setKeepTexts)
+        }
+        GlassButton(onClick = { deletingTexts = true }) {
+            Text("Delete all texts")
+        }
+
+        // Say the texts are gone
+        if (textsResult.isNotEmpty()) {
+            Muted(textsResult)
+        }
+
+        // Ask before deleting the texts
+        if (deletingTexts) {
+            AlertDialog(
+                onDismissRequest = { deletingTexts = false },
+                title = { Text("Delete all texts?") },
+                text = { Text("Every kept message text is deleted. Your plans and lists stay.") },
+                confirmButton = {
+                    PlainButton(onClick = {
+                        deletingTexts = false
+                        scope.launch {
+                            deleteTexts()
+                            textsResult = "Message texts deleted."
+                        }
+                    }) {
+                        Text("Delete")
+                    }
+                },
+                dismissButton = {
+                    PlainButton(onClick = { deletingTexts = false }) {
+                        Text("Cancel")
+                    }
+                },
+            )
+        }
         SectionLabel("History")
         Muted("Clear history deletes ignored suggestions and added plans that are already over. Plans still waiting " +
             "or coming up are kept.")

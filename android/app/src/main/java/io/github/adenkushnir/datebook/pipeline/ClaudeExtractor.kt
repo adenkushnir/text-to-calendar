@@ -29,6 +29,7 @@ const val SHARED_TEXT_APP = "datebook.shared.text"
 const val SHARED_IMAGE_APP = "datebook.shared.image"
 const val SHARED_PDF_APP = "datebook.shared.pdf"
 const val TYPED_APP = "datebook.typed"
+const val DELIBERATE_APP = "datebook.deliberate"
 private val RECEIVED_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.US)
 private val WEEKDAY_FORMAT = DateTimeFormatter.ofPattern("EEEE", Locale.US)
 private val DAY_FORMAT = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US)
@@ -81,7 +82,8 @@ val EVENTS_SCHEMA = mapOf(
 // group chat it came from (empty for one-to-one); exactTime means receivedAt is the message's own timestamp, and
 // image is a shared picture as base64 JPEG and pdf a shared PDF as base64 (both empty for texts), and upcoming holds
 // the calendar events Claude may match a change against (empty unless the text sounds like a change); fromMe marks a
-// text you sent and onScreen one read from an open chat by automatic mode
+// text you sent, onScreen one read from an open chat by automatic mode, and habits are what Deliberate was told to
+// assume ("dinners last 2 hours")
 data class IncomingText(
     val sender: String,
     val text: String,
@@ -94,11 +96,13 @@ data class IncomingText(
     val fromMe: Boolean = false,
     val onScreen: Boolean = false,
     val pdf: String = "",
+    val habits: List<String> = emptyList(),
 )
 
-// Return true if something came from long-press or Share rather than a notification
+// Return true if something came from long-press, Share, typing or Deliberate rather than a notification
 fun isShared(app: String): Boolean {
-    return app == SHARED_TEXT_APP || app == SHARED_IMAGE_APP || app == SHARED_PDF_APP || app == TYPED_APP
+    return app == SHARED_TEXT_APP || app == SHARED_IMAGE_APP || app == SHARED_PDF_APP || app == TYPED_APP ||
+        app == DELIBERATE_APP
 }
 
 // Read Claude's instructions, shared word for word with the Python version, from the app's resources
@@ -113,8 +117,9 @@ fun makeClient(apiKey: String): AnthropicClient {
 }
 
 // Build the message for Claude: when it arrived (with weekday and phone zone), who sent it, then the text in tags;
-// for group chats the group's name is sent instead of the sender's, and shared things say they were shared; when
-// calendar events are given, they follow as a numbered list with the rules for changes
+// for group chats the group's name is sent instead of the sender's, and shared things say they were shared; the
+// phone owner's habits follow when there are any, and when calendar events are given, they follow as a numbered list
+// with the rules for changes
 fun buildPrompt(incoming: IncomingText, phoneZone: String): String {
     val received = incoming.receivedAt.format(RECEIVED_FORMAT)
     val weekday = incoming.receivedAt.format(WEEKDAY_FORMAT)
@@ -137,7 +142,9 @@ fun buildPrompt(incoming: IncomingText, phoneZone: String): String {
         incoming.text.isBlank() -> "(see the attached image)"
         else -> "${incoming.text}\n(and the attached image)"
     }
-    val prompt = "Received: $received ($weekday$zone)\nFrom: $from\n<message>\n$text\n</message>"
+    val habits = if (incoming.habits.isEmpty()) "" else "\n<habits>\nThe phone's owner says to assume: " +
+        incoming.habits.joinToString("; ") + "\n</habits>"
+    val prompt = "Received: $received ($weekday$zone)\nFrom: $from\n<message>\n$text\n</message>$habits"
 
     // Without calendar events there is nothing a change could refer to
     if (incoming.upcoming.isEmpty()) {

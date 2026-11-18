@@ -17,8 +17,8 @@ data class SeenText(
 // warning shown with it, for a changed or cancelled plan which calendar event it changes, and its flight, package
 // and place coordinates, its start before it changed in the chat while waiting, whether you sent the text, and for an
 // offline guess the retry-queue text Claude is still to check (0 for plans Claude read), its confirmation code, and
-// for a travel booking the trip it belongs to, like "Chicago", what to bring and whether it's outdoors (kept 1 year;
-// never the message text)
+// for a travel booking the trip it belongs to, like "Chicago", what to bring, whether it's outdoors, and the message
+// it came from when you keep message texts for Deliberate (kept 1 year, deleted with the plan)
 @Entity(tableName = "suggestions")
 data class Suggestion(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -50,6 +50,7 @@ data class Suggestion(
     @ColumnInfo(defaultValue = "") val trip: String = "",
     @ColumnInfo(defaultValue = "") val bring: String = "",
     @ColumnInfo(defaultValue = "0") val outdoor: Boolean = false,
+    @ColumnInfo(defaultValue = "") val message: String = "",
 ) {
     // Turn the saved row back into an event
     fun toEvent(): Event {

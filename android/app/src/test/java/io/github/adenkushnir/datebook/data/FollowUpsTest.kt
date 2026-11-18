@@ -15,6 +15,19 @@ class FollowUpsTest {
         return time.atZone(newYork).toInstant().toEpochMilli()
     }
 
+    // A paid monthly bill comes back due a month later with its reminders booked; a one-off bill doesn't
+    @Test
+    fun repeatingBills() {
+        val rent = FollowUp(kind = KIND_DUE, title = "Rent", date = "2037-12-01", amount = "\$1,200", sender = "you",
+            app = "", conversation = "", status = FollowUp.OPEN, createdAt = found, nextNudge = 0, nudges = 1,
+            repeat = "FREQ=MONTHLY")
+        val next = nextBill(rent, found, newYork)!!
+        assertEquals("2038-01-01", next.date)
+        assertEquals(FollowUp.OPEN, next.status)
+        assertEquals(millis(LocalDateTime.of(2037, 12, 30, 9, 0)), next.nextNudge)
+        assertEquals(null, nextBill(rent.copy(repeat = ""), found, newYork))
+    }
+
     // A loose plan is nudged at 9 AM on the first day of the time it names, or 3 days later without one
     @Test
     fun loosePlans() {

@@ -155,4 +155,25 @@ interface DatebookDao {
     // Mark a follow-up done, dropped or open again
     @Query("UPDATE followups SET status = :status WHERE id = :id")
     suspend fun setFollowUpStatus(id: Long, status: String)
+
+    // Return every plan, newest first, for Deliberate's look-ups
+    @Query("SELECT * FROM suggestions ORDER BY createdAt DESC")
+    suspend fun allSuggestions(): List<Suggestion>
+
+    // Return every open follow-up of any kind, soonest day first
+    @Query("SELECT * FROM followups WHERE status = 'open' ORDER BY date, time, createdAt")
+    suspend fun allOpenFollowUps(): List<FollowUp>
+
+    // Return the deliveries that aren't ignored, soonest first
+    @Query("SELECT * FROM suggestions WHERE (packageCarrier != '' OR trackingNumber != '') AND status != 'ignored' " +
+        "ORDER BY start")
+    suspend fun packagesNow(): List<Suggestion>
+
+    // Forget every kept message text (Settings → Privacy → Delete all texts)
+    @Query("UPDATE suggestions SET message = ''")
+    suspend fun clearPlanMessages()
+
+    // Forget every kept message text on follow-ups
+    @Query("UPDATE followups SET message = ''")
+    suspend fun clearFollowUpMessages()
 }

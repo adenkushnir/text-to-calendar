@@ -76,6 +76,10 @@ import io.github.adenkushnir.datebook.email.gmailRequest
 import io.github.adenkushnir.datebook.email.scheduleGmailChecks
 import io.github.adenkushnir.datebook.email.stopGmailChecks
 import io.github.adenkushnir.datebook.data.FollowUp
+import io.github.adenkushnir.datebook.data.finishFollowUp
+import io.github.adenkushnir.datebook.deliberate.DeliberateActions
+import io.github.adenkushnir.datebook.deliberate.DeliberateScreen
+import io.github.adenkushnir.datebook.deliberate.VIEW_CHAT
 import io.github.adenkushnir.datebook.data.KIND_ASSIGNMENT
 import io.github.adenkushnir.datebook.data.KIND_DUE
 import io.github.adenkushnir.datebook.data.KIND_LOOSE
@@ -181,6 +185,7 @@ const val ROUTE_SETUP = "setup"
 const val ROUTE_HOME = "home"
 const val ROUTE_LISTS = "lists"
 const val ROUTE_NOTES = "notes"
+const val ROUTE_DELIBERATE = "deliberate"
 const val ROUTE_SUGGESTION = "suggestion/{id}"
 const val ROUTE_EVENT = "event/{eventId}/{begin}"
 const val ROUTE_SETTINGS = "settings"
@@ -198,7 +203,8 @@ const val ROUTE_SETTINGS_AUTOMATIC = "settings/automatic"
 const val ROUTE_SETTINGS_LOOK = "settings/look"
 private const val TICK_MILLIS = 30_000L  // how often Home moves "now" on
 private val MAIN_TABS = listOf(TabItem(ROUTE_HOME, DatebookIcons.Home, "Home"),
-    TabItem(ROUTE_LISTS, DatebookIcons.List, "Lists"), TabItem(ROUTE_NOTES, DatebookIcons.Note, "Notes"))
+    TabItem(ROUTE_LISTS, DatebookIcons.List, "Lists"), TabItem(ROUTE_NOTES, DatebookIcons.Note, "Notes"),
+    TabItem(ROUTE_DELIBERATE, DatebookIcons.Sparkle, "Deliberate"))
 private const val WEATHER_CHECK_MILLIS = 15 * 60_000L  // how often Home asks if the forecast needs refreshing
 private const val RELOAD_MILLIS = 5 * 60_000L  // how often Home re-reads the calendar even without a change
 
@@ -293,6 +299,8 @@ class MainActivity : ComponentActivity() {
         val packageStore = remember { PackageStore(applicationContext) }
         var received by remember { mutableStateOf(packageStore.received()) }
         var listShown by rememberSaveable { mutableStateOf(LIST_PACKAGES) }
+        var chatId by rememberSaveable { mutableLongStateOf(0L) }  // Deliberate's open chat (0 for a new one)
+        var deliberateView by rememberSaveable { mutableStateOf(VIEW_CHAT) }
         val openTab: (String) -> Unit = { route ->
             nav.navigate(route) {
                 popUpTo(ROUTE_HOME) { saveState = true }
@@ -438,7 +446,7 @@ class MainActivity : ComponentActivity() {
                         forecast = forecast,
                         nowMillis = now,
                         zone = zone,
-                        onPaid = { id -> scope.launch { graph.dao.setFollowUpStatus(id, FollowUp.DONE) } },
+                        onPaid = { id -> scope.launch { finishFollowUp(graph.dao, id) } },
                         onOpenEvent = { event -> openEvent(nav::navigate, event) },
                         onOpen = { nav.navigate("suggestion/$it") },
                         onAdd = add,
@@ -465,18 +473,22 @@ class MainActivity : ComponentActivity() {
                 }
             }
             composable(ROUTE_LISTS) {
+                LaunchedEffect(Unit) {
+                    received = packageStore.received()  // Deliberate may have marked or un-marked packages meanwhile
+                }
                 val today = LocalDate.now()
                 val content = ListsContent(packages.filter { it.id !in received }, assignments,
                     tripsOf(tripPlans, today), bills, today)
                 val listActions = ListsActions(
                     onTrack = { url -> openLink(url) },
                     onGotIt = { id -> packageStore.markReceived(id); received = packageStore.received() },
-                    onDone = { id -> scope.launch { graph.dao.setFollowUpStatus(id, FollowUp.DONE) } },
-                    onPaid = { id -> scope.launch { graph.dao.setFollowUpStatus(id, FollowUp.DONE) } },
+                    onDone = { id -> scope.launch { finishFollowUp(graph.dao, id) } },
+                    onPaid = { id -> scope.launch { finishFollowUp(graph.dao, id) } },
                     onOpenPlan = { id -> nav.navigate("suggestion/$id") },
                 )
                 Tabbed(ROUTE_LISTS, openTab) {
-                    ListsScreen(listShown, { listShown = it }, content, listActions)
+                    ListsScreen(listShown, { listShown = it }, content, listActions,
+                        onSettings = { nav.navigate(ROUTE_SETTINGS) })
                 }
             }
             composable(ROUTE_NOTES) {
@@ -494,7 +506,38 @@ class MainActivity : ComponentActivity() {
                     },
                 )
                 Tabbed(ROUTE_NOTES, openTab) {
-                    NotesScreen(reminders, notes, ZoneId.systemDefault(), notesActions)
+                    NotesScreen(reminders, notes, ZoneId.systemDefault(), notesActions,
+                        onSettings = { nav.navigate(ROUTE_SETTINGS) })
+                }
+            }
+            composable(ROUTE_DELIBERATE) {
+                val deliberate = graph.deliberate
+                val linesFlow = remember(chatId) { graph.deliberateDao.watchLines(chatId) }
+                val chatsFlow = remember { graph.deliberateDao.watchChats() }
+                val changesFlow = remember { graph.deliberateDao.watchChanges() }
+                val rulesFlow = remember { graph.deliberateDao.watchRules() }
+                val lines by linesFlow.collectAsState(initial = emptyList())
+                val chats by chatsFlow.collectAsState(initial = emptyList())
+                val changeList by changesFlow.collectAsState(initial = emptyList())
+                val rules by rulesFlow.collectAsState(initial = emptyList())
+                LaunchedEffect(Unit) {
+                    deliberate.cleanUp()  // chats and changes over 30 days old go
+                }
+                val deliberateActions = DeliberateActions(
+                    onSend = { text -> chatId = deliberate.send(chatId, text) },
+                    onPick = { id, choice -> deliberate.pick(id, choice) },
+                    onConfirm = { id -> deliberate.confirm(id) },
+                    onCancel = { id -> deliberate.cancel(id) },
+                    onUndo = { id -> deliberate.undo(id) },
+                    onRetry = { id -> deliberate.retry(id) },
+                    onRuleOn = { rule, on -> deliberate.setRuleOn(rule, on) },
+                    onDeleteRule = { id -> deliberate.deleteRule(id) },
+                    onOpenChat = { id -> chatId = id },
+                    onNewChat = { chatId = 0 },
+                )
+                Tabbed(ROUTE_DELIBERATE, openTab) {
+                    DeliberateScreen(deliberateView, { deliberateView = it }, lines, chats, changeList, rules,
+                        deliberateActions, onSettings = { nav.navigate(ROUTE_SETTINGS) })
                 }
             }
             composable(ROUTE_SUGGESTION, arguments = listOf(navArgument("id") { type = NavType.LongType })) { entry ->
@@ -660,7 +703,14 @@ class MainActivity : ComponentActivity() {
                 LookPage(moving, setMoving = { on -> settings.set(on); moving = on }, onBack = { nav.popBackStack() })
             }
             composable(ROUTE_SETTINGS_PRIVACY) {
-                PrivacyPage(clearHistory = { graph.pipeline.clearHistory() }, onBack = { nav.popBackStack() })
+                var keepTexts by remember { mutableStateOf(graph.deliberateSettings.keepTexts()) }
+                PrivacyPage(clearHistory = { graph.pipeline.clearHistory() }, onBack = { nav.popBackStack() },
+                    keepTexts = keepTexts,
+                    setKeepTexts = { on -> graph.deliberateSettings.setKeepTexts(on); keepTexts = on },
+                    deleteTexts = {
+                        graph.dao.clearPlanMessages()
+                        graph.dao.clearFollowUpMessages()
+                    })
             }
             composable(ROUTE_SETTINGS_AUTOMATIC) {
                 val apps = WATCHABLE_APPS.filter { graph.appSwitches.isOn(it.packageName) }.map { it.label }

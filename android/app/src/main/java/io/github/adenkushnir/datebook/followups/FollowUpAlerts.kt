@@ -25,6 +25,8 @@ import io.github.adenkushnir.datebook.R
 import io.github.adenkushnir.datebook.calendar.CalendarEvent
 import io.github.adenkushnir.datebook.calendar.calendarEvents
 import io.github.adenkushnir.datebook.data.FollowUp
+import io.github.adenkushnir.datebook.deliberate.PAUSE_WEEK_AHEAD
+import io.github.adenkushnir.datebook.data.finishFollowUp
 import io.github.adenkushnir.datebook.data.KIND_ASSIGNMENT
 import io.github.adenkushnir.datebook.data.KIND_DUE
 import io.github.adenkushnir.datebook.data.KIND_LOOSE
@@ -417,8 +419,8 @@ suspend fun runFollowUps(context: Context, nowMillis: Long, force: Boolean = fal
     val settings = WeekAheadSettings(context)
     val weekDue = weekAheadDue(nowMillis, zone, settings.hour(), settings.minute(), settings.lastSent())
 
-    // The week ahead on Friday evenings, while it's on
-    if (force || (settings.isOn() && weekDue)) {
+    // The week ahead on Friday evenings, while it's on and Deliberate hasn't paused it
+    if (force || (settings.isOn() && weekDue && !graph.deliberateSettings.paused(PAUSE_WEEK_AHEAD))) {
         val from = today.atStartOfDay(zone).toInstant().toEpochMilli()
         val to = today.plusDays(8).atStartOfDay(zone).toInstant().toEpochMilli()
         val events = calendarEvents(context, from, to, graph.calendarSwitches.switchedOff())
@@ -463,7 +465,7 @@ class FollowUpReceiver : BroadcastReceiver() {
                     ACTION_LATER -> dao.updateFollowUp(followUp.copy(nextNudge = System.currentTimeMillis() +
                         LATER_MILLIS))
                     ACTION_DROP -> dao.setFollowUpStatus(id, FollowUp.DROPPED)
-                    ACTION_PAID -> dao.setFollowUpStatus(id, FollowUp.DONE)
+                    ACTION_PAID -> finishFollowUp(dao, id)
                 }
                 bookNextFollowUp(context)
                 updateWidgets(context)  // the Lists widget shows bills and assignments

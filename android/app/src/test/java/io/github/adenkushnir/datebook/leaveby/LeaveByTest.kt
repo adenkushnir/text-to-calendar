@@ -36,6 +36,14 @@ class LeaveByTest {
         assertEquals("Leave now", leaveByTitle(sevenPm, 18, zone, sevenPm - 15 * 60_000))
     }
 
+    // A Deliberate rule to arrive 15 minutes early moves the leave time, and one for an earlier alert moves the alert
+    @Test
+    fun ruleTimes() {
+        assertEquals(sevenPm - 38 * 60_000, leaveTime(sevenPm, 18, early = 15))
+        assertEquals(sevenPm - 58 * 60_000, alertTime(sevenPm, 18, early = 15, earlier = 10))
+        assertEquals("Leave by 6:22 PM", leaveByTitle(sevenPm, 18, zone, sevenPm - 60 * 60_000, early = 15))
+    }
+
     // The trip reads naturally for each mode, and the alert offers the other two common modes
     @Test
     fun words() {
