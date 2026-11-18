@@ -1,6 +1,6 @@
 // The men's foil section at the bottom of Home: a row of glass tiles you swipe sideways, one per tournament this week
-// (the live one first and lit), each with its day, name, meet and place, when it starts, and Watch and Results; or a
-// short line when nothing is on
+// (the live one first and lit), each with its day, name, meet and place, when it starts, and Watch and Results (the
+// exact links when found, else the stream and results sites); or a short line when nothing is on
 package io.github.adenkushnir.datebook.fencing
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -82,19 +82,12 @@ private fun FencingTileCard(tile: FencingTile, onOpenLink: (String) -> Unit) {
             Muted(time)
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            // Watch when there's a stream link
-            if (tournament.streamUrl.isNotBlank()) {
-                GelButton(onClick = { onOpenLink(tournament.streamUrl) }, small = true) {
-                    Text("▶ Watch")
-                }
+            GelButton(onClick = { onOpenLink(watchLink(tournament)) }, small = true) {
+                Text("▶ Watch")
             }
             Spacer(Modifier.weight(1f))
-
-            // Results when there's a results page
-            if (tournament.resultsUrl.isNotBlank()) {
-                GlassButton(onClick = { onOpenLink(tournament.resultsUrl) }, small = true) {
-                    Text("Results")
-                }
+            GlassButton(onClick = { onOpenLink(resultsLink(tournament)) }, small = true) {
+                Text("Results")
             }
         }
     }

@@ -36,6 +36,8 @@ import io.github.adenkushnir.datebook.trains.TrainStore
 import io.github.adenkushnir.datebook.summary.SummarySettings
 import java.time.ZoneId
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -90,6 +92,13 @@ class AppGraph private constructor(context: Context) {
         keepTexts = { deliberateSettings.keepTexts() },
         ignored = { sender, group, title, kind -> ignoredByRules(deliberateDao.rules(), sender, group, title, kind) },
     )
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)  // work that outlives the screen it began on
+
+    // Run a Settings page's long task on the app's scope, so it keeps going after you leave the page; the page still
+    // gets the result while it's open
+    suspend fun <T> keepGoing(task: suspend () -> T): T {
+        return appScope.async { task() }.await()
+    }
     val deliberate by lazy {
         Deliberate(context) { system, turns ->
             askClaude(clientFor(keyStore.load().orEmpty()), modelChoice.get(), system, DELIBERATE_TOOLS, turns)

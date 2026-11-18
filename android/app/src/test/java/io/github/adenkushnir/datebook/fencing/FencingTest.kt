@@ -87,6 +87,18 @@ class FencingTest {
         assertNull(streamWindow(worldCup, LocalDate.of(2037, 12, 5), zone))
     }
 
+    // Watch and Results use the exact links when found, else the sites for USA or FIE events
+    @Test
+    fun fallbackLinks() {
+        assertEquals("https://www.fencing.tv/live", watchLink(junior))
+        assertEquals("https://example.org/results", resultsLink(junior))
+        val noLinks = junior.copy(streamUrl = "", resultsUrl = "")
+        assertEquals("https://www.fencing.tv", watchLink(noLinks))
+        assertEquals("https://www.fencingtimelive.com", resultsLink(noLinks))
+        assertTrue(watchLink(grandPrix).startsWith("https://www.youtube.com/results?search_query=FIE+Grand+Prix"))
+        assertEquals("https://fie.org/competitions", resultsLink(grandPrix))
+    }
+
     // An empty week names the next tournament found
     @Test
     fun emptyWeek() {

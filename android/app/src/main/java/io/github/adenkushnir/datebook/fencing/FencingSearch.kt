@@ -105,8 +105,8 @@ fun askWithWeb(client: AnthropicClient, model: String, prompt: String): String {
         .maxTokens(8000L)
         .outputConfig(BetaOutputConfig.builder().effort(BetaOutputConfig.Effort.LOW).build())
         .system(SYSTEM)
-        .addTool(BetaWebSearchTool20260209.builder().maxUses(8L).build())
-        .addTool(BetaWebFetchTool20260209.builder().maxUses(6L).maxContentTokens(20000L).build())
+        .addTool(BetaWebSearchTool20260209.builder().maxUses(10L).build())
+        .addTool(BetaWebFetchTool20260209.builder().maxUses(12L).maxContentTokens(20000L).build())
         .addUserMessage(prompt)
     var response = client.beta().messages().create(request.build())
 

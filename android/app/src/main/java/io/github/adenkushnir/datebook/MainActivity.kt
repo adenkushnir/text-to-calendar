@@ -621,7 +621,7 @@ class MainActivity : ComponentActivity() {
                     maskedKey = graph.keyStore.load()?.let { maskKey(it) },
                     model = model,
                     onModel = { graph.modelChoice.set(it); model = it },
-                    checkAndSaveKey = { key -> checkAndSaveKey(graph, key, refresh) },
+                    checkAndSaveKey = { key -> graph.keepGoing { checkAndSaveKey(graph, key, refresh) } },
                     onBack = { nav.popBackStack() },
                 )
             }
@@ -661,9 +661,11 @@ class MainActivity : ComponentActivity() {
                     trip = graph.trainSettings.trip(),
                     setTrip = { from, to -> graph.trainSettings.setTrip(from, to) },
                     loadStations = {
-                        withContext(Dispatchers.IO) {
-                            refreshStations(graph.trainSettings, graph.railData, System.currentTimeMillis())
-                            graph.trainSettings.stations()
+                        graph.keepGoing {
+                            withContext(Dispatchers.IO) {
+                                refreshStations(graph.trainSettings, graph.railData, System.currentTimeMillis())
+                                graph.trainSettings.stations()
+                            }
                         }
                     },
                     onBack = { nav.popBackStack() },
@@ -748,7 +750,7 @@ class MainActivity : ComponentActivity() {
                         scheduleFencing(applicationContext)
                     },
                     onSearch = {
-                        searchNow(applicationContext).also {
+                        graph.keepGoing { searchNow(applicationContext) }.also {
                             searched = fencing.lastSearch()
                             found = fencing.lastResult()
                         }
@@ -771,8 +773,8 @@ class MainActivity : ComponentActivity() {
                     if (link.lastContact > 0) "Last heard from Nestor ${whenText(link.lastContact)}" else "",
                     link.problem, on, canReach, hasNotificationAccess(applicationContext),
                     askPermission = { askLocal.launch(LOCAL_NETWORK_PERMISSION) },
-                    onPair = { code -> NestorLink.pair(applicationContext, code) },
-                    onUnpair = { NestorLink.unpair(applicationContext) },
+                    onPair = { code -> graph.keepGoing { NestorLink.pair(applicationContext, code) } },
+                    onUnpair = { graph.keepGoing { NestorLink.unpair(applicationContext) } },
                     setOn = { turnOn ->
                         nestor.setOn(turnOn)
                         on = turnOn
@@ -791,8 +793,8 @@ class MainActivity : ComponentActivity() {
                     found = canvas.lastResult()
                 }
                 SchoolPage(saved, if (checked > 0) "Last checked ${whenText(checked)}" else "", found,
-                    onSave = { link -> saveCanvasLink(canvas, link).also { reread() } },
-                    onCheck = { resultText(checkCanvas(applicationContext)).also { reread() } },
+                    onSave = { link -> graph.keepGoing { saveCanvasLink(canvas, link) }.also { reread() } },
+                    onCheck = { graph.keepGoing { resultText(checkCanvas(applicationContext)) }.also { reread() } },
                     onRemove = {
                         canvas.remove()
                         scheduleCanvas(applicationContext)

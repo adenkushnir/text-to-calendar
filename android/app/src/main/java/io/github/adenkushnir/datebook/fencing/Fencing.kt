@@ -37,6 +37,35 @@ data class Tournament(
     val todayNote: String = "",
 )
 
+// Return true if a tournament is a USA Fencing national event (NACs, Junior Olympics, Summer Nationals, national
+// championships); everything else is treated as an FIE event
+fun isUsaEvent(tournament: Tournament): Boolean {
+    val words = "${tournament.meet} ${tournament.name}".lowercase()
+    return listOf("nac", "north american cup", "junior olympics", "summer nationals", "national championship",
+        "usa fencing").any { words.contains(it) }
+}
+
+// Where Watch goes: the stream found, else FencingTV's schedule for USA events, else a YouTube search for the FIE
+// event's live stream
+fun watchLink(tournament: Tournament): String {
+    // The exact stream wins
+    if (tournament.streamUrl.isNotBlank()) {
+        return tournament.streamUrl
+    }
+    val search = java.net.URLEncoder.encode("${tournament.meet.ifBlank { tournament.name }} men's foil live", "UTF-8")
+    return if (isUsaEvent(tournament)) "https://www.fencing.tv"
+        else "https://www.youtube.com/results?search_query=$search"
+}
+
+// Where Results goes: the results page found, else FencingTimeLive for USA events or the FIE's competitions page
+fun resultsLink(tournament: Tournament): String {
+    // The exact page wins
+    if (tournament.resultsUrl.isNotBlank()) {
+        return tournament.resultsUrl
+    }
+    return if (isUsaEvent(tournament)) "https://www.fencingtimelive.com" else "https://fie.org/competitions"
+}
+
 // One tile on Home: the tournament, the day it shows (today when it's on, else its first day), whether it's live now
 data class FencingTile(val tournament: Tournament, val day: LocalDate, val live: Boolean)
 
@@ -200,7 +229,9 @@ Only these categories: Junior (U20), Division I or Senior, Division IA, Division
 women's events and other weapons. Each category at a meet is its own entry.
 For each, find when men's foil starts on its days, converted to the time zone ${zone.id}, where it is streamed
 and its live results page (FencingTimeLive, the FIE site). For streams, always check FencingTV's schedule at
-https://www.fencing.tv as well as the FIE's channel, Olympics.com and the event's own site.
+https://www.fencing.tv as well as the FIE's channel, Olympics.com and the event's own site. Open the pages with web
+fetch (each event's own page, its FencingTimeLive tournament page, its FIE competition page) to find the exact
+stream_url and results_url for that event, not just a home page.
 Never guess dates or links: leave a field empty when you can't find it.
 Answer with only this JSON inside <json></json> tags:
 {"events": [{"name": "Junior Men's Foil", "meet": "November NAC", "place": "Columbus, OH", "first_day": "YYYY-MM-DD",
@@ -215,7 +246,8 @@ $list
 find today's live stream (its name and link), when today's stream starts and ends converted to the time zone
 ${zone.id}, the live results page, and what stage is on today (like "Table of 16" or "Finals"). Always check
 FencingTV's schedule at https://www.fencing.tv for today's streams, as well as the FIE's channel and the event's own
-site. Never guess: leave a field empty when you can't find it.
+site, and open the pages with web fetch to get the exact stream and results links for each event. Never guess: leave a
+field empty when you can't find it.
 Answer with only this JSON inside <json></json> tags, one entry per event above, with its name and meet as given:
 {"events": [{"name": "", "meet": "", "first_day": "$today", "last_day": "$today", "stream_name": "", "stream_url": "",
 "results_url": "", "today_start": "HH:MM", "today_end": "HH:MM", "today_note": ""}]}"""
