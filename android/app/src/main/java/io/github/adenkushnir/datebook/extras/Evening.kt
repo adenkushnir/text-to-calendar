@@ -21,6 +21,7 @@ import io.github.adenkushnir.datebook.R
 import io.github.adenkushnir.datebook.calendar.CalendarEvent
 import io.github.adenkushnir.datebook.calendar.calendarEvents
 import io.github.adenkushnir.datebook.deliberate.PAUSE_EVENING
+import io.github.adenkushnir.datebook.nestor.postNotification
 import io.github.adenkushnir.datebook.deliberate.Rule
 import io.github.adenkushnir.datebook.deliberate.effectsFor
 import io.github.adenkushnir.datebook.deliberate.mergeBring
@@ -176,7 +177,7 @@ private fun showHeadsUp(context: Context, id: Int, title: String, lines: List<St
         .setAutoCancel(true)
         .setContentIntent(PendingIntent.getActivity(context, id, openHome, flags))
         .build()
-    NotificationManagerCompat.from(context).notify(id, notification)
+    postNotification(context, id, notification)
 }
 
 // Warn about tomorrow's outdoor plans when rain or snow is likely or it's cold

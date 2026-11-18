@@ -1,0 +1,169 @@
+// What Datebook sends Nestor, built from plain data so it can be tested: the alerts it speaks (which notifications,
+// their words, a key against repeats and when they go stale), and the snapshot of plans, lists, notes, reminders,
+// the train trip and the next 14 days of calendar events, in the JSON Nestor's README describes
+package io.github.adenkushnir.datebook.nestor
+import io.github.adenkushnir.datebook.calendar.CalendarEvent
+import io.github.adenkushnir.datebook.capture.WATCHABLE_APPS
+import io.github.adenkushnir.datebook.data.FollowUp
+import io.github.adenkushnir.datebook.data.Suggestion
+import io.github.adenkushnir.datebook.extras.bringOf
+import io.github.adenkushnir.datebook.lists.Trip
+import io.github.adenkushnir.datebook.prompts.fromLine
+import io.github.adenkushnir.datebook.tracking.packageLink
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+const val SNAPSHOT_DAYS = 14L  // events from the start of today to 14 days ahead
+val SPOKEN_CHANNELS = setOf("leave_by", "travel_changes", "follow_ups", "evening")
+private val SOON_CHANNELS = setOf("leave_by", "travel_changes")  // these go stale after 20 minutes
+private const val SOON_MINUTES = 20L
+private const val LATER_HOURS = 12L
+private val SECONDS = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")
+private val MINUTES = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
+private const val CONFIRMATION = "Confirmation: "
+private const val TRACK = "Track: "
+
+// A planned leave-by for an event: when to leave and the trip in words ("20 min drive")
+data class PlannedLeave(val leaveAt: Long, val travel: String)
+
+// One calendar event for the snapshot, with its calendar's name and its planned leave-by (null when none)
+data class SnapshotEvent(val event: CalendarEvent, val calendar: String, val leave: PlannedLeave?)
+
+// Everything the snapshot is made from
+data class SnapshotParts(
+    val waiting: List<Suggestion> = emptyList(),
+    val packages: List<Suggestion> = emptyList(),
+    val bills: List<FollowUp> = emptyList(),
+    val assignments: List<FollowUp> = emptyList(),
+    val trips: List<Trip> = emptyList(),
+    val notes: List<FollowUp> = emptyList(),
+    val reminders: List<FollowUp> = emptyList(),
+    val trip: Map<String, String>? = null,
+    val events: List<SnapshotEvent> = emptyList(),
+)
+
+// Return true if a notification on this channel is spoken by Nestor
+fun isSpoken(channel: String?): Boolean {
+    return channel in SPOKEN_CHANNELS
+}
+
+// What Nestor says for a notification: its title, then its text (or its lines), as one string
+fun alertText(title: String, text: String, lines: List<String> = emptyList()): String {
+    val body = if (lines.isNotEmpty()) lines.joinToString(". ") else text
+    return listOf(title.trim(), body.trim()).filter { it.isNotBlank() }.joinToString(". ")
+}
+
+// The key Nestor uses to skip a repeat within 12 hours: the channel, the notification and its words
+fun alertKey(channel: String, id: Int, text: String): String {
+    return "$channel|$id|${text.hashCode()}"
+}
+
+// When an alert goes stale: 20 minutes for leave-by and travel changes, 12 hours for the rest
+fun alertExpires(channel: String, nowMillis: Long, zone: ZoneId): String {
+    val now = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDateTime()
+    val expires = if (channel in SOON_CHANNELS) now.plusMinutes(SOON_MINUTES) else now.plusHours(LATER_HOURS)
+    return expires.format(SECONDS)
+}
+
+// A time as Nestor reads it, "2026-11-20T19:00"
+fun localMinutes(millis: Long, zone: ZoneId): String {
+    return Instant.ofEpochMilli(millis).atZone(zone).format(MINUTES)
+}
+
+// An event's start or end: the date for all-day events (kept at midnight UTC), else the local time
+private fun eventTime(millis: Long, allDay: Boolean, zone: ZoneId): String {
+    return if (allDay) Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()
+        else localMinutes(millis, zone)
+}
+
+// Who a calendar event came from, read from Datebook's first notes line ("Jake · Soccer Team (GroupMe)" gives Jake,
+// "Sam (Messages)" Sam, "Canvas · PHYS-101" Canvas); empty for notes Datebook didn't write and for texts you sent
+fun fromOfNotes(notes: String): String {
+    val first = notes.lineSequence().firstOrNull()?.trim().orEmpty()
+    val apps = WATCHABLE_APPS.map { it.shortName }
+
+    // Canvas class events, then texts from a watched app
+    if (first.startsWith("Canvas · ")) {
+        return "Canvas"
+    }
+    val app = apps.firstOrNull { first.endsWith(" ($it)") } ?: return ""
+    val who = first.removeSuffix(" ($app)").substringBefore(" · ").trim()
+    return if (who.startsWith("You →")) "" else who
+}
+
+// One line of an event's notes that starts with a label ("" without it)
+private fun labelled(notes: String, label: String): String {
+    return notes.lines().firstOrNull { it.trim().startsWith(label) }?.trim()?.removePrefix(label)?.trim().orEmpty()
+}
+
+// A plan waiting for Add, for the snapshot
+private fun waitingJson(plan: Suggestion): Map<String, Any> {
+    return mapOf("id" to plan.id, "title" to plan.title, "start" to plan.start, "end" to plan.end,
+        "all_day" to plan.allDay, "place" to plan.location, "from" to fromLine(plan), "kind" to "event",
+        "change" to plan.change)
+}
+
+// A follow-up's due day and time ("2026-11-21T23:59", or the day alone)
+private fun dueOf(item: FollowUp): String {
+    return if (item.time.isBlank()) item.date else "${item.date}T${item.time}"
+}
+
+// A calendar event, for the snapshot
+private fun eventJson(item: SnapshotEvent, zone: ZoneId): Map<String, Any> {
+    val event = item.event
+    return mapOf("id" to "${event.eventId}-${event.begin / 1000}", "title" to event.title,
+        "start" to eventTime(event.begin, event.allDay, zone), "end" to eventTime(event.end, event.allDay, zone),
+        "all_day" to event.allDay, "place" to event.location, "calendar" to item.calendar,
+        "from" to fromOfNotes(event.notes), "bring" to bringOf(event.notes),
+        "confirmation" to labelled(event.notes, CONFIRMATION), "track_url" to labelled(event.notes, TRACK),
+        "leave_by" to (item.leave?.let { localMinutes(it.leaveAt, zone) } ?: ""),
+        "travel" to (item.leave?.travel ?: ""))
+}
+
+// The whole snapshot as JSON-ready values
+fun snapshotOf(parts: SnapshotParts, zone: ZoneId): Map<String, Any> {
+    val snapshot = mutableMapOf<String, Any>(
+        "waiting" to parts.waiting.map(::waitingJson),
+        "lists" to mapOf(
+            "packages" to parts.packages.map {
+                mapOf("id" to it.id, "title" to it.title, "carrier" to it.packageCarrier.uppercase(),
+                    "number" to it.trackingNumber,
+                    "track_url" to (packageLink(it.packageCarrier, it.trackingNumber)?.url ?: ""),
+                    "expected" to it.start.take(10))
+            },
+            "bills" to parts.bills.map { mapOf("id" to it.id, "title" to it.title, "due" to dueOf(it)) },
+            "assignments" to parts.assignments.map { mapOf("id" to it.id, "title" to it.title, "due" to dueOf(it)) },
+            "trips" to parts.trips.map {
+                mapOf("id" to (it.plans.firstOrNull()?.id ?: 0L), "title" to it.name, "start" to it.first.toString(),
+                    "end" to it.last.toString())
+            },
+        ),
+        "notes" to parts.notes.map { mapOf("id" to it.id, "text" to it.body.ifBlank { it.title }) },
+        "reminders" to parts.reminders.filter { it.nextNudge > 0 }
+            .map { mapOf("id" to it.id, "text" to it.title, "at" to localMinutes(it.nextNudge, zone)) },
+        "events" to parts.events.map { eventJson(it, zone) },
+    )
+
+    // The train trip only when one is saved
+    if (parts.trip != null) {
+        snapshot["trip"] = parts.trip
+    }
+    return snapshot
+}
+
+// The first day of the snapshot's events (the start of today) and the end of its 14 days, in milliseconds
+fun snapshotWindow(nowMillis: Long, zone: ZoneId): Pair<Long, Long> {
+    val today = LocalDateTime.ofInstant(Instant.ofEpochMilli(nowMillis), zone).toLocalDate()
+    return Pair(today.atStartOfDay(zone).toInstant().toEpochMilli(),
+        today.plusDays(SNAPSHOT_DAYS + 1).atStartOfDay(zone).toInstant().toEpochMilli())
+}
+
+// Return true if an address is on the home network (a private, link-local or loopback address), the only kind
+// Datebook talks to Nestor on
+fun isHomeAddress(address: java.net.InetAddress): Boolean {
+    val bytes = address.address
+    val uniqueLocal = bytes.size == 16 && (bytes[0].toInt() and 0xFE) == 0xFC  // IPv6 fc00::/7
+    return address.isSiteLocalAddress || address.isLinkLocalAddress || address.isLoopbackAddress || uniqueLocal
+}

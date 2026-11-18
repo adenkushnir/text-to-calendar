@@ -25,6 +25,7 @@ import io.github.adenkushnir.datebook.R
 import io.github.adenkushnir.datebook.calendar.CalendarEvent
 import io.github.adenkushnir.datebook.calendar.calendarEvents
 import io.github.adenkushnir.datebook.data.FollowUp
+import io.github.adenkushnir.datebook.nestor.postNotification
 import io.github.adenkushnir.datebook.deliberate.PAUSE_WEEK_AHEAD
 import io.github.adenkushnir.datebook.data.finishFollowUp
 import io.github.adenkushnir.datebook.data.KIND_ASSIGNMENT
@@ -61,7 +62,8 @@ private const val WORK = "datebook-follow-ups"
 private const val NEXT_WORK = "datebook-follow-up-next"
 private const val STILL_ON_HOUR = 18  // "Still on?" comes from 6 PM the day before
 private const val SNOOZE_DAYS = 3L
-private const val FOLLOW_UP_IDS = 1_100_000_000  // notification ids far above any suggestion's
+// Notification ids for follow-ups, above every other kind (leave-by alerts and flight changes reach 1.3 billion)
+const val FOLLOW_UP_IDS = 1_400_000_000
 private const val WEEK_AHEAD_ID = 1_000_000_001
 private const val ACTION_SNOOZE = "io.github.adenkushnir.datebook.FOLLOW_UP_SNOOZE"
 private const val ACTION_DROP = "io.github.adenkushnir.datebook.FOLLOW_UP_DROP"
@@ -277,7 +279,7 @@ private fun showLooseNudge(context: Context, loose: FollowUp) {
         .addAction(0, "Not now", followUpAction(context, ACTION_SNOOZE, loose.id, 0))
         .addAction(0, "Drop", followUpAction(context, ACTION_DROP, loose.id, 1))
         .build()
-    NotificationManagerCompat.from(context).notify(id, notification)
+    postNotification(context, id, notification)
 }
 
 // The reminder for a bill: "Phone bill · $45" due in 2 days or today, with Mark paid and Remind me tomorrow
@@ -295,7 +297,7 @@ private fun showBillReminder(context: Context, bill: FollowUp, today: LocalDate)
         .addAction(0, "Mark paid", followUpAction(context, ACTION_PAID, bill.id, 2))
         .addAction(0, "Remind me tomorrow", followUpAction(context, ACTION_TOMORROW, bill.id, 3))
         .build()
-    NotificationManagerCompat.from(context).notify(id, notification)
+    postNotification(context, id, notification)
 }
 
 // The reminder for an assignment: "Physics problem set · Due tomorrow 11:59 PM", with Done and Remind me later
@@ -311,7 +313,7 @@ private fun showAssignmentReminder(context: Context, assignment: FollowUp, today
         .addAction(0, "Done", followUpAction(context, ACTION_PAID, assignment.id, 2))
         .addAction(0, "Remind me later", followUpAction(context, ACTION_LATER, assignment.id, 3))
         .build()
-    NotificationManagerCompat.from(context).notify(id, notification)
+    postNotification(context, id, notification)
 }
 
 // A reminder going off: its title, how it repeats (if it does), with Done, In 1 hour and Tomorrow
@@ -330,7 +332,7 @@ private fun showReminder(context: Context, reminder: FollowUp) {
         .addAction(0, "In 1 hour", followUpAction(context, ACTION_HOUR, reminder.id, 1))
         .addAction(0, "Tomorrow", followUpAction(context, ACTION_TOMORROW, reminder.id, 3))
         .build()
-    NotificationManagerCompat.from(context).notify(id, notification)
+    postNotification(context, id, notification)
 }
 
 // The Friday week ahead: a quiet notification with Claude's paragraph about next week; tapping it opens the Week

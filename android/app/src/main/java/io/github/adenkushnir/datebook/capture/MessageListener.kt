@@ -14,6 +14,7 @@ import io.github.adenkushnir.datebook.AppGraph
 import io.github.adenkushnir.datebook.email.GMAIL_APP
 import io.github.adenkushnir.datebook.email.GmailSettings
 import io.github.adenkushnir.datebook.email.checkGmailNow
+import io.github.adenkushnir.datebook.nestor.NestorLink
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -55,6 +56,18 @@ class MessageListener : NotificationListenerService() {
         scope.launch {
             handleNotification(applicationContext, raw)
         }
+    }
+
+    // Start the Nestor link while the listener runs (it finds Nestor on the home Wi-Fi by itself)
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        NestorLink.start(applicationContext)
+    }
+
+    // Stop the Nestor link when Android disconnects the listener
+    override fun onListenerDisconnected() {
+        NestorLink.stop()
+        super.onListenerDisconnected()
     }
 
     // Stop any work in progress when Android stops the listener
