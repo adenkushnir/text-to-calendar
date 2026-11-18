@@ -43,6 +43,31 @@ Version 1.0.0 is a full Kotlin app, built with Jetpack Compose, in [`android/`](
 - **Problem alerts:** one quiet notification (and a banner on Home) if your Claude key stops working, Claude keeps
   failing, or notification access is turned off. Both clear themselves.
 
+**Deliberate and school**
+- **Deliberate** (a tab): ask about your plans, or tell Datebook how to plan them ("every practice takes 50 minutes to
+  get to"). It looks things up, asks follow-up questions with choices, and shows a preview before it changes
+  anything; every change can be undone. Its rules cover travel times, arriving early, what to bring, reminders before
+  events, plans to ignore and habits Claude should assume.
+- **Canvas** (Settings → School): your Canvas Calendar Feed link brings assignments, quizzes and exams into Due soon,
+  with a notification when one moves or is removed, and offers class events like plans from texts.
+
+## Nestor at home
+
+[Nestor](https://github.com/adenkushnir/nestor) is a home speaker and wall screen app. On the home Wi-Fi, Datebook
+finds it by itself (mDNS, `_nestor._tcp`) and, once paired, keeps it up to date:
+
+- **Pairing:** on the computer running Nestor, run `python -m nestor --pair`, then type the 6-digit code in Settings →
+  Nestor. Android 17 also asks to let Datebook find devices on your Wi-Fi.
+- **What Nestor gets:** a snapshot of your waiting plans, lists, notes, reminders, train trip and the next 14 days of
+  your calendar, sent again whenever something changes. Nestor uses it for its wall screen and its voice assistant,
+  so it needs no Google login of its own.
+- **What Nestor says:** leave-by alerts, travel changes, reminders and follow-ups, and the evening heads-ups. The
+  morning summary, the week ahead and new plans aren't spoken.
+- **What Nestor can ask for:** show a plan's Add to calendar? prompt, ignore a plan, mark a bill, assignment or
+  reminder done, or read a new plan like something you typed. Adding still ends in your calendar app's **Save**.
+- **Away from home** Datebook sends nothing and keeps nothing to send later. The link runs alongside notification
+  access, and can be switched off or unpaired in Settings → Nestor.
+
 ## Install
 
 Datebook needs Android 10 or newer.
@@ -88,10 +113,15 @@ accounts added as testers, and signing in lapses about once a week (Datebook rem
 
 ## Privacy
 
-- Messages without a date or time never leave the phone. A message that does is sent to Claude on its own: never
-  other messages from the chat, and for group chats only the group's name, not the sender's.
-- Datebook keeps what it suggested and what you did with it for 1 year, never the message text itself (except a
-  message waiting up to a day for Claude while you're offline).
+- Messages without a date or time never leave the phone, with one exception: a one-to-one message that sounds like a
+  change ("sorry, have to cancel") is sent too when you have plans in the next 2 weeks, along with those plans' titles
+  and times, so Datebook can offer to move or cancel one. A message is sent to Claude on its own: never other
+  messages from the chat, and for group chats only the group's name, not the sender's.
+- Datebook keeps what it suggested and what you did with it for 1 year, with the message each plan came from (so
+  Deliberate can quote it); turn that off or delete the texts in Settings → Privacy. What Deliberate looks up for a
+  question goes to Claude with it.
+- With Nestor paired, your plans, lists, notes, reminders and the next 14 days of calendar events go to Nestor on your
+  home Wi-Fi only, never over the internet.
 - Other services only get what they need: place names (Google Maps), flight numbers and dates (AeroDataBox), station
   codes (NJ Transit), and your rough location for the weather ([Open-Meteo](https://open-meteo.com), no account).
 

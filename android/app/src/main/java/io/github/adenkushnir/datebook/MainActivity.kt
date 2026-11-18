@@ -86,6 +86,12 @@ import io.github.adenkushnir.datebook.canvas.resultText
 import io.github.adenkushnir.datebook.canvas.scheduleCanvas
 import io.github.adenkushnir.datebook.deliberate.whenText
 import io.github.adenkushnir.datebook.settings.SchoolPage
+import io.github.adenkushnir.datebook.settings.NestorPage
+import io.github.adenkushnir.datebook.nestor.LOCAL_NETWORK_PERMISSION
+import io.github.adenkushnir.datebook.nestor.NestorLink
+import io.github.adenkushnir.datebook.nestor.NestorSettings
+import io.github.adenkushnir.datebook.nestor.hasLocalNetwork
+import io.github.adenkushnir.datebook.capture.hasNotificationAccess
 import io.github.adenkushnir.datebook.deliberate.DeliberateActions
 import io.github.adenkushnir.datebook.deliberate.DeliberateScreen
 import io.github.adenkushnir.datebook.deliberate.VIEW_CHAT
@@ -211,6 +217,7 @@ const val ROUTE_SETTINGS_ABOUT = "settings/about"
 const val ROUTE_SETTINGS_AUTOMATIC = "settings/automatic"
 const val ROUTE_SETTINGS_LOOK = "settings/look"
 const val ROUTE_SETTINGS_SCHOOL = "settings/school"
+const val ROUTE_SETTINGS_NESTOR = "settings/nestor"
 private const val TICK_MILLIS = 30_000L  // how often Home moves "now" on
 private val MAIN_TABS = listOf(TabItem(ROUTE_HOME, DatebookIcons.Home, "Home"),
     TabItem(ROUTE_LISTS, DatebookIcons.List, "Lists"), TabItem(ROUTE_NOTES, DatebookIcons.Note, "Notes"),
@@ -714,6 +721,31 @@ class MainActivity : ComponentActivity() {
                 var moving by remember { mutableStateOf(settings.isOn()) }
                 LookPage(moving, setMoving = { on -> settings.set(on); moving = on }, onBack = { nav.popBackStack() })
             }
+            composable(ROUTE_SETTINGS_NESTOR) {
+                val nestor = remember { NestorSettings(applicationContext) }
+                val link by NestorLink.status.collectAsState()
+                var on by remember { mutableStateOf(nestor.isOn()) }
+                var canReach by remember { mutableStateOf(hasLocalNetwork(applicationContext)) }
+                val askLocal = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+                    canReach = hasLocalNetwork(applicationContext)
+                    NestorLink.restart(applicationContext)
+                }
+                LaunchedEffect(Unit) {
+                    NestorLink.start(applicationContext)  // look for Nestor while the page is open
+                }
+                NestorPage(link.address, link.paired,
+                    if (link.lastContact > 0) "Last heard from Nestor ${whenText(link.lastContact)}" else "",
+                    link.problem, on, canReach, hasNotificationAccess(applicationContext),
+                    askPermission = { askLocal.launch(LOCAL_NETWORK_PERMISSION) },
+                    onPair = { code -> NestorLink.pair(applicationContext, code) },
+                    onUnpair = { NestorLink.unpair(applicationContext) },
+                    setOn = { turnOn ->
+                        nestor.setOn(turnOn)
+                        on = turnOn
+                        NestorLink.restart(applicationContext)
+                    },
+                    onBack = { nav.popBackStack() })
+            }
             composable(ROUTE_SETTINGS_SCHOOL) {
                 val canvas = remember { CanvasSettings(applicationContext) }
                 var saved by remember { mutableStateOf(canvas.link() != null) }
@@ -963,6 +995,9 @@ class MainActivity : ComponentActivity() {
             },
             SettingsItem(DatebookIcons.Book, TILE_LEAF, "School", "Assignments and classes from Canvas") {
                 open(ROUTE_SETTINGS_SCHOOL)
+            },
+            SettingsItem(DatebookIcons.Home, TILE_AQUA, "Nestor", "Your home speaker and wall screen") {
+                open(ROUTE_SETTINGS_NESTOR)
             },
             SettingsItem(DatebookIcons.Bell, TILE_WARN, "Notifications & alerts", "Reading texts and showing prompts") {
                 open(ROUTE_SETTINGS_NOTIFICATIONS)
