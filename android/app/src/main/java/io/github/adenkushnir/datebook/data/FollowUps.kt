@@ -22,7 +22,7 @@ private val DAY_NAME = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US)
 // (YYYY-MM-DD, "" when none), the amount for a bill, whether it's open, done (paid, handed in, or pinned down) or
 // dropped, when it was found, when its next nudge or reminder is due (0 for none), how many have been sent, its time
 // of day (HH:MM, "" when none), how it repeats (a reminder's or bill's rule), a note's text, and the message it came
-// from when you keep message texts
+// from when you keep message texts, and for a Canvas assignment its id in the Canvas feed
 @Entity(tableName = "followups")
 data class FollowUp(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -41,6 +41,7 @@ data class FollowUp(
     @ColumnInfo(defaultValue = "") val repeat: String = "",
     @ColumnInfo(defaultValue = "") val body: String = "",
     @ColumnInfo(defaultValue = "") val message: String = "",
+    @ColumnInfo(defaultValue = "") val sourceId: String = "",
 ) {
     // Names for the states a follow-up can be in
     companion object {

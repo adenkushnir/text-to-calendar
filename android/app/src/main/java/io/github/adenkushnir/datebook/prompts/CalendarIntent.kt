@@ -14,6 +14,7 @@ import io.github.adenkushnir.datebook.pipeline.SHARED_IMAGE_APP
 import io.github.adenkushnir.datebook.pipeline.SHARED_PDF_APP
 import io.github.adenkushnir.datebook.pipeline.TYPED_APP
 import io.github.adenkushnir.datebook.pipeline.DELIBERATE_APP
+import io.github.adenkushnir.datebook.canvas.CANVAS_APP
 import io.github.adenkushnir.datebook.pipeline.SHARED_TEXT_APP
 import io.github.adenkushnir.datebook.pipeline.eventTimes
 import io.github.adenkushnir.datebook.pipeline.eventZone
@@ -27,6 +28,7 @@ fun fromLine(suggestion: Suggestion): String {
     // Pick the wording for where it came from
     return when {
         suggestion.app == DELIBERATE_APP -> "you (Deliberate)"
+        suggestion.app == CANVAS_APP -> "Canvas (${suggestion.sender})"
         isShared(suggestion.app) -> "you (shared to Datebook)"
         suggestion.fromMe -> "you, to ${suggestion.conversation.ifBlank { suggestion.sender }}"
         suggestion.conversation.isNotBlank() -> "${suggestion.sender} in ${suggestion.conversation}"
@@ -44,6 +46,7 @@ fun calendarNotes(suggestion: Suggestion): String {
         SHARED_PDF_APP -> return "PDF shared to Datebook"
         TYPED_APP -> return "Typed into Datebook"
         DELIBERATE_APP -> return "Made with Deliberate"
+        CANVAS_APP -> return "Canvas · ${suggestion.sender}"
     }
     val app = WATCHABLE_APPS.firstOrNull { it.packageName == suggestion.app }?.shortName  // the app's name, if known
     val group = if (suggestion.conversation.isNotBlank()) " · ${suggestion.conversation}" else ""  // group chats only

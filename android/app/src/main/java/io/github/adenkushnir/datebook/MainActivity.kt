@@ -77,6 +77,15 @@ import io.github.adenkushnir.datebook.email.scheduleGmailChecks
 import io.github.adenkushnir.datebook.email.stopGmailChecks
 import io.github.adenkushnir.datebook.data.FollowUp
 import io.github.adenkushnir.datebook.data.finishFollowUp
+import io.github.adenkushnir.datebook.canvas.CanvasSettings
+import io.github.adenkushnir.datebook.canvas.checkCanvas
+import io.github.adenkushnir.datebook.canvas.checkCanvasSoon
+import io.github.adenkushnir.datebook.canvas.downloadFeed
+import io.github.adenkushnir.datebook.canvas.looksLikeFeed
+import io.github.adenkushnir.datebook.canvas.resultText
+import io.github.adenkushnir.datebook.canvas.scheduleCanvas
+import io.github.adenkushnir.datebook.deliberate.whenText
+import io.github.adenkushnir.datebook.settings.SchoolPage
 import io.github.adenkushnir.datebook.deliberate.DeliberateActions
 import io.github.adenkushnir.datebook.deliberate.DeliberateScreen
 import io.github.adenkushnir.datebook.deliberate.VIEW_CHAT
@@ -201,6 +210,7 @@ const val ROUTE_SETTINGS_PRIVACY = "settings/privacy"
 const val ROUTE_SETTINGS_ABOUT = "settings/about"
 const val ROUTE_SETTINGS_AUTOMATIC = "settings/automatic"
 const val ROUTE_SETTINGS_LOOK = "settings/look"
+const val ROUTE_SETTINGS_SCHOOL = "settings/school"
 private const val TICK_MILLIS = 30_000L  // how often Home moves "now" on
 private val MAIN_TABS = listOf(TabItem(ROUTE_HOME, DatebookIcons.Home, "Home"),
     TabItem(ROUTE_LISTS, DatebookIcons.List, "Lists"), TabItem(ROUTE_NOTES, DatebookIcons.Note, "Notes"),
@@ -260,6 +270,7 @@ class MainActivity : ComponentActivity() {
         if (GmailSettings(applicationContext).signedIn()) {
             checkGmailNow(applicationContext)
         }
+        checkCanvasSoon(applicationContext)  // Canvas too, when a feed link is saved
     }
 
     // Redraw the widgets when you leave the app, so they show what you just changed
@@ -331,6 +342,7 @@ class MainActivity : ComponentActivity() {
             scheduleTrains(applicationContext)  // start the NJ Transit train checks if they aren't running
             scheduleFollowUps(applicationContext)  // start the follow-up nudges and reminders if they aren't running
             scheduleWidgetRefresh(applicationContext)  // start the widget refresh and access check if it isn't running
+            scheduleCanvas(applicationContext)  // start the 6-hour Canvas checks while a feed link is saved
             bookNextFollowUp(applicationContext)  // and book the next one due, on time
             graph.offlineDates.prepare()  // download the offline date model the first time there's internet
 
@@ -702,6 +714,26 @@ class MainActivity : ComponentActivity() {
                 var moving by remember { mutableStateOf(settings.isOn()) }
                 LookPage(moving, setMoving = { on -> settings.set(on); moving = on }, onBack = { nav.popBackStack() })
             }
+            composable(ROUTE_SETTINGS_SCHOOL) {
+                val canvas = remember { CanvasSettings(applicationContext) }
+                var saved by remember { mutableStateOf(canvas.link() != null) }
+                var checked by remember { mutableStateOf(canvas.lastChecked()) }
+                var found by remember { mutableStateOf(canvas.lastResult()) }
+                val reread = {
+                    saved = canvas.link() != null
+                    checked = canvas.lastChecked()
+                    found = canvas.lastResult()
+                }
+                SchoolPage(saved, if (checked > 0) "Last checked ${whenText(checked)}" else "", found,
+                    onSave = { link -> saveCanvasLink(canvas, link).also { reread() } },
+                    onCheck = { resultText(checkCanvas(applicationContext)).also { reread() } },
+                    onRemove = {
+                        canvas.remove()
+                        scheduleCanvas(applicationContext)
+                        reread()
+                    },
+                    onBack = { nav.popBackStack() })
+            }
             composable(ROUTE_SETTINGS_PRIVACY) {
                 var keepTexts by remember { mutableStateOf(graph.deliberateSettings.keepTexts()) }
                 PrivacyPage(clearHistory = { graph.pipeline.clearHistory() }, onBack = { nav.popBackStack() },
@@ -863,6 +895,26 @@ class MainActivity : ComponentActivity() {
         return ""
     }
 
+    // Save a Canvas feed link if it looks right and Canvas answers with a calendar, then check it and start the 6-hour
+    // checks; returns what happened in words
+    private suspend fun saveCanvasLink(canvas: CanvasSettings, link: String): String {
+        // Only links that look like a Canvas feed
+        if (!looksLikeFeed(link)) {
+            return "That doesn't look like a Canvas Calendar Feed link (it ends in .ics)."
+        }
+        val problem = withContext(Dispatchers.IO) {
+            runCatching { downloadFeed(link) }.exceptionOrNull()
+        }
+
+        // Keep the old link when the new one doesn't work
+        if (problem != null) {
+            return problem.message?.takeIf { problem is IllegalStateException } ?: "Couldn't reach Canvas. Try again."
+        }
+        canvas.setLink(link)
+        scheduleCanvas(applicationContext)
+        return "Saved. " + resultText(checkCanvas(applicationContext))
+    }
+
     // Ask for notification permission (Android 13 and later), or open Datebook's notification settings if it was
     // turned off there, since Android then won't ask again
     private fun askNotifications(launch: (String) -> Unit) {
@@ -908,6 +960,9 @@ class MainActivity : ComponentActivity() {
             },
             SettingsItem(DatebookIcons.Mail, TILE_AQUA, "Gmail", "Plans from your emails") {
                 open(ROUTE_SETTINGS_GMAIL)
+            },
+            SettingsItem(DatebookIcons.Book, TILE_LEAF, "School", "Assignments and classes from Canvas") {
+                open(ROUTE_SETTINGS_SCHOOL)
             },
             SettingsItem(DatebookIcons.Bell, TILE_WARN, "Notifications & alerts", "Reading texts and showing prompts") {
                 open(ROUTE_SETTINGS_NOTIFICATIONS)

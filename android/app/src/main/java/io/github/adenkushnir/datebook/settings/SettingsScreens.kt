@@ -785,6 +785,73 @@ private fun StatusRow(label: String, on: Boolean, open: () -> Unit) {
     }
 }
 
+// Settings → School: paste Canvas's Calendar Feed link (kept encrypted), see when it was last checked and what it
+// found, check now, or remove the link
+@Composable
+fun SchoolPage(saved: Boolean, lastChecked: String, lastResult: String, onSave: suspend (String) -> String,
+    onCheck: suspend () -> String, onRemove: () -> Unit, onBack: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var input by remember { mutableStateOf("") }
+    var result by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+
+    // Run a button's action and show what it said
+    val run: (suspend () -> String) -> Unit = { action ->
+        busy = true
+        scope.launch {
+            result = action()
+            busy = false
+        }
+    }
+    SettingsPage("School", onBack) {
+        Muted("Canvas doesn't email due dates, so Datebook reads your Canvas calendar instead. Assignments, quizzes " +
+            "and exams go to Lists → Due soon, and class events are offered like plans from texts. It checks every " +
+            "6 hours and whenever you open Datebook or Canvas.")
+        SectionLabel("Canvas calendar feed")
+        DatebookCard {
+            Text(if (saved) "Link saved" else "No link saved")
+            Muted(if (saved) lastChecked.ifBlank { "Not checked yet" } else "Paste your Calendar Feed link below.")
+
+            // What the last check found
+            if (saved && lastResult.isNotBlank()) {
+                Muted(lastResult)
+            }
+        }
+        GlassField(value = input, onValueChange = { input = it }, label = { Text("Calendar Feed link") },
+            singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            GelButton(enabled = input.isNotBlank() && !busy, onClick = {
+                val link = input
+                input = ""
+                run { onSave(link) }
+            }) {
+                Text("Save")
+            }
+
+            // Checking and removing need a saved link
+            if (saved) {
+                GlassButton(enabled = !busy, onClick = { run { onCheck() } }) {
+                    Text(if (busy) "Checking…" else "Check now")
+                }
+                GlassButton(enabled = !busy, onClick = {
+                    onRemove()
+                    result = "Link removed. Assignments already in Due soon stay."
+                }) {
+                    Text("Remove")
+                }
+            }
+        }
+
+        // What the last button did
+        if (result.isNotBlank()) {
+            Muted(result)
+        }
+        Muted("Where to find it: open Canvas in a browser, go to Calendar, and tap Calendar Feed at the bottom right. " +
+            "Copy the link and paste it here. Anyone with the link can see your Canvas schedule, so Datebook keeps " +
+            "it encrypted on this phone and only ever sends it to Canvas.")
+    }
+}
+
 // A Settings page: the teal bar with a back arrow, then the page's content in a scrolling column
 @Composable
 private fun SettingsPage(title: String, onBack: () -> Unit, content: @Composable ColumnScope.() -> Unit) {

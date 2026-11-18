@@ -96,11 +96,20 @@ val MIGRATION_11_12 = object : Migration(11, 12) {
     }
 }
 
+// Version 13 remembers which Canvas assignment or class event a follow-up or plan is, by its id in the feed
+val MIGRATION_12_13 = object : Migration(12, 13) {
+    // Add the column, empty for everything saved
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE suggestions ADD COLUMN sourceId TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE followups ADD COLUMN sourceId TEXT NOT NULL DEFAULT ''")
+    }
+}
+
 // The database holding seen texts, suggestions, the retry queue and failure counts; from version 5 on, saved data is
 // converted when the database changes (older versions still start empty)
 @Database(entities = [SeenText::class, Suggestion::class, RetryText::class, FailureCount::class, FollowUp::class,
     DeliberateChat::class, DeliberateLine::class, DeliberateChange::class, Rule::class],
-    version = 12,
+    version = 13,
     exportSchema = false)
 abstract class DatebookDatabase : RoomDatabase() {
     // The queries for all four tables
@@ -119,7 +128,8 @@ abstract class DatebookDatabase : RoomDatabase() {
                 val appContext = context.applicationContext
                 instance ?: Room.databaseBuilder(appContext, DatebookDatabase::class.java, "datebook.db")
                     .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
-                        MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+                        MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12,
+                        MIGRATION_12_13)
                     .fallbackToDestructiveMigration(true)
                     .build()
                     .also { instance = it }
