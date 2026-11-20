@@ -8,13 +8,15 @@ address, and notes saying who it came from. Datebook never writes to your calend
 tap **Save** there.
 
 Datebook started as a Python script running in Termux (see [Legacy](#legacy-the-termux-script-v020) at the end).
-Version 1.0.0 is a full Kotlin app, built with Jetpack Compose, in [`android/`](android/).
+It's a full Kotlin app, built with Jetpack Compose, in [`android/`](android/); the latest version is 1.1.0.
 
 ## What it does
 
 **Catching plans**
 - Reads new messages from the apps you choose: Google Messages, Samsung Messages, GroupMe, WhatsApp, Instagram,
   Discord and Gmail. Only messages with a date or time in them are sent to Claude; group chats need a clear one.
+- **Amazon Shopping and Shop:** only their shipping notifications are read, and become packages (no tracking number
+  needed); an email and a notification about the same package make one entry, and you're told when its day moves.
 - **Share → Datebook** for any text, picture or PDF. A schedule (a syllabus, a team schedule) becomes a list you
   tick through and add in one go.
 - **Gmail sign-in** (read-only) for reservations, tickets and appointments, with the confirmation code in the notes.
@@ -33,7 +35,8 @@ Version 1.0.0 is a full Kotlin app, built with Jetpack Compose, in [`android/`](
 **Your day**
 - **Home:** the Today card with the weather, today's events, reminders, bills and assignments, the next one lit and
   finished ones dimmed; plans waiting for you; the next few days; and a live NJ Transit board for your trip.
-- **Lists:** packages on the way, assignments due soon, trips, and bills.
+- **Lists:** packages on the way, assignments due in the next 5 days, trips, and bills. Bills, packages and trip
+  bookings keep a link (Pay, Order, Booking), picked from the email or text or pasted in.
 - **Notes:** notes and reminders. A reminder is a notification at a time, typed in Datebook or sent in a text
   ("remind me to call the dentist tomorrow at 9").
 - **Widgets:** Next trains (the train that just left and the next 3; tapping a train opens the NJ Transit app) and
@@ -47,9 +50,11 @@ Version 1.0.0 is a full Kotlin app, built with Jetpack Compose, in [`android/`](
 - **Deliberate** (a tab): ask about your plans, or tell Datebook how to plan them ("every practice takes 50 minutes to
   get to"). It looks things up, asks follow-up questions with choices, and shows a preview before it changes
   anything; every change can be undone. Its rules cover travel times, arriving early, what to bring, reminders before
-  events, plans to ignore and habits Claude should assume.
+  events, plans to ignore and habits Claude should assume. It can also search the web for anything else.
 - **Canvas** (Settings → School): your Canvas Calendar Feed link brings assignments, quizzes and exams into Due soon,
   with a notification when one moves or is removed, and offers class events like plans from texts.
+- **Fencing** (Settings → Fencing, off to start): men's foil tournaments to follow and watch, found by Claude's web
+  search, as tiles at the bottom of Home with Watch and Results, and a quiet notification when a stream goes live.
 
 ## Nestor at home
 
@@ -72,7 +77,7 @@ finds it by itself (mDNS, `_nestor._tcp`) and, once paired, keeps it up to date:
 
 Datebook needs Android 10 or newer.
 
-1. Download `datebook-1.0.0.apk` from the [latest release](https://github.com/adenkushnir/text-to-calendar/releases/latest)
+1. Download `datebook-1.1.0.apk` from the [latest release](https://github.com/adenkushnir/text-to-calendar/releases/latest)
    on your phone.
 2. Open it and allow your browser or Files app to install apps when Android asks.
 3. Open Datebook and follow the six setup pages:
