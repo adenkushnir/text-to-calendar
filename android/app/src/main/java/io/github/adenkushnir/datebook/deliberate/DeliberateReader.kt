@@ -128,6 +128,10 @@ class DeliberateReader(private val context: Context) {
             parts.add("package ${plan.packageCarrier} ${plan.trackingNumber}")
         }
 
+        if (plan.link.isNotBlank()) {
+            parts.add("link ${plan.link}")
+        }
+
         if (plan.message.isNotBlank()) {
             parts.add("message: “${plan.message.replace("\n", " ").take(MAX_MESSAGE)}”")
         }
@@ -182,6 +186,10 @@ class DeliberateReader(private val context: Context) {
 
         if (item.kind != KIND_NOTE && item.sender.isNotBlank() && item.sender != "you") {
             parts.add("from ${item.sender}" + if (item.conversation.isNotBlank()) " in ${item.conversation}" else "")
+        }
+
+        if (item.link.isNotBlank()) {
+            parts.add("link ${item.link}")
         }
 
         if (item.message.isNotBlank()) {

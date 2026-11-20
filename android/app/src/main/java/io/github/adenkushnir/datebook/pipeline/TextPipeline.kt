@@ -19,6 +19,8 @@ import io.github.adenkushnir.datebook.data.RetryText
 import io.github.adenkushnir.datebook.data.SeenText
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.data.suggestionOf
+import io.github.adenkushnir.datebook.capture.SHOP_APPS
+import io.github.adenkushnir.datebook.capture.isShippingNews
 import io.github.adenkushnir.datebook.flights.FlightInfo
 import io.github.adenkushnir.datebook.flights.flightTitle
 import io.github.adenkushnir.datebook.flights.zonedText
@@ -47,6 +49,7 @@ private const val CHANGE_WINDOW = 14 * DAY
 private const val MAX_LISTED = 40
 private const val MAX_GUESSES = 3
 private const val MAX_MESSAGE = 4000  // the longest message text kept with a plan
+private const val PACKAGE_DAYS = 30L  // an update matches a package found in the last 30 days
 private val TITLE_WORDS = Regex("[a-z]{4,}")
 private val COMMON_WORDS = setOf("with", "plan", "plans", "about", "some", "time", "sometime")
 private val LOCAL_MINUTES = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
@@ -94,6 +97,7 @@ class TextPipeline(
     private val keepTexts: () -> Boolean = { false },
     private val ignored: suspend (sender: String, group: String, title: String, kind: String) -> Boolean =
         { _, _, _, _ -> false },
+    private val onPackageMoved: (title: String, newDay: String, oldDay: String) -> Unit = { _, _, _ -> },
 ) {
     private val health = Health(dao)
 
@@ -353,6 +357,10 @@ class TextPipeline(
 
         // Save and announce each event
         for (event in events) {
+            // A package already on the list is updated instead (an email and a notification about the same one)
+            if (isPackage(event) && updatePackage(event)) {
+                continue
+            }
             // A change to a plan that's still waiting updates that plan instead of making a new one
             if (event.calendarEventId < 0) {
                 updateWaiting(-event.calendarEventId, event, incoming)?.let { ids.add(it) }
@@ -404,7 +412,7 @@ class TextPipeline(
             dao.saveFollowUp(FollowUp(kind = event.kind, title = event.title, date = day, amount = event.amount,
                 sender = incoming.sender, app = incoming.app, conversation = incoming.group,
                 status = FollowUp.OPEN, createdAt = now(), nextNudge = first, nudges = 0, time = time,
-                repeat = event.repeat, message = messageOf(incoming)))
+                repeat = event.repeat, message = messageOf(incoming), link = event.link))
             saved += 1
         }
 
@@ -413,6 +421,38 @@ class TextPipeline(
             onFollowUpsSaved()
         }
         return saved
+    }
+
+    // Return true if an event is a package (a carrier, a store or a tracking number)
+    private fun isPackage(event: Event): Boolean {
+        return event.packageCarrier.isNotBlank() || event.trackingNumber.isNotBlank()
+    }
+
+    // Handle a package Datebook may already know: the same tracking number, order link or title as a package from the
+    // last 30 days updates it (a new day moves it and tells you; anything missing is filled in), and a delivered
+    // package isn't added; returns true when nothing new should be saved
+    private suspend fun updatePackage(event: Event): Boolean {
+        val since = now() - PACKAGE_DAYS * DAY
+        val known = dao.packagesNow().filter { it.createdAt >= since }.firstOrNull { samePackage(it, event) }
+
+        // A package not seen before is new, unless it's already delivered
+        if (known == null) {
+            return event.packageStatus == PACKAGE_DELIVERED
+        }
+        val day = event.start.take(10)
+        val moved = event.packageStatus != PACKAGE_DELIVERED && day.isNotBlank() && day != known.start.take(10)
+        val filled = known.copy(link = known.link.ifBlank { event.link },
+            trackingNumber = known.trackingNumber.ifBlank { event.trackingNumber },
+            packageCarrier = known.packageCarrier.takeIf { it.isNotBlank() && it != "other" } ?: event.packageCarrier)
+
+        // A new arrival day moves the package and says so
+        if (moved) {
+            dao.updateSuggestion(filled.copy(start = day, end = "", allDay = true))
+            onPackageMoved(known.title, day, known.start.take(10))
+        } else if (filled != known) {
+            dao.updateSuggestion(filled)
+        }
+        return true
     }
 
     // The message text kept with a plan when message texts are kept (never for typed notes, which are kept anyway)
@@ -512,6 +552,11 @@ class TextPipeline(
     // Return true if a text should go to Claude: it passes the date check, or (outside group chats, which always need a
     // clear date) it sounds like a change and there are calendar events it could change
     private suspend fun worthAsking(incoming: IncomingText): Boolean {
+        // Shopping apps: only their shipping news goes (with or without a date), never their sales
+        if (incoming.app in SHOP_APPS) {
+            return isShippingNews(incoming.text)
+        }
+
         // Texts with a date always go
         if (passesDateCheck(incoming)) {
             return true
@@ -652,6 +697,13 @@ private fun localText(millis: Long, allDay: Boolean, zone: ZoneId): String {
     val instant = Instant.ofEpochMilli(millis)
     return if (allDay) instant.atZone(ZoneOffset.UTC).toLocalDate().toString()
     else LocalDateTime.ofInstant(instant, zone).format(LOCAL_MINUTES)
+}
+
+// Return true if a known package and a new message are about the same package: the same tracking number, the same
+// order link, or the same title (ignoring case)
+fun samePackage(known: Suggestion, event: Event): Boolean {
+    return (event.trackingNumber.isNotBlank() && event.trackingNumber == known.trackingNumber) ||
+        (event.link.isNotBlank() && event.link == known.link) || event.title.equals(known.title, ignoreCase = true)
 }
 
 // Return true if a text passes the on-phone date check: group chats need a clear date or time

@@ -9,7 +9,9 @@ const val KIND_EVENT = "event"
 // placeLat and placeLng are the place's coordinates from the address lookup (null when unknown), and kind says
 // whether it's a plan ("event"), a loose plan without a set date ("loose"), something due ("due", with its
 // amount) or an assignment ("assignment"), trip names the trip a travel booking belongs to, bring is what the text
-// says to bring ("cleats, $20") and outdoor marks a plan that happens outside
+// says to bring ("cleats, $20"), outdoor marks a plan that happens outside, and link is a page for it from the message
+// (pay a bill, view an order, manage a booking), and packageStatus says whether a package shipped, is arriving, is
+// out for delivery or was delivered
 data class Event(
     val title: String,
     val start: String,
@@ -33,4 +35,6 @@ data class Event(
     val outdoor: Boolean = false,
     val placeLat: Double? = null,
     val placeLng: Double? = null,
+    val link: String = "",
+    val packageStatus: String = "",
 )

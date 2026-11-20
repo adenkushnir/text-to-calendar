@@ -37,19 +37,22 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 const val FENCING_CHANNEL = "fencing"
 private const val MORNING_HOUR = 7
 private const val WORK = "datebook-fencing"
+private const val NOW_WORK = "datebook-fencing-now"
 private const val STREAM_WORK = "datebook-fencing-stream-"
 private const val WEEK_MILLIS = 7L * 24 * 60 * 60 * 1000
 private const val MAX_PAUSES = 4  // how many times a long web search may be continued
 private const val NOTIFICATION_BASE = 1_091_000_000  // stream alerts take up to 3.1 million ids, below Canvas's
 private const val EXTRA_KEY = "key"
 private const val SYSTEM = "You find men's foil fencing competitions on the web for someone who follows and watches " +
-    "them. Use web search and web fetch, and always look at FencingTV's schedule on fencing.tv for streams. Be " +
+    "them. Use web search and web fetch, and always look at FencingTV's schedule on fencingtv.com for streams. Be " +
     "exact: only events you found, with dates and links from the pages you read. End with the JSON the user asks for."
 private val searching = Mutex()
 
@@ -99,16 +102,18 @@ private fun searchClient(key: String): AnthropicClient {
 }
 
 // Ask Claude with web search and web fetch, continuing a long search when it pauses; returns its answer's text
-fun askWithWeb(client: AnthropicClient, model: String, prompt: String): String {
+fun askWithWeb(client: AnthropicClient, model: String, prompt: String,
+    effort: BetaOutputConfig.Effort = BetaOutputConfig.Effort.LOW): String {
     val request = MessageCreateParams.builder()
         .model(model)
         .maxTokens(8000L)
-        .outputConfig(BetaOutputConfig.builder().effort(BetaOutputConfig.Effort.LOW).build())
+        .outputConfig(BetaOutputConfig.builder().effort(effort).build())
         .system(SYSTEM)
         .addTool(BetaWebSearchTool20260209.builder().maxUses(10L).build())
         .addTool(BetaWebFetchTool20260209.builder().maxUses(12L).maxContentTokens(20000L).build())
         .addUserMessage(prompt)
     var response = client.beta().messages().create(request.build())
+    val texts = response.content().mapNotNull { it.text().orElse(null)?.text() }.toMutableList()
 
     // Continue a paused search where it stopped
     for (pause in 1..MAX_PAUSES) {
@@ -118,8 +123,11 @@ fun askWithWeb(client: AnthropicClient, model: String, prompt: String): String {
         }
         request.addMessage(response)
         response = client.beta().messages().create(request.build())
+        texts.addAll(response.content().mapNotNull { it.text().orElse(null)?.text() })
     }
-    return response.content().mapNotNull { it.text().orElse(null)?.text() }.joinToString("\n")
+    val answer = texts.joinToString("")
+    Log.i("Datebook", "fencing: answer ${answer.length} chars, stop ${response.stopReason().orElse(null)}")
+    return answer
 }
 
 // Search the next 3 weeks now and save what was found; returns what happened in words
@@ -137,12 +145,18 @@ suspend fun searchTournaments(context: Context, nowMillis: Long = System.current
                 return@withLock "Add your Claude API key first."
             }
             val result = try {
-                val answer = askWithWeb(searchClient(key), graph.modelChoice.get(), searchPrompt(today, zone))
+                val answer = askWithWeb(searchClient(key), graph.modelChoice.get(), searchPrompt(today, zone),
+                    BetaOutputConfig.Effort.MEDIUM)
+                Log.d("Datebook", "fencing: answer ends ${answer.takeLast(700)}")
                 val events = answerJson(answer)?.path("events") ?: throw IllegalStateException("no JSON in the answer")
-                val found = mergeSearch(settings.tournaments(), tournamentsFrom(events), today)
+                val new = tournamentsFrom(events)
+                val old = settings.tournaments().filter { !it.lastDay.isBefore(today) }
+                Log.i("Datebook", "fencing: search found ${new.size}, had ${old.size}")
+
+                val found = mergeSearch(settings.tournaments(), new, today)
                 settings.setTournaments(found)
                 val count = if (found.size == 1) "1 event" else "${found.size} events"
-                "Found $count in the next 3 weeks."
+                "$count in the next 3 weeks (this search found ${new.size})."
             } catch (error: Exception) {  // no internet, a rejected key, or an answer that can't be read
                 Log.w("Datebook", "fencing search failed: ${error.message}")
                 "The search didn't work. It tries again tomorrow morning."
@@ -284,6 +298,28 @@ fun scheduleFencing(context: Context, policy: ExistingWorkPolicy = ExistingWorkP
     val request = OneTimeWorkRequestBuilder<FencingWorker>().setInitialDelay(delay.toMillis(), TimeUnit.MILLISECONDS)
         .build()
     WorkManager.getInstance(context).enqueueUniqueWork(WORK, policy, request)
+}
+
+// A one-off search as a background job (Search now, and the debug command), so it keeps going after you leave the
+// page or close Datebook
+class FencingSearchWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    // Search now and log what it found
+    override suspend fun doWork(): Result {
+        Log.i("Datebook", "fencing now: ${searchNow(applicationContext)}")
+        return Result.success()
+    }
+}
+
+// Start a one-off search as a background job (one at a time)
+fun searchInBackground(context: Context) {
+    WorkManager.getInstance(context).enqueueUniqueWork(NOW_WORK, ExistingWorkPolicy.KEEP,
+        OneTimeWorkRequestBuilder<FencingSearchWorker>().build())
+}
+
+// Whether a one-off search is waiting or running, as it changes (for the Settings page)
+fun fencingSearching(context: Context): Flow<Boolean> {
+    return WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(NOW_WORK)
+        .map { jobs -> jobs.any { !it.state.isFinished } }
 }
 
 // Search right away (when fencing is turned on, or from Search now), then check today

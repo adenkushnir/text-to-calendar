@@ -121,7 +121,8 @@
         <receiver
             android:name=".prompts.IgnoreReceiver"
             android:exported="false" />
-        <!-- Reads message notifications; Android delivers only conversation notifications (chat messages) to it -->
+        <!-- Reads message notifications (conversations), and the shipping notifications of the shopping apps you
+             switch on (alerting); every app that isn't switched on is ignored before anything is read -->
         <service
             android:name=".capture.MessageListener"
             android:exported="false"
@@ -132,7 +133,7 @@
             </intent-filter>
             <meta-data
                 android:name="android.service.notification.default_filter_types"
-                android:value="conversations" />
+                android:value="conversations|alerting" />
         </service>
     </application>
 </manifest>

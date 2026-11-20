@@ -32,6 +32,9 @@ const val ACT_TURN_RULE = "turn_rule"
 const val ACT_DELETE_RULE = "delete_rule"
 const val ACT_PAUSE = "pause"
 const val ACT_SETTING = "set_setting"
+const val ACT_SET_LINK = "set_link"
+const val TARGET_PLAN = "plan"
+const val TARGET_ITEM = "item"
 const val SET_SUMMARY_TIME = "summary_time"
 const val SET_SUMMARY_ON = "summary_on"
 const val SET_HOME = "home_address"
@@ -41,7 +44,7 @@ const val SET_KEEP_TEXTS = "keep_texts"
 val ACTIONS = listOf(ACT_NEW_PLAN, ACT_EDIT_WAITING, ACT_ADD_WAITING, ACT_IGNORE_WAITING, ACT_MOVE_EVENT,
     ACT_CANCEL_EVENT, ACT_ADD_BILL, ACT_ADD_ASSIGNMENT, ACT_ADD_REMINDER, ACT_ADD_NOTE, ACT_ADD_PACKAGE, ACT_EDIT_ITEM,
     ACT_MARK_DONE, ACT_DELETE_ITEM, ACT_PACKAGE_RECEIVED, ACT_ADD_RULE, ACT_TURN_RULE, ACT_DELETE_RULE, ACT_PAUSE,
-    ACT_SETTING)
+    ACT_SETTING, ACT_SET_LINK)
 val SETTINGS = listOf(SET_SUMMARY_TIME, SET_SUMMARY_ON, SET_HOME, SET_TRAVEL_MODE, SET_FLIP_TRIP, SET_KEEP_TEXTS)
 private val TODAY = DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy, h:mm a", Locale.US)
 private val STRING = mapOf("type" to "string")
@@ -85,6 +88,10 @@ private val CHANGE = objectOf(mapOf(
     "pause" to mapOf("type" to "string", "enum" to PAUSE_KINDS),
     "until" to text("For pause: YYYY-MM-DDTHH:MM, when the pause ends"),
     "setting" to mapOf("type" to "string", "enum" to SETTINGS),
+    "target" to mapOf("type" to "string", "enum" to listOf(TARGET_PLAN, TARGET_ITEM), "description" to "For " +
+        "set_link: plan for a package or trip booking (from find_plans or find_items' packages), item for a bill " +
+        "or other list item"),
+    "link" to text("For set_link: the web link to save, or empty to remove it"),
 ), listOf("action"))
 
 // Every tool Deliberate offers
@@ -140,5 +147,9 @@ How to work:
   alert_earlier sends the alert sooner; no_alerts stops leave-by, bring and weather alerts for an event series.
 - Habits are things Claude should assume when it reads new texts, like "dinners last 2 hours".
 - Pauses end at the time given; "this weekend" ends Monday at 6:00.
+- set_link saves a web link on a bill (Pay), a package (Order) or a trip booking (Booking).
+- For anything outside Datebook's data (any fencing tournament, past or future, its results or stream, a venue,
+  opening hours, news), search the web with web_search and read pages with web_fetch. Give the useful link in
+  your answer.
 - You can't send messages, email, pay anything, or change apps other than Datebook."""
 }

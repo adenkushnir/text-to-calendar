@@ -4,6 +4,8 @@
 package io.github.adenkushnir.datebook
 import android.content.Context
 import com.anthropic.client.AnthropicClient
+import com.anthropic.client.okhttp.AnthropicOkHttpClient
+import java.time.Duration
 import io.github.adenkushnir.datebook.automatic.GroupChats
 import io.github.adenkushnir.datebook.calendar.CalendarSwitches
 import io.github.adenkushnir.datebook.calendar.calendarEvents
@@ -27,6 +29,7 @@ import io.github.adenkushnir.datebook.pipeline.TextPipeline
 import io.github.adenkushnir.datebook.pipeline.extractEvents
 import io.github.adenkushnir.datebook.pipeline.makeClient
 import io.github.adenkushnir.datebook.places.TravelSettings
+import io.github.adenkushnir.datebook.lists.showPackageMoved
 import io.github.adenkushnir.datebook.places.findPlace
 import io.github.adenkushnir.datebook.prompts.SuggestionNotifier
 import io.github.adenkushnir.datebook.settings.ModelChoice
@@ -66,6 +69,7 @@ class AppGraph private constructor(context: Context) {
     val railData = RailDataClient({ njtUserStore.load() }, { njtPasswordStore.load() }, { njtTokenStore.load() },
         { njtTokenStore.save(it) })
     private var client: Pair<String, AnthropicClient>? = null
+    private var webClient: Pair<String, AnthropicClient>? = null
     val pipeline = TextPipeline(
         dao = dao,
         apiKey = { keyStore.load() },
@@ -83,6 +87,7 @@ class AppGraph private constructor(context: Context) {
             flightStore.save(date, it)  // remembered for the card and the checks
         } },
         onWithdrawn = { notifier.cancel(it) },
+        onPackageMoved = { title, newDay, oldDay -> showPackageMoved(context, title, newDay, oldDay) },
         guessTimes = { text, receivedAt, zone -> offlineDates.find(text, receivedAt, ZoneId.of(zone)) },
         onFollowUpsSaved = { CoroutineScope(Dispatchers.IO).launch { bookNextFollowUp(context) } },
         // Show a problem's quiet alert when it reaches its limit, and clear it once it's fixed
@@ -101,7 +106,7 @@ class AppGraph private constructor(context: Context) {
     }
     val deliberate by lazy {
         Deliberate(context) { system, turns ->
-            askClaude(clientFor(keyStore.load().orEmpty()), modelChoice.get(), system, DELIBERATE_TOOLS, turns)
+            askClaude(webClientFor(keyStore.load().orEmpty()), modelChoice.get(), system, DELIBERATE_TOOLS, turns)
         }
     }
 
@@ -116,6 +121,21 @@ class AppGraph private constructor(context: Context) {
         }
         val made = makeClient(key)
         client = Pair(key, made)
+        return made
+    }
+
+    // Return a Claude client that waits up to 3 minutes (Deliberate's web searches take a while), reusing it while the
+    // key stays the same
+    @Synchronized
+    private fun webClientFor(key: String): AnthropicClient {
+        val current = webClient
+
+        // Reuse the client made for this same key
+        if (current != null && current.first == key) {
+            return current.second
+        }
+        val made = AnthropicOkHttpClient.builder().apiKey(key).timeout(Duration.ofMinutes(3)).build()
+        webClient = Pair(key, made)
         return made
     }
 

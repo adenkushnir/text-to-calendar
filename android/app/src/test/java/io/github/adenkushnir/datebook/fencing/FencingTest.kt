@@ -15,7 +15,7 @@ class FencingTest {
     private val zone = ZoneId.of("America/New_York")
     private val monday = LocalDate.of(2037, 11, 16)
     private val junior = Tournament("Junior Men's Foil", "November NAC", "Columbus, OH", LocalDate.of(2037, 11, 20),
-        LocalDate.of(2037, 11, 21), "08:00", "FencingTV", "https://www.fencing.tv/live", "https://example.org/results")
+        LocalDate.of(2037, 11, 21), "08:00", "FencingTV", "https://www.fencingtv.com/live", "https://example.org/results")
     private val grandPrix = Tournament("Men's Foil Grand Prix", "FIE Grand Prix", "Turin", LocalDate.of(2037, 11, 21),
         LocalDate.of(2037, 11, 22), "03:30")
     private val worldCup = Tournament("Junior Men's Foil", "Junior World Cup", "Bochum", LocalDate.of(2037, 12, 5),
@@ -32,7 +32,7 @@ class FencingTest {
         val answer = "I searched FencingTV and the FIE.\n<json>{\"events\": [" +
             "{\"name\": \"Junior Men's Foil\", \"meet\": \"November NAC\", \"place\": \"Columbus, OH\", " +
             "\"first_day\": \"2037-11-20\", \"last_day\": \"2037-11-21\", \"start_time\": \"08:00\", " +
-            "\"stream_url\": \"fencing.tv\", \"results_url\": \"https://example.org/results\"}, " +
+            "\"stream_url\": \"fencingtv.com\", \"results_url\": \"https://example.org/results\"}, " +
             "{\"name\": \"\", \"first_day\": \"2037-11-20\"}, {\"name\": \"Div I\", \"first_day\": \"soon\"}]}</json>"
         val found = tournamentsFrom(answerJson(answer)!!.path("events"))
         assertEquals(1, found.size)
@@ -52,10 +52,14 @@ class FencingTest {
         val merged = mergeSearch(listOf(checked, old), listOf(junior, grandPrix, old), friday)
         assertEquals(listOf(junior.name, grandPrix.name), merged.map { it.name })
         assertEquals("Table of 64", merged[0].todayNote)
+        val renamed = junior.copy(name = "Junior Men's Individual Foil", streamUrl = "")
+        val again = mergeSearch(listOf(junior, grandPrix), listOf(renamed), friday)
+        assertEquals(listOf(renamed.name, grandPrix.name), again.map { it.name })
+        assertEquals("https://www.fencingtv.com/live", again[0].streamUrl)
         val today = mergeToday(listOf(junior), listOf(junior.copy(todayStart = "10:00", todayEnd = "18:00",
             todayNote = "Table of 16", streamUrl = "")), friday)
         assertEquals("10:00", today[0].todayStart)
-        assertEquals("https://www.fencing.tv/live", today[0].streamUrl)
+        assertEquals("https://www.fencingtv.com/live", today[0].streamUrl)
     }
 
     // This week's tournaments become tiles in order; the one streaming now is first and lit
@@ -90,10 +94,10 @@ class FencingTest {
     // Watch and Results use the exact links when found, else the sites for USA or FIE events
     @Test
     fun fallbackLinks() {
-        assertEquals("https://www.fencing.tv/live", watchLink(junior))
+        assertEquals("https://www.fencingtv.com/live", watchLink(junior))
         assertEquals("https://example.org/results", resultsLink(junior))
         val noLinks = junior.copy(streamUrl = "", resultsUrl = "")
-        assertEquals("https://www.fencing.tv", watchLink(noLinks))
+        assertEquals("https://www.fencingtv.com", watchLink(noLinks))
         assertEquals("https://www.fencingtimelive.com", resultsLink(noLinks))
         assertTrue(watchLink(grandPrix).startsWith("https://www.youtube.com/results?search_query=FIE+Grand+Prix"))
         assertEquals("https://fie.org/competitions", resultsLink(grandPrix))
@@ -105,7 +109,7 @@ class FencingTest {
         assertEquals("No men's foil events this week. Next: Junior World Cup, Bochum · Sat Dec 5.",
             emptyWeekLine(listOf(worldCup), monday))
         assertEquals("No men's foil events this week.", emptyWeekLine(emptyList(), monday))
-        assertTrue(searchPrompt(monday, zone).contains("https://www.fencing.tv"))
+        assertTrue(searchPrompt(monday, zone).contains("https://www.fencingtv.com"))
         assertTrue(todayPrompt(monday, zone, listOf(junior)).contains("Junior Men's Foil · November NAC"))
     }
 }

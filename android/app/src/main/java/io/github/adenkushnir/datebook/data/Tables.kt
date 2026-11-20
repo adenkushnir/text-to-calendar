@@ -19,7 +19,7 @@ data class SeenText(
 // offline guess the retry-queue text Claude is still to check (0 for plans Claude read), its confirmation code, and
 // for a travel booking the trip it belongs to, like "Chicago", what to bring, whether it's outdoors, and the message
 // it came from when you keep message texts for Deliberate (kept 1 year, deleted with the plan), and for a Canvas
-// class event its id in the Canvas feed
+// class event its id in the Canvas feed, and a link for it (an order page, a booking)
 @Entity(tableName = "suggestions")
 data class Suggestion(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -53,12 +53,13 @@ data class Suggestion(
     @ColumnInfo(defaultValue = "0") val outdoor: Boolean = false,
     @ColumnInfo(defaultValue = "") val message: String = "",
     @ColumnInfo(defaultValue = "") val sourceId: String = "",
+    @ColumnInfo(defaultValue = "") val link: String = "",
 ) {
     // Turn the saved row back into an event
     fun toEvent(): Event {
         return Event(title, start, end, allDay, location, repeat, timezone, phoneTimezone, flight = flight,
             packageCarrier = packageCarrier, trackingNumber = trackingNumber, placeLat = placeLat, placeLng = placeLng,
-            confirmation = confirmation, trip = trip, bring = bring, outdoor = outdoor)
+            confirmation = confirmation, trip = trip, bring = bring, outdoor = outdoor, link = link)
     }
 
     // Names for the three states a suggestion can be in, plus the one for a calendar event shown on its card (never
@@ -100,6 +101,7 @@ fun suggestionOf(event: Event, incoming: IncomingText, now: Long, clash: String 
         trip = event.trip,
         bring = event.bring,
         outdoor = event.outdoor,
+        link = event.link,
     )
 }
 

@@ -31,8 +31,12 @@ fun carrierFor(carrier: String, number: String): String {
     }
 }
 
-// The carrier's tracking page for a package, or null when the carrier is unknown
+// The carrier's tracking page for a package, or null when the carrier or the number is unknown
 fun packageLink(carrier: String, number: String): TrackLink? {
+    // No number, nothing to look up
+    if (number.isBlank()) {
+        return null
+    }
     val clean = Uri.encode(number.replace(" ", ""))
 
     // Each carrier has its own tracking page

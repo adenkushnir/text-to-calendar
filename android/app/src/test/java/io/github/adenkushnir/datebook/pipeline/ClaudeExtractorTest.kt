@@ -215,6 +215,6 @@ class ClaudeExtractorTest {
         assertEquals("ups", delivery.packageCarrier)
         assertEquals("1Z999AA10123456784", delivery.trackingNumber)
         assertTrue(SYSTEM_PROMPT.contains("- Flights: when the text gives a flight number"))
-        assertTrue(SYSTEM_PROMPT.contains("- Packages: when the text says a package arrives"))
+        assertTrue(SYSTEM_PROMPT.contains("- Packages: when the message says a package or order shipped"))
     }
 }

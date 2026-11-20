@@ -53,7 +53,7 @@ fun watchLink(tournament: Tournament): String {
         return tournament.streamUrl
     }
     val search = java.net.URLEncoder.encode("${tournament.meet.ifBlank { tournament.name }} men's foil live", "UTF-8")
-    return if (isUsaEvent(tournament)) "https://www.fencing.tv"
+    return if (isUsaEvent(tournament)) "https://www.fencingtv.com"
         else "https://www.youtube.com/results?search_query=$search"
 }
 
@@ -131,16 +131,45 @@ fun answerJson(answer: String): JsonNode? {
     return runCatching { MAPPER.readTree(candidate.trim()) }.getOrNull()?.takeIf { it.isObject }
 }
 
-// Merge a new search into what was saved: the new search wins for each tournament, keeping today's details already
-// found, and tournaments that are over are dropped
-fun mergeSearch(saved: List<Tournament>, found: List<Tournament>, today: LocalDate): List<Tournament> {
-    val old = saved.associateBy { tournamentKey(it) }
-    val merged = found.map { new ->
-        val before = old[tournamentKey(new)]
-        if (before != null && before.todayDate == today.toString()) new.copy(todayDate = before.todayDate,
-            todayStart = before.todayStart, todayEnd = before.todayEnd, todayNote = before.todayNote) else new
+// The category a tournament is in, from its name: junior, division 1a, division 2, division 1 or senior, and team or
+// individual (so "Junior Men's Foil" and "Junior Men's Individual Foil" are the same event)
+fun categoryOf(tournament: Tournament): String {
+    val name = tournament.name.lowercase()
+
+    // The age or level group
+    val group = when {
+        name.contains("junior") || name.contains("u20") -> "junior"
+        name.contains("1a") || name.contains("ia ") || name.endsWith(" ia") -> "div1a"
+        Regex("\\b(ii|2)\\b").containsMatchIn(name) -> "div2"
+        else -> "senior"
     }
-    return merged.filter { !it.lastDay.isBefore(today) }.sortedBy { it.firstDay }
+    return if (name.contains("team")) "$group team" else group
+}
+
+// Return true if two found tournaments are the same event: same first day, category and place (first word)
+fun sameEvent(one: Tournament, two: Tournament): Boolean {
+    val place = { t: Tournament -> t.place.lowercase().split(" ", ",").firstOrNull { it.isNotBlank() }.orEmpty() }
+    return one.firstDay == two.firstDay && categoryOf(one) == categoryOf(two) && place(one) == place(two)
+}
+
+// Merge a new search into what was saved: searches add up, since each finds a slightly different set; an event found
+// again is updated (keeping today's details and any links the new search missed), the rest are kept until they're
+// over
+fun mergeSearch(saved: List<Tournament>, found: List<Tournament>, today: LocalDate): List<Tournament> {
+    val updated = found.map { new ->
+        val before = saved.firstOrNull { sameEvent(it, new) } ?: return@map new
+        val keepToday = before.todayDate == today.toString()
+        new.copy(startTime = new.startTime.ifBlank { before.startTime },
+            streamName = new.streamName.ifBlank { before.streamName },
+            streamUrl = new.streamUrl.ifBlank { before.streamUrl },
+            resultsUrl = new.resultsUrl.ifBlank { before.resultsUrl },
+            todayDate = if (keepToday) before.todayDate else new.todayDate,
+            todayStart = if (keepToday) before.todayStart else new.todayStart,
+            todayEnd = if (keepToday) before.todayEnd else new.todayEnd,
+            todayNote = if (keepToday) before.todayNote else new.todayNote)
+    }
+    val kept = saved.filter { old -> updated.none { sameEvent(it, old) } }
+    return (updated + kept).filter { !it.lastDay.isBefore(today) }.sortedBy { it.firstDay }
 }
 
 // Add what the event-day check found about today (matched by name and meet) to the saved tournaments
@@ -229,7 +258,7 @@ Only these categories: Junior (U20), Division I or Senior, Division IA, Division
 women's events and other weapons. Each category at a meet is its own entry.
 For each, find when men's foil starts on its days, converted to the time zone ${zone.id}, where it is streamed
 and its live results page (FencingTimeLive, the FIE site). For streams, always check FencingTV's schedule at
-https://www.fencing.tv as well as the FIE's channel, Olympics.com and the event's own site. Open the pages with web
+https://www.fencingtv.com as well as the FIE's channel, Olympics.com and the event's own site. Open the pages with web
 fetch (each event's own page, its FencingTimeLive tournament page, its FIE competition page) to find the exact
 stream_url and results_url for that event, not just a home page.
 Never guess dates or links: leave a field empty when you can't find it.
@@ -245,7 +274,7 @@ fun todayPrompt(today: LocalDate, zone: ZoneId, onToday: List<Tournament>): Stri
 $list
 find today's live stream (its name and link), when today's stream starts and ends converted to the time zone
 ${zone.id}, the live results page, and what stage is on today (like "Table of 16" or "Finals"). Always check
-FencingTV's schedule at https://www.fencing.tv for today's streams, as well as the FIE's channel and the event's own
+FencingTV's schedule at https://www.fencingtv.com for today's streams, as well as the FIE's channel and the event's own
 site, and open the pages with web fetch to get the exact stream and results links for each event. Never guess: leave a
 field empty when you can't find it.
 Answer with only this JSON inside <json></json> tags, one entry per event above, with its name and meet as given:

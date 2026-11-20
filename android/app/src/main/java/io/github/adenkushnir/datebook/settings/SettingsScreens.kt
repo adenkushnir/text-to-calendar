@@ -792,24 +792,12 @@ private fun StatusRow(label: String, on: Boolean, open: () -> Unit) {
 // Settings → Fencing: turn the men's foil searches on or off, search now, and see when the last search ran and what
 // it found
 @Composable
-fun FencingPage(on: Boolean, lastSearched: String, lastResult: String, setOn: (Boolean) -> Unit,
-    onSearch: suspend () -> String, onBack: () -> Unit) {
-    val scope = rememberCoroutineScope()
-    var result by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
-
-    // Search, showing it's busy until it's done
-    val search = {
-        busy = true
-        scope.launch {
-            result = onSearch()
-            busy = false
-        }
-    }
+fun FencingPage(on: Boolean, searching: Boolean, lastSearched: String, lastResult: String, setOn: (Boolean) -> Unit,
+    onSearch: () -> Unit, onBack: () -> Unit) {
     SettingsPage("Fencing", onBack) {
         Muted("Men's foil tournaments to follow and watch: USA Fencing nationals and FIE events, in Junior, " +
-            "Division I or Senior, Division IA and Division II. They show at the bottom of Home for the coming week, with Watch " +
-            "and Results, and a quiet notification when a stream goes live.")
+            "Division I or Senior, Division IA and Division II. They show at the bottom of Home for the coming week, " +
+            "with Watch and Results, and a quiet notification when a stream goes live.")
         DatebookCard {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -821,30 +809,31 @@ fun FencingPage(on: Boolean, lastSearched: String, lastResult: String, setOn: (B
 
                     // The first search runs as soon as it's turned on
                     if (turnOn) {
-                        search()
+                        onSearch()
                     }
                 })
             }
 
             // What the last search found
-            if (on && lastResult.isNotBlank()) {
+            if (on && lastResult.isNotBlank() && !searching) {
                 Muted(lastResult)
             }
         }
 
-        // Search now, while it's on
+        // Search now while it's on; a search keeps going in the background after you leave
         if (on) {
-            GlassButton(enabled = !busy, onClick = { search() }) {
-                Text(if (busy) "Searching… (up to a few minutes)" else "Search now")
+            GlassButton(enabled = !searching, onClick = onSearch) {
+                Text(if (searching) "Searching…" else "Search now")
             }
         }
 
-        // What the button found
-        if (result.isNotBlank()) {
-            Muted(result)
+        // Say a search is running, and that leaving is fine
+        if (searching) {
+            Muted("Searching the web. This takes a few minutes; you can leave this page or close Datebook, and Home " +
+                "updates when it's done.")
         }
         Muted("Claude searches the web with your API key every Monday at 7 AM for the next 3 weeks, and on the " +
-            "morning of each event day for that day's stream (including FencingTV's schedule on fencing.tv). That " +
+            "morning of each event day for that day's stream (including FencingTV's schedule on fencingtv.com). That " +
             "costs about \$0.30 to \$1 a week.")
     }
 }

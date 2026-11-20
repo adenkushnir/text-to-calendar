@@ -44,6 +44,9 @@ private const val TIMEOUT_MILLIS = 20_000
 private const val AUTH_SECONDS = 30L
 private val MAPPER = ObjectMapper()
 private val TAGS = Regex("<[^>]+>")
+private val LINKS = Regex("(?is)<a\\s[^>]*href=[\"'](https?://[^\"']+)[\"'][^>]*>(.*?)</a>")
+private val USEFUL_LINK = Regex("(?i)\\b(pay|bill|view|manage|order|track|reservation|booking|itinerary|trip|" +
+    "check.?in|account|details|receipt|invoice)")
 private val HIDDEN_BLOCKS = Regex("(?is)<(style|script|head)[^>]*>.*?</\\1>")
 private val LINE_BREAKS = Regex("(?i)<(br|/p|/div|/tr|/li|/h[1-6])[^>]*>")
 private val NUMBERED_ENTITY = Regex("&#(\\d+);")
@@ -183,9 +186,14 @@ private fun partText(part: JsonNode, mimeType: String): String {
     return ""
 }
 
-// Turn an HTML email into plain text: no styles, scripts or tags, line breaks kept, common entities decoded
+// Turn an HTML email into plain text: no styles, scripts or tags, line breaks kept, common entities decoded, and the
+// links worth keeping (pay, view order, manage booking...) written out as "text (address)" so Claude can pick them
 fun htmlToText(html: String): String {
-    val text = html.replace(HIDDEN_BLOCKS, " ").replace(LINE_BREAKS, "\n").replace(TAGS, " ")
+    val linked = html.replace(LINKS) { match ->
+        val words = match.groupValues[2].replace(TAGS, " ").trim()
+        if (USEFUL_LINK.containsMatchIn(words)) "$words (${match.groupValues[1].replace("&amp;", "&")})" else words
+    }
+    val text = linked.replace(HIDDEN_BLOCKS, " ").replace(LINE_BREAKS, "\n").replace(TAGS, " ")
         .replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
         .replace("&quot;", "\"").replace("&#39;", "'").replace("&rsquo;", "'")
         .replace(NUMBERED_ENTITY) { it.groupValues[1].toIntOrNull()?.let { code -> code.toChar().toString() } ?: "" }

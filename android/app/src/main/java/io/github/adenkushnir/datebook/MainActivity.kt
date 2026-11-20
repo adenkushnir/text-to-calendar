@@ -91,7 +91,8 @@ import io.github.adenkushnir.datebook.fencing.FencingSettings
 import io.github.adenkushnir.datebook.fencing.emptyWeekLine
 import io.github.adenkushnir.datebook.fencing.fencingTiles
 import io.github.adenkushnir.datebook.fencing.scheduleFencing
-import io.github.adenkushnir.datebook.fencing.searchNow
+import io.github.adenkushnir.datebook.fencing.fencingSearching
+import io.github.adenkushnir.datebook.fencing.searchInBackground
 import io.github.adenkushnir.datebook.settings.NestorPage
 import io.github.adenkushnir.datebook.nestor.LOCAL_NETWORK_PERMISSION
 import io.github.adenkushnir.datebook.nestor.NestorLink
@@ -519,6 +520,14 @@ class MainActivity : ComponentActivity() {
                     onDone = { id -> scope.launch { finishFollowUp(graph.dao, id) } },
                     onPaid = { id -> scope.launch { finishFollowUp(graph.dao, id) } },
                     onOpenPlan = { id -> nav.navigate("suggestion/$id") },
+                    onPlanLink = { id, link ->
+                        scope.launch {
+                            graph.dao.suggestion(id)?.let { graph.dao.updateSuggestion(it.copy(link = link)) }
+                        }
+                    },
+                    onItemLink = { id, link ->
+                        scope.launch { graph.dao.followUp(id)?.let { graph.dao.updateFollowUp(it.copy(link = link)) } }
+                    },
                 )
                 Tabbed(ROUTE_LISTS, openTab) {
                     ListsScreen(listShown, { listShown = it }, content, listActions,
@@ -741,20 +750,24 @@ class MainActivity : ComponentActivity() {
             composable(ROUTE_SETTINGS_FENCING) {
                 val fencing = remember { FencingSettings(applicationContext) }
                 var on by remember { mutableStateOf(fencing.isOn()) }
+                val searchingFlow = remember { fencingSearching(applicationContext) }
+                val searching by searchingFlow.collectAsState(initial = false)
                 var searched by remember { mutableStateOf(fencing.lastSearch()) }
                 var found by remember { mutableStateOf(fencing.lastResult()) }
-                FencingPage(on, if (searched > 0) "Last searched ${whenText(searched)}" else "", found,
+                LaunchedEffect(searching) {
+                    // Show the result once a search finishes
+                    if (!searching) {
+                        searched = fencing.lastSearch()
+                        found = fencing.lastResult()
+                    }
+                }
+                FencingPage(on, searching, if (searched > 0) "Last searched ${whenText(searched)}" else "", found,
                     setOn = { turnOn ->
                         fencing.setOn(turnOn)
                         on = turnOn
                         scheduleFencing(applicationContext)
                     },
-                    onSearch = {
-                        graph.keepGoing { searchNow(applicationContext) }.also {
-                            searched = fencing.lastSearch()
-                            found = fencing.lastResult()
-                        }
-                    },
+                    onSearch = { searchInBackground(applicationContext) },
                     onBack = { nav.popBackStack() })
             }
             composable(ROUTE_SETTINGS_NESTOR) {

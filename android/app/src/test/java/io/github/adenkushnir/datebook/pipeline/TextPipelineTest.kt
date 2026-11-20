@@ -4,6 +4,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.anthropic.errors.AnthropicIoException
 import io.github.adenkushnir.datebook.calendar.CalendarEvent
+import io.github.adenkushnir.datebook.capture.AMAZON_APP
 import io.github.adenkushnir.datebook.data.DatebookDao
 import io.github.adenkushnir.datebook.data.DatebookDatabase
 import io.github.adenkushnir.datebook.data.FollowUp
@@ -48,6 +49,7 @@ class TextPipelineTest {
     private val asked = mutableListOf<IncomingText>()
     private val withdrawn = mutableListOf<Long>()
     private val alerts = mutableListOf<String>()
+    private val moved = mutableListOf<String>()
 
     // Open a fresh in-memory database before each test
     @Before
@@ -88,7 +90,42 @@ class TextPipelineTest {
             onAlert = { kind, showing -> alerts.add("$kind ${if (showing) "shown" else "cleared"}") },
             keepTexts = { keepTexts },
             ignored = { sender, _, _, _ -> ignoreFrom.isNotBlank() && sender == ignoreFrom },
+            onPackageMoved = { title, newDay, oldDay -> moved.add("$title $oldDay -> $newDay") },
         )
+    }
+
+    // A shopping app's sales never reach Claude; its shipping news does, even without a date
+    @Test
+    fun shoppingApps() = runTest {
+        val amazon = incoming.copy(sender = "Amazon", app = AMAZON_APP)
+        assertEquals(null, pipeline(listOf(dinner)).receive(amazon.copy(text = "Deals on headphones until Friday")))
+        val cleats = Event("Cleats from Amazon", "2037-11-19", allDay = true, packageCarrier = "amazon",
+            packageStatus = PACKAGE_OUT)
+        val outcome = pipeline(listOf(cleats)).receive(amazon.copy(text = "Out for delivery: Cleats"))
+        assertEquals("Cleats from Amazon", dao.suggestion(outcome!!.suggestionIds.single())!!.title)
+    }
+
+    // The same package from an email and a notification is one entry; a new day moves it and says so, and a package
+    // first heard of as delivered isn't added
+    @Test
+    fun packageUpdates() = runTest {
+        val cleats = Event("Cleats from Amazon", "2037-11-19", allDay = true, packageCarrier = "amazon",
+            packageStatus = PACKAGE_ARRIVING)
+        pipeline(listOf(cleats)).handle(incoming.copy(text = "cleats arriving thursday nov 19"))
+        pipeline(listOf(cleats.copy(start = "2037-11-21", link = "https://example.com/order/1")))
+            .handle(incoming.copy(text = "cleats now arriving saturday nov 21"))
+        val packages = dao.packagesNow()
+        assertEquals(1, packages.size)
+        assertEquals("2037-11-21", packages.single().start)
+        assertEquals("https://example.com/order/1", packages.single().link)
+        assertEquals(listOf("Cleats from Amazon 2037-11-19 -> 2037-11-21"), moved)
+        pipeline(listOf(cleats.copy(start = "2037-11-22", packageStatus = PACKAGE_DELIVERED)))
+            .handle(incoming.copy(text = "cleats delivered sun nov 22"))
+        assertEquals("2037-11-21", dao.packagesNow().single().start)
+        val gift = Event("Gift from Shop", "2037-11-20", allDay = true, packageCarrier = "other",
+            packageStatus = PACKAGE_DELIVERED)
+        pipeline(listOf(gift)).handle(incoming.copy(text = "your gift was delivered fri nov 20"))
+        assertEquals(1, dao.packagesNow().size)
     }
 
     // With message texts kept, a plan keeps the text it came from; without, it never does
