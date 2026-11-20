@@ -30,6 +30,10 @@ const val SHARED_IMAGE_APP = "datebook.shared.image"
 const val SHARED_PDF_APP = "datebook.shared.pdf"
 const val TYPED_APP = "datebook.typed"
 const val DELIBERATE_APP = "datebook.deliberate"
+const val PACKAGE_SHIPPED = "shipped"
+const val PACKAGE_ARRIVING = "arriving"
+const val PACKAGE_OUT = "out_for_delivery"
+const val PACKAGE_DELIVERED = "delivered"
 private val RECEIVED_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.US)
 private val WEEKDAY_FORMAT = DateTimeFormatter.ofPattern("EEEE", Locale.US)
 private val DAY_FORMAT = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US)
@@ -56,7 +60,10 @@ private val EVENT_ITEM = mapOf(
         "change" to mapOf("type" to "string", "enum" to listOf("", CHANGE_MOVED, CHANGE_CANCELLED)),
         "calendar_event" to mapOf("type" to "integer"),
         "flight" to mapOf("type" to "string"),
-        "package_carrier" to mapOf("type" to "string", "enum" to listOf("", "ups", "fedex", "usps", "amazon", "dhl")),
+        "package_carrier" to mapOf("type" to "string", "enum" to listOf("", "ups", "fedex", "usps", "amazon", "dhl",
+            "other")),
+        "package_status" to mapOf("type" to "string", "enum" to listOf("", PACKAGE_SHIPPED, PACKAGE_ARRIVING,
+            PACKAGE_OUT, PACKAGE_DELIVERED)),
         "tracking_number" to mapOf("type" to "string"),
         "confirmation_code" to mapOf("type" to "string"),
         "kind" to mapOf("type" to "string", "enum" to listOf(KIND_EVENT, KIND_LOOSE, KIND_DUE, KIND_ASSIGNMENT,
@@ -65,10 +72,11 @@ private val EVENT_ITEM = mapOf(
         "trip" to mapOf("type" to "string"),
         "bring" to mapOf("type" to "array", "items" to mapOf("type" to "string")),
         "outdoor" to mapOf("type" to "boolean"),
+        "link" to mapOf("type" to "string"),
     ),
     "required" to listOf("title", "start", "end", "all_day", "location", "repeat", "timezone", "change",
-        "calendar_event", "flight", "package_carrier", "tracking_number", "confirmation_code", "kind", "amount",
-        "trip", "bring", "outdoor"),
+        "calendar_event", "flight", "package_carrier", "package_status", "tracking_number", "confirmation_code", "kind",
+        "amount", "trip", "bring", "outdoor", "link"),
     "additionalProperties" to false,
 )
 val EVENTS_SCHEMA = mapOf(
@@ -221,6 +229,12 @@ fun extractEvents(client: AnthropicClient, incoming: IncomingText, phoneZone: St
     return parseResponse(stopped, texts.joinToString(""), phoneZone)
 }
 
+// A link only when it's a web address (Claude is told to copy links exactly; anything else is dropped)
+fun webLink(text: String): String {
+    val link = text.trim()
+    return if ((link.startsWith("https://") || link.startsWith("http://")) && !link.contains(" ")) link else ""
+}
+
 // Turn Claude's reply into events, empty if it declined, was cut off or found none (throws on JSON that can't be read)
 fun parseResponse(stopped: Boolean, json: String, phoneZone: String): List<Event> {
     // Give up on refusals, replies that hit the token limit, and empty replies
@@ -251,6 +265,8 @@ fun parseResponse(stopped: Boolean, json: String, phoneZone: String): List<Event
             trip = item.path("trip").asText("").trim(),
             bring = item.path("bring").map { it.asText("").trim() }.filter { it.isNotBlank() }.joinToString(", "),
             outdoor = item.path("outdoor").asBoolean(false),
+            link = webLink(item.path("link").asText("")),
+            packageStatus = item.path("package_status").asText(""),
         )
 
         // A plan or bill without a start has nothing to go on; a loose plan or reminder may have no day yet

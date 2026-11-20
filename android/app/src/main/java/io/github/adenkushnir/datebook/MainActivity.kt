@@ -86,6 +86,13 @@ import io.github.adenkushnir.datebook.canvas.resultText
 import io.github.adenkushnir.datebook.canvas.scheduleCanvas
 import io.github.adenkushnir.datebook.deliberate.whenText
 import io.github.adenkushnir.datebook.settings.SchoolPage
+import io.github.adenkushnir.datebook.settings.FencingPage
+import io.github.adenkushnir.datebook.fencing.FencingSettings
+import io.github.adenkushnir.datebook.fencing.emptyWeekLine
+import io.github.adenkushnir.datebook.fencing.fencingTiles
+import io.github.adenkushnir.datebook.fencing.scheduleFencing
+import io.github.adenkushnir.datebook.fencing.fencingSearching
+import io.github.adenkushnir.datebook.fencing.searchInBackground
 import io.github.adenkushnir.datebook.settings.NestorPage
 import io.github.adenkushnir.datebook.nestor.LOCAL_NETWORK_PERMISSION
 import io.github.adenkushnir.datebook.nestor.NestorLink
@@ -217,6 +224,7 @@ const val ROUTE_SETTINGS_ABOUT = "settings/about"
 const val ROUTE_SETTINGS_AUTOMATIC = "settings/automatic"
 const val ROUTE_SETTINGS_LOOK = "settings/look"
 const val ROUTE_SETTINGS_SCHOOL = "settings/school"
+const val ROUTE_SETTINGS_FENCING = "settings/fencing"
 const val ROUTE_SETTINGS_NESTOR = "settings/nestor"
 private const val TICK_MILLIS = 30_000L  // how often Home moves "now" on
 private val MAIN_TABS = listOf(TabItem(ROUTE_HOME, DatebookIcons.Home, "Home"),
@@ -350,6 +358,7 @@ class MainActivity : ComponentActivity() {
             scheduleFollowUps(applicationContext)  // start the follow-up nudges and reminders if they aren't running
             scheduleWidgetRefresh(applicationContext)  // start the widget refresh and access check if it isn't running
             scheduleCanvas(applicationContext)  // start the 6-hour Canvas checks while a feed link is saved
+            scheduleFencing(applicationContext)  // book the 7 AM fencing search if it isn't booked
             bookNextFollowUp(applicationContext)  // and book the next one due, on time
             graph.offlineDates.prepare()  // download the offline date model the first time there's internet
 
@@ -457,6 +466,10 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+                val fencingSettings = remember { FencingSettings(applicationContext) }
+                val tournaments = remember(reload, now / TICK_MILLIS) {
+                    if (fencingSettings.isOn()) fencingSettings.tournaments() else null  // re-read as Home ticks
+                }
                 Tabbed(ROUTE_HOME, openTab) {
                     HomeScreen(
                         waiting = waiting,
@@ -479,6 +492,9 @@ class MainActivity : ComponentActivity() {
                         loosePlans = loosePlans,
                         onDropLoose = { id -> scope.launch { graph.dao.setFollowUpStatus(id, FollowUp.DROPPED) } },
                         onOpenChat = { loose -> openApp(loose.app) },
+                        fencing = tournaments?.let { fencingTiles(it, now, zone) },
+                        fencingEmpty = tournaments?.let { emptyWeekLine(it, day) }.orEmpty(),
+                        onOpenLink = { url -> openLink(url) },
                         onFlipTrains = {
                             val saved = trip
 
@@ -504,6 +520,14 @@ class MainActivity : ComponentActivity() {
                     onDone = { id -> scope.launch { finishFollowUp(graph.dao, id) } },
                     onPaid = { id -> scope.launch { finishFollowUp(graph.dao, id) } },
                     onOpenPlan = { id -> nav.navigate("suggestion/$id") },
+                    onPlanLink = { id, link ->
+                        scope.launch {
+                            graph.dao.suggestion(id)?.let { graph.dao.updateSuggestion(it.copy(link = link)) }
+                        }
+                    },
+                    onItemLink = { id, link ->
+                        scope.launch { graph.dao.followUp(id)?.let { graph.dao.updateFollowUp(it.copy(link = link)) } }
+                    },
                 )
                 Tabbed(ROUTE_LISTS, openTab) {
                     ListsScreen(listShown, { listShown = it }, content, listActions,
@@ -606,7 +630,7 @@ class MainActivity : ComponentActivity() {
                     maskedKey = graph.keyStore.load()?.let { maskKey(it) },
                     model = model,
                     onModel = { graph.modelChoice.set(it); model = it },
-                    checkAndSaveKey = { key -> checkAndSaveKey(graph, key, refresh) },
+                    checkAndSaveKey = { key -> graph.keepGoing { checkAndSaveKey(graph, key, refresh) } },
                     onBack = { nav.popBackStack() },
                 )
             }
@@ -646,9 +670,11 @@ class MainActivity : ComponentActivity() {
                     trip = graph.trainSettings.trip(),
                     setTrip = { from, to -> graph.trainSettings.setTrip(from, to) },
                     loadStations = {
-                        withContext(Dispatchers.IO) {
-                            refreshStations(graph.trainSettings, graph.railData, System.currentTimeMillis())
-                            graph.trainSettings.stations()
+                        graph.keepGoing {
+                            withContext(Dispatchers.IO) {
+                                refreshStations(graph.trainSettings, graph.railData, System.currentTimeMillis())
+                                graph.trainSettings.stations()
+                            }
                         }
                     },
                     onBack = { nav.popBackStack() },
@@ -721,6 +747,29 @@ class MainActivity : ComponentActivity() {
                 var moving by remember { mutableStateOf(settings.isOn()) }
                 LookPage(moving, setMoving = { on -> settings.set(on); moving = on }, onBack = { nav.popBackStack() })
             }
+            composable(ROUTE_SETTINGS_FENCING) {
+                val fencing = remember { FencingSettings(applicationContext) }
+                var on by remember { mutableStateOf(fencing.isOn()) }
+                val searchingFlow = remember { fencingSearching(applicationContext) }
+                val searching by searchingFlow.collectAsState(initial = false)
+                var searched by remember { mutableStateOf(fencing.lastSearch()) }
+                var found by remember { mutableStateOf(fencing.lastResult()) }
+                LaunchedEffect(searching) {
+                    // Show the result once a search finishes
+                    if (!searching) {
+                        searched = fencing.lastSearch()
+                        found = fencing.lastResult()
+                    }
+                }
+                FencingPage(on, searching, if (searched > 0) "Last searched ${whenText(searched)}" else "", found,
+                    setOn = { turnOn ->
+                        fencing.setOn(turnOn)
+                        on = turnOn
+                        scheduleFencing(applicationContext)
+                    },
+                    onSearch = { searchInBackground(applicationContext) },
+                    onBack = { nav.popBackStack() })
+            }
             composable(ROUTE_SETTINGS_NESTOR) {
                 val nestor = remember { NestorSettings(applicationContext) }
                 val link by NestorLink.status.collectAsState()
@@ -737,8 +786,8 @@ class MainActivity : ComponentActivity() {
                     if (link.lastContact > 0) "Last heard from Nestor ${whenText(link.lastContact)}" else "",
                     link.problem, on, canReach, hasNotificationAccess(applicationContext),
                     askPermission = { askLocal.launch(LOCAL_NETWORK_PERMISSION) },
-                    onPair = { code -> NestorLink.pair(applicationContext, code) },
-                    onUnpair = { NestorLink.unpair(applicationContext) },
+                    onPair = { code -> graph.keepGoing { NestorLink.pair(applicationContext, code) } },
+                    onUnpair = { graph.keepGoing { NestorLink.unpair(applicationContext) } },
                     setOn = { turnOn ->
                         nestor.setOn(turnOn)
                         on = turnOn
@@ -757,8 +806,8 @@ class MainActivity : ComponentActivity() {
                     found = canvas.lastResult()
                 }
                 SchoolPage(saved, if (checked > 0) "Last checked ${whenText(checked)}" else "", found,
-                    onSave = { link -> saveCanvasLink(canvas, link).also { reread() } },
-                    onCheck = { resultText(checkCanvas(applicationContext)).also { reread() } },
+                    onSave = { link -> graph.keepGoing { saveCanvasLink(canvas, link) }.also { reread() } },
+                    onCheck = { graph.keepGoing { resultText(checkCanvas(applicationContext)) }.also { reread() } },
                     onRemove = {
                         canvas.remove()
                         scheduleCanvas(applicationContext)
@@ -995,6 +1044,9 @@ class MainActivity : ComponentActivity() {
             },
             SettingsItem(DatebookIcons.Book, TILE_LEAF, "School", "Assignments and classes from Canvas") {
                 open(ROUTE_SETTINGS_SCHOOL)
+            },
+            SettingsItem(DatebookIcons.Sparkle, TILE_BLUE, "Fencing", "Men's foil tournaments to watch") {
+                open(ROUTE_SETTINGS_FENCING)
             },
             SettingsItem(DatebookIcons.Home, TILE_AQUA, "Nestor", "Your home speaker and wall screen") {
                 open(ROUTE_SETTINGS_NESTOR)

@@ -29,6 +29,8 @@ data class Change(
     val pause: String = "",
     val until: String = "",
     val setting: String = "",
+    val target: String = "",
+    val link: String = "",
 )
 
 // A field of a tool call's input as trimmed text ("" when missing)
@@ -56,6 +58,7 @@ fun changesOf(input: Map<String, Any?>): List<Change> {
             trackingNumber = field(map, "tracking_number").replace(" ", ""), ruleKind = field(map, "rule_kind"),
             words = field(map, "words").lowercase(), sender = field(map, "sender"), value = field(map, "value"),
             pause = field(map, "pause"), until = field(map, "until"), setting = field(map, "setting"),
+            target = field(map, "target"), link = field(map, "link"),
         )
     }
 }
@@ -103,6 +106,11 @@ fun problemWith(change: Change): String? {
         ACT_PAUSE -> if (change.pause !in PAUSE_KINDS || untilMillis(change.until, ZoneId.systemDefault()) == null)
             "a pause needs what to pause and when it ends" else null
         ACT_SETTING -> if (change.setting !in SETTINGS) "unknown setting ${change.setting}" else null
+        ACT_SET_LINK -> when {
+            change.id <= 0 || change.target !in setOf(TARGET_PLAN, TARGET_ITEM) -> "set_link needs an id and a target"
+            change.link.isNotBlank() && !change.link.startsWith("http") -> "set_link needs a web link"
+            else -> null
+        }
         else -> "unknown action ${change.action}"
     }
 }

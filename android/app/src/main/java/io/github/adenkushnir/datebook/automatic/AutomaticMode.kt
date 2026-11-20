@@ -14,6 +14,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import io.github.adenkushnir.datebook.AppGraph
 import io.github.adenkushnir.datebook.canvas.CANVAS_PACKAGE
+import io.github.adenkushnir.datebook.capture.SHOP_APPS
 import io.github.adenkushnir.datebook.canvas.checkCanvasSoon
 import io.github.adenkushnir.datebook.capture.WATCHABLE_APPS
 import io.github.adenkushnir.datebook.pipeline.IncomingText
@@ -91,7 +92,8 @@ class AutomaticModeService : AccessibilityService() {
     override fun onServiceConnected() {
         val graph = AppGraph.get(this)
         val info = serviceInfo
-        info.packageNames = (WATCHABLE_APPS.map { it.packageName }.filter { graph.appSwitches.isOn(it) } +
+        info.packageNames = (WATCHABLE_APPS.filter { !it.isShop }.map { it.packageName }
+            .filter { graph.appSwitches.isOn(it) } +
             CANVAS_PACKAGE).toTypedArray()  // Canvas only to notice it opening, for a Canvas check
         serviceInfo = info
     }
@@ -109,8 +111,8 @@ class AutomaticModeService : AccessibilityService() {
             return
         }
 
-        // Ignore apps that aren't switched on (the list can change while the service runs)
-        if (!AppGraph.get(this).appSwitches.isOn(app)) {
+        // Ignore apps that aren't switched on (the list can change while the service runs), and shopping apps
+        if (!AppGraph.get(this).appSwitches.isOn(app) || app in SHOP_APPS) {
             return
         }
 

@@ -4,6 +4,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -69,5 +70,17 @@ class MessageParserTest {
     @Test
     fun emptyNotification() {
         assertTrue(messagesFrom(RawNotification(SAMSUNG_MESSAGES, "Sam", "", postedMillis = noon), zone).isEmpty())
+    }
+
+    // A shopping app's notification is one message from the app, its title and text together
+    @Test
+    fun shoppingNotification() {
+        val raw = RawNotification(app = SHOP_APP, title = "Your order is on the way", body = "Arriving Thursday",
+            messages = emptyList(), isGroup = false, conversationTitle = "", postedMillis = 0)
+        val found = messagesFrom(raw).single()
+        assertEquals("Shop", found.sender)
+        assertEquals("Your order is on the way\nArriving Thursday", found.text)
+        assertTrue(isShippingNews(found.text))
+        assertFalse(isShippingNews("20% off everything this weekend"))
     }
 }

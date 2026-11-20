@@ -34,6 +34,15 @@ fun messagesFrom(raw: RawNotification, zone: ZoneId = ZoneId.systemDefault()): L
     }
 
     // A plain notification with nothing to read
+    val shop = WATCHABLE_APPS.firstOrNull { it.packageName == raw.app && it.isShop }  // null for messaging apps
+
+    // A shopping app's notification is one message from the app: its title and text together
+    if (shop != null) {
+        val text = listOf(raw.title, raw.body).filter { it.isNotBlank() }.joinToString("\n")
+        return if (text.isBlank()) emptyList() else listOf(IncomingText(shop.shortName, text,
+            localTime(raw.postedMillis, zone), raw.app))
+    }
+
     if (raw.body.isBlank()) {
         return emptyList()
     }

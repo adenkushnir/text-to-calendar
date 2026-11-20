@@ -1,5 +1,5 @@
 // A Deliberate conversation as Claude sees it: turns of text, tool calls and tool results, saved as JSON between app
-// starts, turned into a request with Datebook's tools, and Claude's reply turned back into blocks
+// starts, turned into a request with Datebook's tools and web search, and Claude's reply turned back into blocks
 package io.github.adenkushnir.datebook.deliberate
 import com.anthropic.client.AnthropicClient
 import com.anthropic.core.JsonValue
@@ -11,6 +11,9 @@ import com.anthropic.models.beta.messages.BetaTextBlockParam
 import com.anthropic.models.beta.messages.BetaTool
 import com.anthropic.models.beta.messages.BetaToolResultBlockParam
 import com.anthropic.models.beta.messages.BetaToolUseBlockParam
+import com.anthropic.models.beta.messages.BetaStopReason
+import com.anthropic.models.beta.messages.BetaWebFetchTool20260209
+import com.anthropic.models.beta.messages.BetaWebSearchTool20260209
 import com.anthropic.models.beta.messages.MessageCreateParams
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -20,6 +23,10 @@ const val BLOCK_TEXT = "text"
 const val BLOCK_TOOL_USE = "tool_use"
 const val BLOCK_TOOL_RESULT = "tool_result"
 private const val MAX_TOKENS = 4000L
+private const val WEB_SEARCHES = 5L
+private const val WEB_FETCHES = 5L
+private const val WEB_PAGE_TOKENS = 15000L
+private const val MAX_PAUSES = 3  // how many times a long web search may be continued
 private val MAPPER = ObjectMapper()
 private val MAP_TYPE = object : TypeReference<Map<String, Any?>>() {}
 private val LIST_TYPE = object : TypeReference<List<Map<String, Any?>>>() {}
@@ -166,10 +173,10 @@ private fun toolOf(spec: ToolSpec): BetaTool {
     return BetaTool.builder().name(spec.name).description(spec.description).inputSchema(schema).build()
 }
 
-// Build the request: the chosen model at medium effort, Deliberate's instructions and tools, the whole conversation,
-// and prompt caching so later turns of a chat cost less
-fun buildDeliberateRequest(model: String, system: String, tools: List<ToolSpec>, turns: List<Turn>):
-    MessageCreateParams {
+// Build the request: the chosen model at medium effort, Deliberate's instructions and tools (plus web search and web
+// fetch, which run on Anthropic's side), the whole conversation, and prompt caching so later turns cost less
+fun deliberateRequest(model: String, system: String, tools: List<ToolSpec>, turns: List<Turn>):
+    MessageCreateParams.Builder {
     val output = BetaOutputConfig.builder().effort(BetaOutputConfig.Effort.MEDIUM).build()
     val request = MessageCreateParams.builder()
         .model(model)
@@ -177,6 +184,8 @@ fun buildDeliberateRequest(model: String, system: String, tools: List<ToolSpec>,
         .outputConfig(output)
         .system(system)
         .cacheControl(BetaCacheControlEphemeral.builder().build())
+        .addTool(BetaWebSearchTool20260209.builder().maxUses(WEB_SEARCHES).build())
+        .addTool(BetaWebFetchTool20260209.builder().maxUses(WEB_FETCHES).maxContentTokens(WEB_PAGE_TOKENS).build())
 
     // Offer each tool
     for (tool in tools) {
@@ -189,25 +198,63 @@ fun buildDeliberateRequest(model: String, system: String, tools: List<ToolSpec>,
         request.addMessage(if (turn.role == ROLE_ASSISTANT) BetaMessageParam.ofAssistantOfContentBlockParams(blocks)
             else BetaMessageParam.ofUserOfContentBlockParams(blocks))
     }
-    return request.build()
+    return request
 }
 
-// Ask Claude for its next turn and return its text and tool calls as blocks (SDK errors are passed on to the caller)
-fun askClaude(client: AnthropicClient, model: String, system: String, tools: List<ToolSpec>, turns: List<Turn>):
-    List<Block> {
-    val response = client.beta().messages().create(buildDeliberateRequest(model, system, tools, turns))
+// The finished request (see deliberateRequest)
+fun buildDeliberateRequest(model: String, system: String, tools: List<ToolSpec>, turns: List<Turn>):
+    MessageCreateParams {
+    return deliberateRequest(model, system, tools, turns).build()
+}
 
-    // Keep the text and tool calls, in order
-    return response.content().mapNotNull { content ->
-        val text = content.text().orElse(null)
-        val call = content.toolUse().orElse(null)
+// Join text blocks that follow each other into one (a web answer comes as many small blocks, one per citation)
+fun joinTexts(blocks: List<Block>): List<Block> {
+    val joined = mutableListOf<Block>()
 
-        // Text and tool calls are all Deliberate uses
-        when {
-            text != null -> textBlock(text.text())
-            call != null -> Block(BLOCK_TOOL_USE, id = call.id(), name = call.name(),
-                input = MAPPER.writeValueAsString(call._input().convert(MAP_TYPE)))
-            else -> null
+    // Add each block, or extend the text just before it
+    for (block in blocks) {
+        val last = joined.lastOrNull()
+
+        // Text after text joins it
+        if (block.type == BLOCK_TEXT && last?.type == BLOCK_TEXT) {
+            joined[joined.size - 1] = last.copy(text = last.text + block.text)
+        } else {
+            joined.add(block)
         }
     }
+    return joined
+}
+
+// Ask Claude for its next turn and return its text and tool calls as blocks, continuing a long web search when it
+// pauses (SDK errors are passed on to the caller); web search blocks stay on Anthropic's side
+fun askClaude(client: AnthropicClient, model: String, system: String, tools: List<ToolSpec>, turns: List<Turn>):
+    List<Block> {
+    val request = deliberateRequest(model, system, tools, turns)
+    val blocks = mutableListOf<Block>()
+    var response = client.beta().messages().create(request.build())
+
+    // Keep each answer's text and tool calls, continuing while the web search pauses
+    for (round in 0..MAX_PAUSES) {
+        // Keep the text and tool calls, in order
+        for (content in response.content()) {
+            val text = content.text().orElse(null)
+            val call = content.toolUse().orElse(null)
+
+            // Text and tool calls are all Deliberate uses
+            if (text != null) {
+                blocks.add(textBlock(text.text()))
+            } else if (call != null) {
+                blocks.add(Block(BLOCK_TOOL_USE, id = call.id(), name = call.name(),
+                    input = MAPPER.writeValueAsString(call._input().convert(MAP_TYPE))))
+            }
+        }
+
+        // Only a paused answer needs another round
+        if (response.stopReason().orElse(null) != BetaStopReason.PAUSE_TURN || round == MAX_PAUSES) {
+            break
+        }
+        request.addMessage(response)
+        response = client.beta().messages().create(request.build())
+    }
+    return joinTexts(blocks)
 }

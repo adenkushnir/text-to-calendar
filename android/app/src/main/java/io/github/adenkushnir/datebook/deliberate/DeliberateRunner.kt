@@ -155,7 +155,8 @@ class DeliberateRunner(private val context: Context) {
                 "opens the event in your calendar app"
             ACT_CANCEL_EVENT -> "${eventName(change)} is cancelled → a prompt that opens the event in your calendar app"
             ACT_ADD_BILL -> "New bill: ${change.title}" +
-                (if (change.amount.isNotBlank()) " · ${change.amount}" else "") + " · due ${whenText(change.date, "")}" + repeatText(change.repeat) +
+                (if (change.amount.isNotBlank()) " · ${change.amount}" else "") +
+                " · due ${whenText(change.date, "")}" + repeatText(change.repeat) +
                 " · reminders 2 days before and on the day"
             ACT_ADD_ASSIGNMENT -> "New assignment: ${change.title} · due ${whenText(change.date, change.time)}"
             ACT_ADD_REMINDER -> "New reminder: ${change.title}" +
@@ -172,6 +173,10 @@ class DeliberateRunner(private val context: Context) {
             ACT_PAUSE -> "${pauseName(change.pause)} paused until " +
                 Instant.ofEpochMilli(untilMillis(change.until, zone) ?: 0).atZone(zone).format(DAY_TIME)
             ACT_SETTING -> settingText(change)
+            ACT_SET_LINK -> {
+                val name = if (change.target == TARGET_PLAN) planName(change.id) else itemName(change.id)
+                if (change.link.isBlank()) "Remove the link from $name" else "Link for $name: ${change.link}"
+            }
             else -> change.action
         }
     }
@@ -439,6 +444,15 @@ class DeliberateRunner(private val context: Context) {
                 listOf(step("pause", "what" to change.pause, "until" to old))
             }
             ACT_SETTING -> changeSetting(change.setting, change.value)
+            ACT_SET_LINK -> if (change.target == TARGET_PLAN) {
+                val old = dao.suggestion(change.id) ?: return null
+                dao.updateSuggestion(old.copy(link = change.link))
+                listOf(step("put_plan", "row" to MAPPER.writeValueAsString(old)))
+            } else {
+                val old = dao.followUp(change.id) ?: return null
+                dao.updateFollowUp(old.copy(link = change.link))
+                listOf(step("put_item", "row" to MAPPER.writeValueAsString(old)))
+            }
             else -> null
         }
     }
