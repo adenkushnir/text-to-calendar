@@ -35,7 +35,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.adenkushnir.datebook.DatebookCard
@@ -61,6 +68,27 @@ private val ME_SHAPE = RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp)
 private val ME_GEL = Brush.verticalGradient(listOf(Color(0xFF52C0F6), Color(0xFF178DE0)))
 private val WARN = Color(0xFFFFBE6A)
 private val WHEN = DateTimeFormatter.ofPattern("EEE MMM d, h:mm a", Locale.US)
+private val WEB_LINK = Regex("https?://[^\\s<>]+")
+private val LINK_BLUE = Color(0xFF9FD8FF)
+
+// Text with its web links underlined in link blue, opening in the browser when tapped
+fun linked(text: String): AnnotatedString {
+    val style = TextLinkStyles(SpanStyle(color = LINK_BLUE, textDecoration = TextDecoration.Underline))
+    return buildAnnotatedString {
+        var at = 0
+
+        // Copy the text, making each link tappable
+        for (match in WEB_LINK.findAll(text)) {
+            val url = match.value.trimEnd('.', ',', ')', ';', ':', '!', '?', '"', '\'')
+            append(text.substring(at, match.range.first))
+            withLink(LinkAnnotation.Url(url, style)) {
+                append(url)
+            }
+            at = match.range.first + url.length
+        }
+        append(text.substring(at))
+    }
+}
 
 // What the tab's buttons do; the ones that ask Claude are suspend, so the tab shows it's thinking meanwhile
 class DeliberateActions(
@@ -218,7 +246,7 @@ private fun LineView(line: DeliberateLine, changes: List<DeliberateChange>, busy
                 .background(ME_GEL).padding(horizontal = 12.dp, vertical = 9.dp))
         }
         LINE_CHOICES -> DatebookCard {
-            Text(line.text)
+            Text(linked(line.text))
             val picked = line.state.removePrefix("picked:")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -267,7 +295,7 @@ private fun LineView(line: DeliberateLine, changes: List<DeliberateChange>, busy
             Muted(line.text)
         }
         else -> DatebookCard {
-            Text(line.text)
+            Text(linked(line.text))
         }
     }
 }
@@ -281,7 +309,7 @@ private fun PreviewCard(line: DeliberateLine, data: Map<String, Any?>, busy: Boo
 
         // One line per change
         for (text in (data["lines"] as? List<*>).orEmpty()) {
-            Text(text.toString())
+            Text(linked(text.toString()))
         }
         val matches = (data["matches"] as? List<*>).orEmpty()
 

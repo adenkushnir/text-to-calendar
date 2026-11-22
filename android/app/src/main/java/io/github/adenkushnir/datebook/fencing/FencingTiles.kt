@@ -1,6 +1,6 @@
 // The men's foil section at the bottom of Home: a row of glass tiles you swipe sideways, one per tournament this week
-// (the live one first and lit), each with its day, name, meet and place, when it starts, and Watch and Results (the
-// exact links when found, else the stream and results sites); or a short line when nothing is on
+// (the live one first and lit), each with its day, name, meet and place, when it starts, Watch (on FencingTV or
+// YouTube, only when a stream was found) and Results (the tournament's schedule); or a short line when nothing is on
 package io.github.adenkushnir.datebook.fencing
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -18,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -33,6 +34,7 @@ private val TILE_SHAPE = RoundedCornerShape(16.dp)
 private val LIVE_RED = Color(0xFFFF5A6E)
 private val LIT = Color(0xFF0E86C4).copy(alpha = 0.32f)
 private val LIT_EDGE = Color(0xFF5ADBEA).copy(alpha = 0.55f)
+private const val FINISHED_ALPHA = 0.6f  // finished events are dimmed
 
 // The section: its label, then the tiles, or the line for an empty week
 @Composable
@@ -60,12 +62,16 @@ private fun FencingTileCard(tile: FencingTile, onOpenLink: (String) -> Unit) {
     val (day, days) = tileDays(tile)
     val look = if (tile.live) Modifier.clip(TILE_SHAPE).background(LIT).border(1.dp, LIT_EDGE, TILE_SHAPE)
         else Modifier.glass(TILE_SHAPE)
-    Column(Modifier.width(236.dp).then(look).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    val fade = if (tile.finished) Modifier.alpha(FINISHED_ALPHA) else Modifier
+    Column(Modifier.width(236.dp).then(look).then(fade).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(day, fontSize = 22.sp, fontWeight = FontWeight.Bold)
 
-            // The live tag, or the days it runs
-            if (tile.live) {
+            // The live tag, Finished, or the days it runs
+            if (tile.finished) {
+                Muted("Finished")
+            } else if (tile.live) {
                 Text("LIVE", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.clip(RoundedCornerShape(50)).background(LIVE_RED)
                         .padding(horizontal = 7.dp, vertical = 2.dp))
@@ -75,15 +81,22 @@ private fun FencingTileCard(tile: FencingTile, onOpenLink: (String) -> Unit) {
         }
         Text(tournament.name, fontWeight = FontWeight.SemiBold, maxLines = 2)
         Muted(listOf(tournament.meet, tournament.place).filter { it.isNotBlank() }.joinToString(" · "))
-        val time = tileTime(tile)
+        val time = if (tile.finished) "" else tileTime(tile)
 
         // When it starts, or what's on now
         if (time.isNotBlank()) {
             Muted(time)
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            GelButton(onClick = { onOpenLink(watchLink(tournament)) }, small = true) {
-                Text("▶ Watch")
+            // Watch only when a stream was found and it isn't over
+            if (tile.finished) {
+                Muted("Results are in")
+            } else if (watchLink(tournament).isNotBlank()) {
+                GelButton(onClick = { onOpenLink(watchLink(tournament)) }, small = true) {
+                    Text(watchLabel(tournament))
+                }
+            } else {
+                Muted("No stream found")
             }
             Spacer(Modifier.weight(1f))
             GlassButton(onClick = { onOpenLink(resultsLink(tournament)) }, small = true) {

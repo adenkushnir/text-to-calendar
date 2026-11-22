@@ -8,7 +8,7 @@ address, and notes saying who it came from. Datebook never writes to your calend
 tap **Save** there.
 
 Datebook started as a Python script running in Termux (see [Legacy](#legacy-the-termux-script-v020) at the end).
-It's a full Kotlin app, built with Jetpack Compose, in [`android/`](android/); the latest version is 1.1.0.
+It's a full Kotlin app, built with Jetpack Compose, in [`android/`](android/); the latest version is 1.1.1.
 
 ## What it does
 
@@ -77,7 +77,7 @@ finds it by itself (mDNS, `_nestor._tcp`) and, once paired, keeps it up to date:
 
 Datebook needs Android 10 or newer.
 
-1. Download `datebook-1.1.0.apk` from the [latest release](https://github.com/adenkushnir/text-to-calendar/releases/latest)
+1. Download `datebook-1.1.1.apk` from the [latest release](https://github.com/adenkushnir/text-to-calendar/releases/latest)
    on your phone.
 2. Open it and allow your browser or Files app to install apps when Android asks.
 3. Open Datebook and follow the six setup pages:

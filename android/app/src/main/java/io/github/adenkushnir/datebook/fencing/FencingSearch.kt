@@ -52,8 +52,9 @@ private const val MAX_PAUSES = 4  // how many times a long web search may be con
 private const val NOTIFICATION_BASE = 1_091_000_000  // stream alerts take up to 3.1 million ids, below Canvas's
 private const val EXTRA_KEY = "key"
 private const val SYSTEM = "You find men's foil fencing competitions on the web for someone who follows and watches " +
-    "them. Use web search and web fetch, and always look at FencingTV's schedule on fencingtv.com for streams. Be " +
-    "exact: only events you found, with dates and links from the pages you read. End with the JSON the user asks for."
+    "them. Use web search and web fetch; look for streams on FencingTV (fencingtv.com) and YouTube, and for results " +
+    "on FencingTimeLive and fie.org. Be exact: only events you found, with dates and links from the pages you read. " +
+    "End with the JSON the user asks for."
 private val searching = Mutex()
 
 // Remembers whether fencing is on, what the last search found, and when it ran
@@ -109,8 +110,8 @@ fun askWithWeb(client: AnthropicClient, model: String, prompt: String,
         .maxTokens(8000L)
         .outputConfig(BetaOutputConfig.builder().effort(effort).build())
         .system(SYSTEM)
-        .addTool(BetaWebSearchTool20260209.builder().maxUses(10L).build())
-        .addTool(BetaWebFetchTool20260209.builder().maxUses(12L).maxContentTokens(20000L).build())
+        .addTool(BetaWebSearchTool20260209.builder().maxUses(12L).build())
+        .addTool(BetaWebFetchTool20260209.builder().maxUses(14L).maxContentTokens(20000L).build())
         .addUserMessage(prompt)
     var response = client.beta().messages().create(request.build())
     val texts = response.content().mapNotNull { it.text().orElse(null)?.text() }.toMutableList()
@@ -154,7 +155,7 @@ suspend fun searchTournaments(context: Context, nowMillis: Long = System.current
                 Log.i("Datebook", "fencing: search found ${new.size}, had ${old.size}")
 
                 val found = mergeSearch(settings.tournaments(), new, today)
-                settings.setTournaments(found)
+                settings.setTournaments(withFtlIds(context, found, today))
                 val count = if (found.size == 1) "1 event" else "${found.size} events"
                 "$count in the next 3 weeks (this search found ${new.size})."
             } catch (error: Exception) {  // no internet, a rejected key, or an answer that can't be read
@@ -193,6 +194,7 @@ suspend fun checkToday(context: Context, nowMillis: Long = System.currentTimeMil
         } catch (error: Exception) {  // no internet, a rejected key, or an answer that can't be read
             Log.w("Datebook", "fencing today check failed: ${error.message}")
         }
+        settings.setTournaments(withFtlIds(context, settings.tournaments(), today))
         bookStreamAlerts(context, settings.tournaments(), nowMillis)
     }
 }
@@ -308,6 +310,22 @@ class FencingSearchWorker(context: Context, params: WorkerParameters) : Coroutin
         Log.i("Datebook", "fencing now: ${searchNow(applicationContext)}")
         return Result.success()
     }
+}
+
+// Look up the FencingTimeLive pages for the saved tournaments now (after you save your account), as a background job
+class FtlLookupWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    // Add the ids found to the saved tournaments
+    override suspend fun doWork(): Result {
+        val settings = FencingSettings(applicationContext)
+        settings.setTournaments(withFtlIds(applicationContext, settings.tournaments(), LocalDate.now()))
+        return Result.success()
+    }
+}
+
+// Start the FencingTimeLive look-up in the background
+fun lookUpFtlSoon(context: Context) {
+    WorkManager.getInstance(context).enqueueUniqueWork("datebook-ftl-lookup", ExistingWorkPolicy.REPLACE,
+        OneTimeWorkRequestBuilder<FtlLookupWorker>().build())
 }
 
 // Start a one-off search as a background job (one at a time)
