@@ -1,15 +1,19 @@
 // What Datebook sends Nestor, built from plain data so it can be tested: the alerts it speaks (which notifications,
 // their words, a key against repeats and when they go stale), and the snapshot of plans, lists, notes, reminders,
-// the train trip and the next 14 days of calendar events, in the JSON Nestor's README describes
+// the train trip, the next 14 days of calendar events (with each one's picked train) and this week's men's foil, in the
+// JSON Nestor's README describes
 package io.github.adenkushnir.datebook.nestor
 import io.github.adenkushnir.datebook.calendar.CalendarEvent
 import io.github.adenkushnir.datebook.capture.WATCHABLE_APPS
 import io.github.adenkushnir.datebook.data.FollowUp
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.extras.bringOf
+import io.github.adenkushnir.datebook.fencing.FencingTile
+import io.github.adenkushnir.datebook.fencing.streamWindow
 import io.github.adenkushnir.datebook.lists.Trip
 import io.github.adenkushnir.datebook.prompts.fromLine
 import io.github.adenkushnir.datebook.tracking.packageLink
+import io.github.adenkushnir.datebook.trains.TrainPick
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -22,14 +26,18 @@ private const val SOON_MINUTES = 20L
 private const val LATER_HOURS = 12L
 private val SECONDS = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")
 private val MINUTES = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
+private val CLOCK = DateTimeFormatter.ofPattern("HH:mm")
+private val HHMM = Regex("""\d{2}:\d{2}""")  // a start time like "08:00"
 private const val CONFIRMATION = "Confirmation: "
 private const val TRACK = "Track: "
 
 // A planned leave-by for an event: when to leave and the trip in words ("20 min drive")
 data class PlannedLeave(val leaveAt: Long, val travel: String)
 
-// One calendar event for the snapshot, with its calendar's name and its planned leave-by (null when none)
-data class SnapshotEvent(val event: CalendarEvent, val calendar: String, val leave: PlannedLeave?)
+// One calendar event for the snapshot, with its calendar's name, its planned leave-by and the NJ Transit train picked
+// for it (null when none)
+data class SnapshotEvent(val event: CalendarEvent, val calendar: String, val leave: PlannedLeave?,
+    val train: TrainPick? = null)
 
 // Everything the snapshot is made from
 data class SnapshotParts(
@@ -42,6 +50,7 @@ data class SnapshotParts(
     val reminders: List<FollowUp> = emptyList(),
     val trip: Map<String, String>? = null,
     val events: List<SnapshotEvent> = emptyList(),
+    val fencing: List<FencingTile> = emptyList(),
 )
 
 // Return true if a notification on this channel is spoken by Nestor
@@ -110,16 +119,37 @@ private fun dueOf(item: FollowUp): String {
     return if (item.time.isBlank()) item.date else "${item.date}T${item.time}"
 }
 
-// A calendar event, for the snapshot
+// A calendar event, for the snapshot (with its train when one is picked, for the wall's Next card)
 private fun eventJson(item: SnapshotEvent, zone: ZoneId): Map<String, Any> {
     val event = item.event
-    return mapOf("id" to "${event.eventId}-${event.begin / 1000}", "title" to event.title,
+    val json = mutableMapOf<String, Any>("id" to "${event.eventId}-${event.begin / 1000}", "title" to event.title,
         "start" to eventTime(event.begin, event.allDay, zone), "end" to eventTime(event.end, event.allDay, zone),
         "all_day" to event.allDay, "place" to event.location, "calendar" to item.calendar,
         "from" to fromOfNotes(event.notes), "bring" to bringOf(event.notes),
         "confirmation" to labelled(event.notes, CONFIRMATION), "track_url" to labelled(event.notes, TRACK),
         "leave_by" to (item.leave?.let { localMinutes(it.leaveAt, zone) } ?: ""),
         "travel" to (item.leave?.travel ?: ""))
+
+    // The picked train: when it leaves, and from and to where
+    if (item.train != null) {
+        json["train"] = mapOf("departs" to Instant.ofEpochMilli(item.train.departs).atZone(zone).format(CLOCK),
+            "from" to item.train.fromName, "to" to item.train.toName)
+    }
+    return json
+}
+
+// A men's foil event on the wall's schedule: its name, the meet and place, the day it shows (today while it's on) with
+// its start time when known, its last day, today's stage, and when its stream is on that day (for LIVE)
+fun fencingJson(tile: FencingTile, zone: ZoneId): Map<String, Any> {
+    val tournament = tile.tournament
+    val time = tournament.startTime.takeIf { HHMM.matches(it) }
+    val window = streamWindow(tournament, tile.day, zone)
+    return mapOf("name" to tournament.name,
+        "where" to listOf(tournament.meet, tournament.place).filter { it.isNotBlank() }.joinToString(" · "),
+        "start" to if (time != null) "${tile.day}T$time" else tile.day.toString(), "end" to tournament.lastDay.toString(),
+        "live" to tile.live, "stage" to if (tournament.todayDate == tile.day.toString()) tournament.todayNote else "",
+        "live_from" to (window?.let { localMinutes(it.first, zone) } ?: ""),
+        "live_until" to (window?.let { localMinutes(it.second, zone) } ?: ""))
 }
 
 // The whole snapshot as JSON-ready values
@@ -144,6 +174,7 @@ fun snapshotOf(parts: SnapshotParts, zone: ZoneId): Map<String, Any> {
         "reminders" to parts.reminders.filter { it.nextNudge > 0 }
             .map { mapOf("id" to it.id, "text" to it.title, "at" to localMinutes(it.nextNudge, zone)) },
         "events" to parts.events.map { eventJson(it, zone) },
+        "fencing" to parts.fencing.filter { !it.finished }.map { fencingJson(it, zone) },
     )
 
     // The train trip only when one is saved

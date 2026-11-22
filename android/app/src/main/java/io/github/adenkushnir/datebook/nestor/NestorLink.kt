@@ -25,6 +25,8 @@ import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.data.finishFollowUp
 import io.github.adenkushnir.datebook.data.nextRepeat
 import io.github.adenkushnir.datebook.deliberate.effectsFor
+import io.github.adenkushnir.datebook.fencing.FencingSettings
+import io.github.adenkushnir.datebook.fencing.fencingTiles
 import io.github.adenkushnir.datebook.followups.FOLLOW_UP_IDS
 import io.github.adenkushnir.datebook.followups.bookNextFollowUp
 import io.github.adenkushnir.datebook.leaveby.LeaveByStore
@@ -35,6 +37,7 @@ import io.github.adenkushnir.datebook.lists.PackageStore
 import io.github.adenkushnir.datebook.lists.tripsOf
 import io.github.adenkushnir.datebook.pipeline.ApiKeyStore
 import io.github.adenkushnir.datebook.prompts.ignoreSuggestion
+import io.github.adenkushnir.datebook.trains.TrainStore
 import io.github.adenkushnir.datebook.widgets.updateWidgets
 import java.net.HttpURLConnection
 import java.net.InetAddress
@@ -344,6 +347,8 @@ object NestorLink {
         val events = runCatching { calendarEvents(context, from, to, switchedOff) }.getOrDefault(emptyList())
         val rules = graph.deliberateDao.rules()
         val leaveBy = LeaveByStore(context)
+        val trainPicks = TrainStore(context)
+        val fencing = FencingSettings(context)
         val stations = graph.trainSettings.stations().associate { it.code to it.name }
         val trip = graph.trainSettings.trip()?.let {
             mapOf("from" to it.first, "to" to it.second, "from_name" to (stations[it.first] ?: it.first),
@@ -359,6 +364,7 @@ object NestorLink {
             notes = dao.allOpenFollowUps().filter { it.kind == "note" },
             reminders = dao.openFollowUps(KIND_REMINDER),
             trip = trip,
+            fencing = if (fencing.isOn()) fencingTiles(fencing.tournaments(), now, zone) else emptyList(),
             events = events.map { event ->
                 val key = eventKey(event.title, event.begin)
                 val effects = effectsFor(rules, event.title, event.location)
@@ -367,7 +373,7 @@ object NestorLink {
                 val planned = leaveBy.bookedFor(key) != null && minutes != null
                 SnapshotEvent(event, names[event.calendarId].orEmpty(),
                     if (planned) PlannedLeave(leaveTime(event.begin, minutes!!, effects.earlyMinutes),
-                        tripText(minutes, mode)) else null)
+                        tripText(minutes, mode)) else null, if (planned) trainPicks.pick(key) else null)
             },
         )
     }
