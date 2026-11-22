@@ -793,7 +793,8 @@ private fun StatusRow(label: String, on: Boolean, open: () -> Unit) {
 // it found
 @Composable
 fun FencingPage(on: Boolean, searching: Boolean, lastSearched: String, lastResult: String, setOn: (Boolean) -> Unit,
-    onSearch: () -> Unit, onBack: () -> Unit) {
+    onSearch: () -> Unit, onBack: () -> Unit, ftlEmail: String? = null,
+    saveFtl: (String, String) -> Unit = { _, _ -> }) {
     SettingsPage("Fencing", onBack) {
         Muted("Men's foil tournaments to follow and watch: USA Fencing nationals and FIE events, in Junior, " +
             "Division I or Senior, Division IA and Division II. They show at the bottom of Home for the coming week, " +
@@ -832,9 +833,34 @@ fun FencingPage(on: Boolean, searching: Boolean, lastSearched: String, lastResul
             Muted("Searching the web. This takes a few minutes; you can leave this page or close Datebook, and Home " +
                 "updates when it's done.")
         }
+        SectionLabel("FencingTimeLive account")
+        FtlAccountBox(ftlEmail, saveFtl)
         Muted("Claude searches the web with your API key every Monday at 7 AM for the next 3 weeks, and on the " +
             "morning of each event day for that day's stream (including FencingTV's schedule on fencingtv.com). That " +
             "costs about \$0.30 to \$1 a week.")
+    }
+}
+
+// Your FencingTimeLive login, so Results can open each tournament's exact schedule (FencingTimeLive only shows
+// tournaments to signed-in users); kept encrypted on this phone and only ever sent to FencingTimeLive
+@Composable
+private fun FtlAccountBox(ftlEmail: String?, saveFtl: (String, String) -> Unit) {
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var saved by remember { mutableStateOf(ftlEmail) }
+    Muted(saved?.let { "Account saved: $it" } ?: "No account saved. Results opens each tournament's exact page once " +
+        "Datebook can sign in to FencingTimeLive for you.")
+    GlassField(value = email, onValueChange = { email = it }, label = { Text("FencingTimeLive email") },
+        singleLine = true, modifier = Modifier.fillMaxWidth())
+    GlassField(value = password, onValueChange = { password = it }, label = { Text("Password") },
+        singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+    GlassButton(enabled = email.isNotBlank() && password.isNotBlank(), onClick = {
+        saveFtl(email.trim(), password)
+        saved = email.trim()
+        email = ""
+        password = ""
+    }) {
+        Text("Save account")
     }
 }
 

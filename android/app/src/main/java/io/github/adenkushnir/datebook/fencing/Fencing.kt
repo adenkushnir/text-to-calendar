@@ -11,6 +11,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 const val WINDOW_DAYS = 7L  // Home shows the next week
 const val SEARCH_DAYS = 21L  // the Monday search looks 3 weeks ahead
+const val FINISHED_DAYS = 2L  // a finished event stays on Home 2 days, for its results
 private const val LIVE_HOURS = 8L  // a stream with no end given counts as live for 8 hours
 private val MAPPER = ObjectMapper()
 private val JSON_TAGS = Regex("<json>(.*?)</json>", RegexOption.DOT_MATCHES_ALL)
@@ -20,7 +21,8 @@ private val CLOCK = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
 
 // One tournament event: its name ("Junior Men's Foil"), the meet ("November NAC"), where, its first and last days,
 // when it starts each day (HH:MM in your zone, "" when unknown), the stream's name and link, the results link, and
-// from the event-day check: today's stream start and end (HH:MM) and its stage ("Table of 16")
+// from the event-day check: today's stream start and end (HH:MM) and its stage ("Table of 16"), and for USA events
+// the tournament's id on FencingTimeLive, looked up with your account
 data class Tournament(
     val name: String,
     val meet: String,
@@ -35,6 +37,7 @@ data class Tournament(
     val todayStart: String = "",
     val todayEnd: String = "",
     val todayNote: String = "",
+    val ftlId: String = "",
 )
 
 // Return true if a tournament is a USA Fencing national event (NACs, Junior Olympics, Summer Nationals, national
@@ -45,29 +48,54 @@ fun isUsaEvent(tournament: Tournament): Boolean {
         "usa fencing").any { words.contains(it) }
 }
 
-// Where Watch goes: the stream found, else FencingTV's schedule for USA events, else a YouTube search for the FIE
-// event's live stream
+// Where Watch goes: the stream found ("" when none was found, and Watch is hidden)
 fun watchLink(tournament: Tournament): String {
-    // The exact stream wins
-    if (tournament.streamUrl.isNotBlank()) {
-        return tournament.streamUrl
-    }
-    val search = java.net.URLEncoder.encode("${tournament.meet.ifBlank { tournament.name }} men's foil live", "UTF-8")
-    return if (isUsaEvent(tournament)) "https://www.fencingtv.com"
-        else "https://www.youtube.com/results?search_query=$search"
+    return tournament.streamUrl
 }
 
-// Where Results goes: the results page found, else FencingTimeLive for USA events or the FIE's competitions page
+// The Watch button's words: "▶ FencingTV" or "▶ YouTube", by the stream's site
+fun watchLabel(tournament: Tournament): String {
+    return if (tournament.streamUrl.contains("youtu")) "▶ YouTube" else "▶ FencingTV"
+}
+
+// Where Results goes: for USA events the tournament's schedule on FencingTimeLive (found with your account), else
+// FencingTimeLive's front page; for FIE events the competition's page on fie.org, else the FIE's competitions page
 fun resultsLink(tournament: Tournament): String {
-    // The exact page wins
+    // A USA event's schedule, when it was looked up
+    if (tournament.ftlId.isNotBlank()) {
+        return "$FTL_SITE/tournaments/eventSchedule/${tournament.ftlId}"
+    }
+
+    // The FIE's page, when it was found
     if (tournament.resultsUrl.isNotBlank()) {
         return tournament.resultsUrl
     }
-    return if (isUsaEvent(tournament)) "https://www.fencingtimelive.com" else "https://fie.org/competitions"
+    return if (isUsaEvent(tournament)) "$FTL_SITE/" else "https://fie.org/competitions"
 }
 
-// One tile on Home: the tournament, the day it shows (today when it's on, else its first day), whether it's live now
-data class FencingTile(val tournament: Tournament, val day: LocalDate, val live: Boolean)
+// A stream link only when it's a page on FencingTV or YouTube, not just the site's front page (anything else is
+// dropped)
+fun streamLinkOf(value: String): String {
+    val link = link(value)
+    val uri = runCatching { java.net.URI(link) }.getOrNull() ?: return ""
+    val host = uri.host.orEmpty().lowercase()
+    val known = listOf("fencingtv.com", "youtube.com", "youtu.be").any { host == it || host.endsWith(".$it") }
+    val page = uri.path.orEmpty().trim('/').isNotBlank() || !uri.query.isNullOrBlank()
+    return if (known && page) link else ""
+}
+
+// A results link only when it's a competition page on the FIE's site (FencingTimeLive links from the web search can't
+// be checked, so USA events get theirs from the look-up with your account instead)
+fun resultsLinkOf(value: String): String {
+    val link = link(value)
+    val fie = link.contains("fie.org/competitions/", ignoreCase = true) || link.contains("fie.org/tournaments/")
+    return if (fie) link else ""
+}
+
+// One tile on Home: the tournament, the day it shows (today when it's on, its first day when it's coming, its last
+// day when it's over), whether it's live now, and whether it's finished (kept 2 days for its results)
+data class FencingTile(val tournament: Tournament, val day: LocalDate, val live: Boolean,
+    val finished: Boolean = false)
 
 // A tournament's key, so a later search or the event-day check updates the same one
 fun tournamentKey(tournament: Tournament): String {
@@ -80,7 +108,8 @@ fun tournamentsToJson(list: List<Tournament>): String {
         mapOf("name" to it.name, "meet" to it.meet, "place" to it.place, "first_day" to it.firstDay.toString(),
             "last_day" to it.lastDay.toString(), "start_time" to it.startTime, "stream_name" to it.streamName,
             "stream_url" to it.streamUrl, "results_url" to it.resultsUrl, "today_date" to it.todayDate,
-            "today_start" to it.todayStart, "today_end" to it.todayEnd, "today_note" to it.todayNote)
+            "today_start" to it.todayStart, "today_end" to it.todayEnd, "today_note" to it.todayNote,
+            "ftl_id" to it.ftlId)
     })
 }
 
@@ -107,9 +136,10 @@ fun tournamentsFrom(node: JsonNode): List<Tournament> {
             ?: first
         val name = text(item, "name").ifBlank { return@mapNotNull null }
         Tournament(name, text(item, "meet"), text(item, "place"), first, last, clockOf(text(item, "start_time")),
-            text(item, "stream_name"), link(text(item, "stream_url")), link(text(item, "results_url")),
+            text(item, "stream_name"), streamLinkOf(text(item, "stream_url")),
+            resultsLinkOf(text(item, "results_url")),
             text(item, "today_date"), clockOf(text(item, "today_start")), clockOf(text(item, "today_end")),
-            text(item, "today_note"))
+            text(item, "today_note"), text(item, "ftl_id").filter { it.isLetterOrDigit() })
     }
 }
 
@@ -146,10 +176,13 @@ fun categoryOf(tournament: Tournament): String {
     return if (name.contains("team")) "$group team" else group
 }
 
-// Return true if two found tournaments are the same event: same first day, category and place (first word)
+// Return true if two found tournaments are the same event: same first day and category, and the same place or meet
+// (by their first word, since searches name them slightly differently)
 fun sameEvent(one: Tournament, two: Tournament): Boolean {
-    val place = { t: Tournament -> t.place.lowercase().split(" ", ",").firstOrNull { it.isNotBlank() }.orEmpty() }
-    return one.firstDay == two.firstDay && categoryOf(one) == categoryOf(two) && place(one) == place(two)
+    val first = { text: String -> text.lowercase().split(" ", ",").firstOrNull { it.isNotBlank() }.orEmpty() }
+    val samePlace = first(one.place).isNotBlank() && first(one.place) == first(two.place)
+    val sameMeet = first(one.meet).isNotBlank() && first(one.meet) == first(two.meet)
+    return one.firstDay == two.firstDay && categoryOf(one) == categoryOf(two) && (samePlace || sameMeet)
 }
 
 // Merge a new search into what was saved: searches add up, since each finds a slightly different set; an event found
@@ -159,7 +192,7 @@ fun mergeSearch(saved: List<Tournament>, found: List<Tournament>, today: LocalDa
     val updated = found.map { new ->
         val before = saved.firstOrNull { sameEvent(it, new) } ?: return@map new
         val keepToday = before.todayDate == today.toString()
-        new.copy(startTime = new.startTime.ifBlank { before.startTime },
+        new.copy(startTime = new.startTime.ifBlank { before.startTime }, ftlId = new.ftlId.ifBlank { before.ftlId },
             streamName = new.streamName.ifBlank { before.streamName },
             streamUrl = new.streamUrl.ifBlank { before.streamUrl },
             resultsUrl = new.resultsUrl.ifBlank { before.resultsUrl },
@@ -169,7 +202,16 @@ fun mergeSearch(saved: List<Tournament>, found: List<Tournament>, today: LocalDa
             todayNote = if (keepToday) before.todayNote else new.todayNote)
     }
     val kept = saved.filter { old -> updated.none { sameEvent(it, old) } }
-    return (updated + kept).filter { !it.lastDay.isBefore(today) }.sortedBy { it.firstDay }
+    val merged = mutableListOf<Tournament>()
+
+    // Keep one of each event (earlier searches may have saved the same event twice)
+    for (event in updated + kept) {
+        // Skip an event already kept
+        if (merged.none { sameEvent(it, event) }) {
+            merged.add(event)
+        }
+    }
+    return merged.filter { !it.lastDay.isBefore(today.minusDays(FINISHED_DAYS)) }.sortedBy { it.firstDay }
 }
 
 // Add what the event-day check found about today (matched by name and meet) to the saved tournaments
@@ -213,11 +255,19 @@ fun streamWindow(tournament: Tournament, today: LocalDate, zone: ZoneId): Pair<L
 fun fencingTiles(tournaments: List<Tournament>, nowMillis: Long, zone: ZoneId): List<FencingTile> {
     val today = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
     val last = today.plusDays(WINDOW_DAYS - 1)
-    return tournaments.filter { !it.lastDay.isBefore(today) && !it.firstDay.isAfter(last) }.map { tournament ->
+    val shown = tournaments.filter { !it.lastDay.isBefore(today.minusDays(FINISHED_DAYS)) &&
+        !it.firstDay.isAfter(last) }
+    return shown.map { tournament ->
         val window = streamWindow(tournament, today, zone)
         val live = window != null && nowMillis >= window.first && nowMillis < window.second
-        FencingTile(tournament, if (isOn(tournament, today)) today else tournament.firstDay, live)
-    }.sortedWith(compareBy({ !it.live }, { it.day }))
+        val finished = tournament.lastDay.isBefore(today)
+        val day = when {
+            finished -> tournament.lastDay
+            isOn(tournament, today) -> today
+            else -> tournament.firstDay
+        }
+        FencingTile(tournament, day, live, finished)
+    }.sortedWith(compareBy({ !it.live }, { it.finished }, { it.day }))
 }
 
 // The line for a week with nothing on: "No men's foil events this week. Next: Junior World Cup, Bochum · Sat Dec 5"
@@ -256,11 +306,13 @@ Fencing North American Cups, Junior Olympics, Summer Nationals, national champio
 Junior World Cups, Senior World Cups and Grand Prix, zonal and world championships, the Olympics).
 Only these categories: Junior (U20), Division I or Senior, Division IA, Division II. Skip cadet, youth, veteran,
 women's events and other weapons. Each category at a meet is its own entry.
-For each, find when men's foil starts on its days, converted to the time zone ${zone.id}, where it is streamed
-and its live results page (FencingTimeLive, the FIE site). For streams, always check FencingTV's schedule at
-https://www.fencingtv.com as well as the FIE's channel, Olympics.com and the event's own site. Open the pages with web
-fetch (each event's own page, its FencingTimeLive tournament page, its FIE competition page) to find the exact
-stream_url and results_url for that event, not just a home page.
+For each, find when men's foil starts on its days, converted to the time zone ${zone.id}.
+stream_url: where that event is streamed, on FencingTV (check the schedule at https://www.fencingtv.com) or YouTube
+(official channels of the FIE, USA Fencing, national federations or the organizer, or a live stream for the event).
+Only a link on fencingtv.com or youtube.com; leave it empty when there's no stream.
+results_url: the tournament's schedule page on FencingTimeLive, which lists all its events, like
+https://www.fencingtimelive.com/tournaments/eventSchedule/<id> (open fencingtimelive.com's tournament list with web
+fetch to find it), or for FIE events the competition's page on fie.org. Not a home page.
 Never guess dates or links: leave a field empty when you can't find it.
 Answer with only this JSON inside <json></json> tags:
 {"events": [{"name": "Junior Men's Foil", "meet": "November NAC", "place": "Columbus, OH", "first_day": "YYYY-MM-DD",
@@ -273,10 +325,12 @@ fun todayPrompt(today: LocalDate, zone: ZoneId, onToday: List<Tournament>): Stri
     return """Today is $today. For each of these men's foil fencing events happening today:
 $list
 find today's live stream (its name and link), when today's stream starts and ends converted to the time zone
-${zone.id}, the live results page, and what stage is on today (like "Table of 16" or "Finals"). Always check
-FencingTV's schedule at https://www.fencingtv.com for today's streams, as well as the FIE's channel and the event's own
-site, and open the pages with web fetch to get the exact stream and results links for each event. Never guess: leave a
-field empty when you can't find it.
+${zone.id}, the tournament's schedule page on FencingTimeLive (https://www.fencingtimelive.com/tournaments/eventSchedule/
+<id>) or its competition page on fie.org, and what stage is on today (like "Table of 16" or "Finals").
+Look for streams on FencingTV's schedule at https://www.fencingtv.com and on YouTube (the FIE's, USA Fencing's, the
+national federation's or the organizer's channel). Then open the stream link with web fetch and keep it only if it is
+today's men's foil stream (live now or scheduled for today), not an old video or a different weapon. Only links on
+fencingtv.com or youtube.com. Never guess: leave a field empty when you can't find it.
 Answer with only this JSON inside <json></json> tags, one entry per event above, with its name and meet as given:
 {"events": [{"name": "", "meet": "", "first_day": "$today", "last_day": "$today", "stream_name": "", "stream_url": "",
 "results_url": "", "today_start": "HH:MM", "today_end": "HH:MM", "today_note": ""}]}"""

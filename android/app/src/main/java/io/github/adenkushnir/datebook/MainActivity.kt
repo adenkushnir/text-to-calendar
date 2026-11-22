@@ -93,6 +93,8 @@ import io.github.adenkushnir.datebook.fencing.fencingTiles
 import io.github.adenkushnir.datebook.fencing.scheduleFencing
 import io.github.adenkushnir.datebook.fencing.fencingSearching
 import io.github.adenkushnir.datebook.fencing.searchInBackground
+import io.github.adenkushnir.datebook.fencing.FtlAccount
+import io.github.adenkushnir.datebook.fencing.lookUpFtlSoon
 import io.github.adenkushnir.datebook.settings.NestorPage
 import io.github.adenkushnir.datebook.nestor.LOCAL_NETWORK_PERMISSION
 import io.github.adenkushnir.datebook.nestor.NestorLink
@@ -768,6 +770,11 @@ class MainActivity : ComponentActivity() {
                         scheduleFencing(applicationContext)
                     },
                     onSearch = { searchInBackground(applicationContext) },
+                    ftlEmail = FtlAccount(applicationContext).email(),
+                    saveFtl = { email, password ->
+                        FtlAccount(applicationContext).save(email, password)
+                        lookUpFtlSoon(applicationContext)  // find the exact Results pages right away
+                    },
                     onBack = { nav.popBackStack() })
             }
             composable(ROUTE_SETTINGS_NESTOR) {
