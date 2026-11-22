@@ -6,7 +6,11 @@ import io.github.adenkushnir.datebook.data.KIND_ASSIGNMENT
 import io.github.adenkushnir.datebook.data.KIND_DUE
 import io.github.adenkushnir.datebook.data.KIND_REMINDER
 import io.github.adenkushnir.datebook.data.Suggestion
+import io.github.adenkushnir.datebook.fencing.FencingTile
+import io.github.adenkushnir.datebook.fencing.Tournament
+import io.github.adenkushnir.datebook.trains.TrainPick
 import java.net.InetAddress
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
@@ -71,6 +75,11 @@ class NestorDataTest {
             trackingNumber = "1Z999AA10123456784")
         val soccer = CalendarEvent(88, 1, "Soccer", sixPm + 3_600_000, sixPm + 9_000_000, false, "Field 3",
             notes = "Jake · Soccer Team (GroupMe)\nBring: cleats, \$20\nConfirmation: AB12")
+        val train = TrainPick("3847", "NEC", "New Brunswick", "New York Penn", sixPm - 600_000, sixPm + 2_400_000, "3",
+            0, "")
+        val nac = Tournament("Junior Men's Foil", "November NAC", "Columbus", LocalDate.of(2037, 11, 20),
+            LocalDate.of(2037, 11, 22), startTime = "08:00", todayDate = "2037-11-20", todayNote = "Table of 16")
+        val over = Tournament("Men's Foil World Cup", "", "Turin", LocalDate.of(2037, 11, 17), LocalDate.of(2037, 11, 18))
         val parts = SnapshotParts(
             waiting = listOf(dinner),
             packages = listOf(box),
@@ -79,7 +88,9 @@ class NestorDataTest {
             notes = listOf(item(9, "note", "Gate code", body = "Gate code 4412")),
             reminders = listOf(item(7, KIND_REMINDER, "Call the dentist", nextNudge = sixPm)),
             trip = mapOf("from" to "NB", "to" to "NY", "from_name" to "New Brunswick", "to_name" to "New York Penn"),
-            events = listOf(SnapshotEvent(soccer, "Personal", PlannedLeave(sixPm + 1_500_000, "20 min drive"))),
+            events = listOf(SnapshotEvent(soccer, "Personal", PlannedLeave(sixPm + 1_500_000, "20 min drive"), train)),
+            fencing = listOf(FencingTile(nac, LocalDate.of(2037, 11, 20), true),
+                FencingTile(over, LocalDate.of(2037, 11, 18), false, finished = true)),
         )
         val json = snapshotOf(parts, zone)
         val waiting = (json["waiting"] as List<*>).single() as Map<*, *>
@@ -102,6 +113,17 @@ class NestorDataTest {
         assertEquals("AB12", event["confirmation"])
         assertEquals("2037-11-20T18:25", event["leave_by"])
         assertEquals("20 min drive", event["travel"])
+        assertEquals("17:50", (event["train"] as Map<*, *>)["departs"])
+        assertEquals("New Brunswick", (event["train"] as Map<*, *>)["from"])
+        val foil = (json["fencing"] as List<*>).single() as Map<*, *>
+        assertEquals("Junior Men's Foil", foil["name"])
+        assertEquals("November NAC · Columbus", foil["where"])
+        assertEquals("2037-11-20T08:00", foil["start"])
+        assertEquals("2037-11-22", foil["end"])
+        assertEquals(true, foil["live"])
+        assertEquals("Table of 16", foil["stage"])
+        assertEquals("2037-11-20T08:00", foil["live_from"])
+        assertEquals("2037-11-20T16:00", foil["live_until"])
         assertFalse(snapshotOf(SnapshotParts(), zone).containsKey("trip"))
     }
 

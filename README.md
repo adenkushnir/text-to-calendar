@@ -64,8 +64,9 @@ finds it by itself (mDNS, `_nestor._tcp`) and, once paired, keeps it up to date:
 - **Pairing:** on the computer running Nestor, run `python -m nestor --pair`, then type the 6-digit code in Settings →
   Nestor. Android 17 also asks to let Datebook find devices on your Wi-Fi.
 - **What Nestor gets:** a snapshot of your waiting plans, lists, notes, reminders, train trip and the next 14 days of
-  your calendar, sent again whenever something changes. Nestor uses it for its wall screen and its voice assistant,
-  so it needs no Google login of its own.
+  your calendar (with the train picked for each leave-by), and this week's men's foil when fencing is on, sent again
+  whenever something changes. Nestor uses it for its wall screen and its voice assistant, so it needs no Google login
+  of its own.
 - **What Nestor says:** leave-by alerts, travel changes, reminders and follow-ups, and the evening heads-ups. The
   morning summary, the week ahead and new plans aren't spoken.
 - **What Nestor can ask for:** show a plan's Add to calendar? prompt, ignore a plan, mark a bill, assignment or
@@ -125,8 +126,8 @@ accounts added as testers, and signing in lapses about once a week (Datebook rem
 - Datebook keeps what it suggested and what you did with it for 1 year, with the message each plan came from (so
   Deliberate can quote it); turn that off or delete the texts in Settings → Privacy. What Deliberate looks up for a
   question goes to Claude with it.
-- With Nestor paired, your plans, lists, notes, reminders and the next 14 days of calendar events go to Nestor on your
-  home Wi-Fi only, never over the internet.
+- With Nestor paired, your plans, lists, notes, reminders, the next 14 days of calendar events and this week's men's
+  foil go to Nestor on your home Wi-Fi only, never over the internet.
 - Other services only get what they need: place names (Google Maps), flight numbers and dates (AeroDataBox), station
   codes (NJ Transit), and your rough location for the weather ([Open-Meteo](https://open-meteo.com), no account).
 
