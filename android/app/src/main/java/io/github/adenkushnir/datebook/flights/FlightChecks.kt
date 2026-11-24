@@ -63,7 +63,8 @@ suspend fun checkFlights(context: Context) {
         if (due.isEmpty()) {
             continue
         }
-        val after = lookupFlight(key, plan.flight, date) ?: continue  // try again next round
+        val after = lookupFlight(key, plan.flight, date, graph.flightStore.leg(plan.flight, date))
+            ?: continue  // try again next round
         due.forEach { graph.flightStore.setChecked(plan.flight, date, it) }
         graph.flightStore.save(date, after)
         val change = flightChange(before, after)
@@ -88,7 +89,7 @@ private fun findLate(context: Context, key: String, flight: String, date: String
         return null
     }
     store.setChecked(flight, date, -hour)  // a negative time, so it can't clash with the real checks
-    return lookupFlight(key, flight, date)?.also { store.save(date, it) }
+    return lookupFlight(key, flight, date, store.leg(flight, date))?.also { store.save(date, it) }
 }
 
 // Post an alert that a flight changed, like "UA1234 now departs 7:10 PM (25 min late)"; tapping it opens the plan

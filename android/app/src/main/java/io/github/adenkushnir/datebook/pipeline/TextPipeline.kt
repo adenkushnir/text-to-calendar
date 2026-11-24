@@ -87,7 +87,7 @@ class TextPipeline(
     private val onSuggested: (suggestion: Suggestion, incoming: IncomingText) -> Unit = { _, _ -> },
     private val calendar: (fromMillis: Long, toMillis: Long) -> List<CalendarEvent> = { _, _ -> emptyList() },
     private val findPlace: (place: String) -> FoundPlace? = { null },
-    private val lookupFlight: (flight: String, date: String) -> FlightInfo? = { _, _ -> null },
+    private val lookupFlight: (flight: String, date: String, leg: String) -> FlightInfo? = { _, _, _ -> null },
     private val onWithdrawn: (suggestionId: Long) -> Unit = {},
     private val guessTimes: (text: String, receivedAt: LocalDateTime, zone: String) -> List<GuessedTime> =
         { _, _, _ -> emptyList() },
@@ -574,13 +574,15 @@ class TextPipeline(
         return incoming.group.isBlank() && soundsLikeChange(incoming.text) && upcomingEvents(incoming).isNotEmpty()
     }
 
-    // Fill a flight plan in from live flight data (see withFlight); it stays as Claude wrote it without data
+    // Fill a flight plan in from live flight data (see withFlight), picking the leg that lands in the trip's city; it
+    // stays as Claude wrote it without data
     private suspend fun withFlightTimes(event: Event): Event {
         // Only flights are looked up
         if (event.flight.isBlank()) {
             return event
         }
-        return withFlight(event, withContext(Dispatchers.IO) { lookupFlight(event.flight, event.start.take(10)) })
+        val info = withContext(Dispatchers.IO) { lookupFlight(event.flight, event.start.take(10), event.trip) }
+        return withFlight(event, info)
     }
 
     // Swap a new plan's place, like "Luigi's", for its full address and coordinates, off the main thread; it stays as

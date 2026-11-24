@@ -23,6 +23,7 @@ import io.github.adenkushnir.datebook.data.repeatLabel
 import io.github.adenkushnir.datebook.flights.FlightInfo
 import io.github.adenkushnir.datebook.flights.flightEarlyMinutes
 import io.github.adenkushnir.datebook.flights.flightTitle
+import io.github.adenkushnir.datebook.flights.legMatches
 import io.github.adenkushnir.datebook.flights.lookupFlight
 import io.github.adenkushnir.datebook.flights.withFlight
 import io.github.adenkushnir.datebook.followups.bookNextFollowUp
@@ -146,11 +147,11 @@ class DeliberateRunner(private val context: Context) {
         }
     }
 
-    // A flight's live details, remembered from find_flight or looked up now (null when it isn't found); this waits on
-    // the network, so it's only called off the main thread
+    // The live details of the flight leg meant (the one landing where to says), remembered or looked up now (null when
+    // it isn't found); this waits on the network, so it's only called off the main thread
     private fun flightInfo(change: Change): FlightInfo? {
-        return graph.flightStore.info(change.flight, change.date)
-            ?: lookupFlight(graph.flightsKeyStore.load(), change.flight, change.date)?.also {
+        return graph.flightStore.info(change.flight, change.date)?.takeIf { legMatches(it, change.to) }
+            ?: lookupFlight(graph.flightsKeyStore.load(), change.flight, change.date, change.to)?.also {
                 graph.flightStore.save(change.date, it)
             }
     }
@@ -500,7 +501,13 @@ class DeliberateRunner(private val context: Context) {
                 val title = if (change.flight.isNotBlank()) "Flight ${change.flight}" else change.title
                 val written = Event(title, start, end, !isTime(change.time), change.place, phoneTimezone = zone.id,
                     flight = change.flight)
-                val event = if (change.flight.isNotBlank()) withFlight(written, flightInfo(change)) else written
+                val info = if (change.flight.isNotBlank()) flightInfo(change) else null
+                val event = if (info != null) withFlight(written, info) else written
+
+                // A flight not found yet keeps which leg it is, for when it shows up
+                if (change.flight.isNotBlank() && info == null && change.to.isNotBlank()) {
+                    graph.flightStore.setLeg(change.flight, change.date, change.to)
+                }
                 val found = if (event.location.isBlank()) null else findPlace(context, graph.mapsKeyStore.load(),
                     graph.travelSettings.home(), event.location)  // its spot on the map, for trains
                 val plan = deliberatePlan(event.title, event.start, event.end, found?.line ?: event.location, nowMillis,

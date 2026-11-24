@@ -5,7 +5,8 @@ import android.content.Context
 import io.github.adenkushnir.datebook.AppGraph
 import io.github.adenkushnir.datebook.flights.flightEarlyMinutes
 import io.github.adenkushnir.datebook.flights.isInternational
-import io.github.adenkushnir.datebook.flights.lookupFlight
+import io.github.adenkushnir.datebook.flights.FlightInfo
+import io.github.adenkushnir.datebook.flights.lookupFlights
 import io.github.adenkushnir.datebook.flights.statusLine
 import io.github.adenkushnir.datebook.leaveby.LeaveByStore
 import io.github.adenkushnir.datebook.leaveby.eventKey
@@ -71,9 +72,9 @@ class DeliberateReader(private val context: Context) {
         }
     }
 
-    // A live flight in a line: number, status, both airports and countries, times in the departure airport's zone,
-    // terminal and gate, and how early Datebook aims to get you there; or why it wasn't found. It's remembered, so a
-    // plan made from it needs no second look-up
+    // A live flight, a line per leg it flies that day: number, status, both airports and countries, times in the
+    // departure airport's zone, terminal and gate, and how early Datebook aims to get you there; or why it wasn't
+    // found. A single leg is remembered, so a plan made from it needs no second look-up
     private fun findFlight(flight: String, date: String): String {
         val number = flight.uppercase().replace(" ", "")
         val day = runCatching { LocalDate.parse(date) }.getOrNull() ?: return "date must be YYYY-MM-DD."
@@ -83,10 +84,26 @@ class DeliberateReader(private val context: Context) {
             return "Not found: there's no flight data key (Settings → Flights & trains), so ask the user for the " +
                 "time and airport."
         }
-        val info = lookupFlight(graph.flightsKeyStore.load(), number, day.toString())
-            ?: return "Not found: no live data for $number on $day (a wrong number, too far ahead, or not running " +
-                "that day). Ask the user for the departure time and airport."
-        graph.flightStore.save(day.toString(), info)
+        val legs = lookupFlights(graph.flightsKeyStore.load(), number, day.toString())
+
+        // Say so when it isn't found
+        if (legs.isEmpty()) {
+            return "Not found: no live data for $number on $day (a wrong number, too far ahead, or not running that " +
+                "day). Ask the user for the departure time and airport."
+        }
+
+        // One leg is remembered; several are listed for the user to pick from
+        if (legs.size == 1) {
+            graph.flightStore.save(day.toString(), legs.single())
+            return legLine(legs.single())
+        }
+        return "$number flies ${legs.size} legs on $day. Unless the user said where they're going, ask which " +
+            "(ask_choice), then give its arrival code as new_plan's to:\n" +
+            legs.mapIndexed { index, leg -> "Leg ${index + 1}: ${legLine(leg)}" }.joinToString("\n")
+    }
+
+    // One leg of a flight in a line
+    private fun legLine(info: FlightInfo): String {
         val at = zoneOf(info.fromZone) ?: zone
         val departs = (info.departBest ?: info.departScheduled)?.atZone(at)?.format(DAY_TIME) ?: "time unknown"
         val lands = (info.arriveBest ?: info.arriveScheduled)?.atZone(at)?.format(CLOCK) ?: "unknown"

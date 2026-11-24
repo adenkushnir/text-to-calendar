@@ -84,7 +84,7 @@ class TextPipelineTest {
             onSuggested = { suggestion, text -> prompts.add(Pair(suggestion.title, text.text)) },
             calendar = { from, to -> onCalendar.filter { it.begin < to && from < it.end } },
             findPlace = { places[it] },
-            lookupFlight = { flight, date -> flights["$flight|$date"] },
+            lookupFlight = { flight, date, _ -> flights["$flight|$date"] },
             onWithdrawn = { withdrawn.add(it) },
             guessTimes = { _, _, _ -> guesses },
             onAlert = { kind, showing -> alerts.add("$kind ${if (showing) "shown" else "cleared"}") },

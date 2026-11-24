@@ -65,6 +65,17 @@ fun unescape(value: String): String {
         .replace("\\\\", "\\")
 }
 
+// A course's name without its code numbers: anything with a digit goes (codes, sections, years), and so does a term
+// or section word left in front, so "Fall 2026 Intro to Computer Science 01:198:111:05" gives "Intro to Computer
+// Science" and a course that's only a code gives ""
+fun courseWords(course: String): String {
+    val filler = setOf("fall", "spring", "summer", "winter", "sec", "section")
+    val words = course.split(Regex("[\\s_]+")).map { it.trim('(', ')', '[', ']', ',', '-', ':', '.', '/') }
+        .filter { word -> word.isNotBlank() && word.none { it.isDigit() } }
+    return words.dropWhile { it.lowercase() in filler }.filterNot { it.lowercase() in setOf("sec", "section") }
+        .joinToString(" ")
+}
+
 // A title and its course: "Problem Set 3 [PHYS-101]" gives ("Problem Set 3", "PHYS-101")
 fun splitCourse(summary: String): Pair<String, String> {
     val match = COURSE.find(summary.trim()) ?: return Pair(summary.trim(), "")
@@ -135,7 +146,7 @@ private fun itemOf(fields: Map<String, Pair<String, String>>, zone: ZoneId): Fee
     }
     val end = fields["DTEND"]?.let { feedTime(it.first, it.second, zone)?.first } ?: start.first
     val (title, course) = splitCourse(summary)
-    return FeedItem(uid, title, course, start.second, start.third, start.first, maxOf(end, start.first),
+    return FeedItem(uid, title, courseWords(course), start.second, start.third, start.first, maxOf(end, start.first),
         unescape(fields["LOCATION"]?.second.orEmpty()).trim(), fields["URL"]?.second?.trim().orEmpty(),
         isAssignmentId(uid))
 }

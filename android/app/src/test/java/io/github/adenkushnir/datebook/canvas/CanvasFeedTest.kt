@@ -46,7 +46,7 @@ class CanvasFeedTest {
     ).joinToString("\r\n")
 
     // A Canvas assignment saved by an earlier check
-    private fun saved(uid: String, date: String, time: String, title: String = "Problem Set 3 · PHYS-101",
+    private fun saved(uid: String, date: String, time: String, title: String = "Problem Set 3",
         status: String = FollowUp.OPEN): FollowUp {
         return FollowUp(kind = KIND_ASSIGNMENT, title = title, date = date, amount = "", sender = "Canvas",
             app = CANVAS_APP, conversation = "PHYS-101", status = status, createdAt = 0, nextNudge = 0, nudges = 0,
@@ -61,14 +61,14 @@ class CanvasFeedTest {
         val problemSet = items[0]
         assertTrue(problemSet.isAssignment)
         assertEquals("Problem Set 3", problemSet.title)
-        assertEquals("PHYS-101", problemSet.course)
+        assertEquals("", problemSet.course)  // a course that is only a code is left out
         assertEquals(LocalDate.of(2037, 11, 20), problemSet.date)
         assertEquals("23:59", problemSet.time)
         assertEquals("Midterm reading, chapters 1-3", items[1].title)
         assertEquals("", items[1].time)
         val lab = items[2]
         assertFalse(lab.isAssignment)
-        assertEquals("PHYS-101", lab.course)
+        assertEquals("", lab.course)
         assertEquals("10:00", lab.time)
         assertEquals("Science Hall 2", lab.location)
         assertEquals("2037-11-19T10:00", planStart(lab))
@@ -89,9 +89,9 @@ class CanvasFeedTest {
     fun laterCheck() {
         val items = parseFeed(feed, zone)
         val earlier = listOf(saved("event-assignment-501", "2037-11-19", "23:59"),
-            saved("event-assignment-502", "2037-11-24", "", "Midterm reading, chapters 1-3 · PHYS-101",
+            saved("event-assignment-502", "2037-11-24", "", "Midterm reading, chapters 1-3",
                 status = FollowUp.DONE),
-            saved("event-assignment-499", "2037-11-30", "09:00", "Essay · PHYS-101"))
+            saved("event-assignment-499", "2037-11-30", "09:00", "Essay"))
         val lab = Suggestion(sender = "PHYS-101", app = CANVAS_APP, title = "Lab section", start = "2037-11-19T09:00",
             end = "", allDay = false, location = "", repeat = "", timezone = "", phoneTimezone = zone.id, createdAt = 0,
             sourceId = "event-calendar-event-77")
@@ -102,6 +102,9 @@ class CanvasFeedTest {
         assertEquals("event-assignment-499", plan.removed.single().sourceId)
         assertTrue(plan.newClassEvents.isEmpty())
         assertEquals("2037-11-19T10:00", planStart(plan.movedClassEvents.single().second))
+        val coded = listOf(saved("event-assignment-501", "2037-11-20", "23:59", "Problem Set 3 · PHYS-101"))
+        assertEquals("Problem Set 3", assignmentTitle(planCheck(items, coded, emptyList(), now, zone).changed
+            .single().second))  // an old title with its code is renamed at the next check
     }
 
     // Only Canvas feed links are taken, and webcal links are fetched over https
@@ -114,5 +117,15 @@ class CanvasFeedTest {
             feedUrl("webcal://school.instructure.com/feeds/calendars/user_abc123.ics"))
         assertEquals(Pair("Quiz 2", "BIO 1"), splitCourse("Quiz 2 [BIO 1]"))
         assertEquals("Wed Nov 25, 11:59 PM", dueText("2037-11-25", "23:59"))
+    }
+
+    // A course keeps its words and loses its code numbers, sections and term, so nothing reads them out
+    @Test
+    fun courseWithoutCodes() {
+        assertEquals("Intro to Computer Science", courseWords("Fall 2026 Intro to Computer Science 01:198:111:05"))
+        assertEquals("INTRO COMP SCI", courseWords("26FA 01:198:111 SEC 05 INTRO COMP SCI"))
+        assertEquals("", courseWords("01:198:111:05"))
+        assertEquals("BIO", courseWords("BIO 1"))
+        assertEquals("", courseWords(""))
     }
 }

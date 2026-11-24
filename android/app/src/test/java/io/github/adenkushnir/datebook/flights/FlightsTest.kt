@@ -137,4 +137,37 @@ class FlightsTest {
         store.setChecked("UA1234", "2037-11-13", 5)
         assertTrue(store.checked("UA1234", "2037-11-13", 5))
     }
+
+    // One number flying two legs that day: both are read, and the leg meant is picked by where it lands
+    @Test
+    fun twoLegs() {
+        val legs = """[{"number": "B6 1234", "status": "Expected",
+            "departure": {"airport": {"iata": "FLL", "municipalityName": "Fort Lauderdale", "countryCode": "US",
+                "timeZone": "America/New_York"}, "scheduledTime": {"utc": "2037-11-25 11:00Z",
+                "local": "2037-11-25 06:00-05:00"}},
+            "arrival": {"airport": {"iata": "EWR", "municipalityName": "Newark", "countryCode": "US"},
+                "scheduledTime": {"utc": "2037-11-25 14:00Z"}}},
+            {"number": "B6 1234", "status": "Expected",
+            "departure": {"airport": {"iata": "EWR", "municipalityName": "Newark", "countryCode": "US",
+                "timeZone": "America/New_York"}, "scheduledTime": {"utc": "2037-11-25 22:40Z",
+                "local": "2037-11-25 17:40-05:00"}},
+            "arrival": {"airport": {"iata": "BOS", "municipalityName": "Boston", "countryCode": "US"},
+                "scheduledTime": {"utc": "2037-11-25 23:55Z"}}}]"""
+        assertEquals(listOf("EWR", "BOS"), parseFlights(legs, "2037-11-25").map { it.toCode })
+        assertEquals("BOS", parseFlight(legs, "2037-11-25", "BOS")!!.toCode)
+        assertEquals("BOS", parseFlight(legs, "2037-11-25", "Boston")!!.toCode)
+        assertEquals("BOS", parseFlight(legs, "2037-11-25", "EWR-BOS")!!.toCode)
+        assertEquals("EWR", parseFlight(legs, "2037-11-25")!!.toCode)
+        assertEquals("EWR", parseFlight(legs, "2037-11-25", "Chicago")!!.toCode)
+    }
+
+    // The leg a plan is stays remembered, so its checks look up that leg
+    @Test
+    fun remembersLeg() {
+        val store = FlightStore(ApplicationProvider.getApplicationContext())
+        store.save("2037-11-13", parseFlight(reply, "2037-11-13")!!)
+        assertEquals("SFO", store.leg("UA1234", "2037-11-13"))
+        store.setLeg("B61234", "2037-11-25", "BOS")
+        assertEquals("BOS", store.leg("B61234", "2037-11-25"))
+    }
 }

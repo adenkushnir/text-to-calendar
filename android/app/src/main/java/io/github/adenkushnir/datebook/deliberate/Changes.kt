@@ -36,6 +36,7 @@ data class Change(
     val travel: String = "",
     val early: Int? = null,
     val station: String = "",
+    val to: String = "",
 )
 
 // A field of a tool call's input as trimmed text ("" when missing)
@@ -66,6 +67,7 @@ fun changesOf(input: Map<String, Any?>): List<Change> {
             target = field(map, "target"), link = field(map, "link"),
             flight = field(map, "flight").uppercase().replace(" ", ""), travel = field(map, "travel").uppercase(),
             early = field(map, "early").toDoubleOrNull()?.toInt(), station = field(map, "station"),
+            to = field(map, "to"),
         )
     }
 }

@@ -101,6 +101,8 @@ private val CHANGE = objectOf(mapOf(
     "link" to text("For set_link: the web link to save, or empty to remove it"),
     "flight" to text("For new_plan: the flight number, airline code and number with no space, like B61234; Datebook " +
         "fills in the title, times and airport from live data"),
+    "to" to text("For new_plan with a flight: where the leg the user means lands, as its airport code (like BOS), " +
+        "when the number flies more than one leg that day"),
     "travel" to mapOf("type" to "string", "enum" to TRAVEL_CHOICES, "description" to "For new_plan and " +
         "set_plan_travel: how the user gets there, for this plan only (TRANSIT means NJ Transit trains); empty to " +
         "leave it"),
@@ -130,9 +132,9 @@ val DELIBERATE_TOOLS = listOf(
     ToolSpec(TOOL_TOURNAMENTS, "Read the men's foil fencing tournaments Datebook found for the coming weeks (the " +
         "user follows and watches them): days, start times, today's stream times and stage, and Watch and Results " +
         "links.", objectOf(emptyMap())),
-    ToolSpec(TOOL_FIND_FLIGHT, "Look up a flight live by number and departure date: its airports and countries, " +
-        "scheduled and current times, terminal, gate and status, and how early Datebook aims to get the user there. " +
-        "Says when it isn't found.",
+    ToolSpec(TOOL_FIND_FLIGHT, "Look up a flight live by number and departure date: every leg it flies that day, " +
+        "each with its airports and countries, scheduled and current times, terminal, gate and status, and how " +
+        "early Datebook aims to get the user there. Says when it isn't found.",
         objectOf(mapOf("flight" to text("Airline code and number, like B61234 or UA 1234"),
             "date" to text("YYYY-MM-DD, the local departure day")), listOf("flight", "date"))),
     ToolSpec(TOOL_ASK, "Ask the user a question with 2 to 4 short choices to tap (they can also type an answer). " +
@@ -169,7 +171,9 @@ How to work:
 - Pauses end at the time given; "this weekend" ends Monday at 6:00.
 - set_link saves a web link on a bill (Pay), a package (Order) or a trip booking (Booking).
 - Flights: call find_flight first. When it's found, make the plan with new_plan and its flight number (Datebook
-  fills in the title, times and airport), the date it leaves. When it isn't found, say so and ask for the departure
+  fills in the title, times and airport), the date it leaves. One number can fly several legs a day: when
+  find_flight lists more than one and the user hasn't said where they're going, ask which with ask_choice, one
+  choice per leg ("Newark → Boston, 5:40 PM"); then give that leg's arrival code in new_plan's to. When it isn't found, say so and ask for the departure
   time and airport with ask_choice, then make it with new_plan with the flight number, date and time anyway. Check
   find_plans for the same flight number on that day first: if there is one, change it with set_plan_travel instead
   of making a second plan. Flights aim to get the user to the airport 60 minutes early (2 hours abroad) unless they
