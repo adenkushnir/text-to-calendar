@@ -309,7 +309,7 @@ private fun LineView(line: DeliberateLine, changes: List<DeliberateChange>, busy
 @Composable
 private fun FlightPreview(card: Map<*, *>) {
     val chip = RoundedCornerShape(50)
-    Muted("New flight plan")
+    Muted(card["heading"]?.toString() ?: "New flight plan")
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
         Text(card["route"].toString(), fontSize = 28.sp, fontWeight = FontWeight.SemiBold,
             modifier = Modifier.weight(1f))

@@ -5,6 +5,7 @@ package io.github.adenkushnir.datebook.deliberate
 import android.content.Context
 import android.util.Log
 import io.github.adenkushnir.datebook.AppGraph
+import io.github.adenkushnir.datebook.calendar.openEventIntent
 import io.github.adenkushnir.datebook.pipeline.PROBLEM_API_KEY
 import io.github.adenkushnir.datebook.pipeline.classifyError
 import java.time.ZonedDateTime
@@ -103,6 +104,11 @@ class Deliberate(private val context: Context, private val ask: (system: String,
         dao.updateLine(preview.copy(state = STATE_CONFIRMED))
         @Suppress("UNCHECKED_CAST")
         val applied = runner.apply(changesOf((data["input"] as? Map<String, Any?>).orEmpty()))
+
+        // Show the event that was saved or changed in your calendar app
+        if (applied.openEvent > 0) {
+            runCatching { context.startActivity(openEventIntent(applied.openEvent)) }
+        }
         val summary = data["summary"]?.toString().orEmpty().ifBlank { data["title"]?.toString().orEmpty() }
         var changeId = 0L
 

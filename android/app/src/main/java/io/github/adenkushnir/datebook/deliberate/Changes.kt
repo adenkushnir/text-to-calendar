@@ -114,6 +114,12 @@ fun problemWith(change: Change): String? {
             else null
         ACT_MOVE_EVENT -> if (change.id <= 0 || change.begin <= 0 || !isDate(change.date))
             "move_event needs the event's id and begin, and the new date" else null
+        ACT_EDIT_EVENT -> when {
+            change.id <= 0 || change.begin <= 0 -> "edit_event needs the event's id and begin"
+            listOf(change.title, change.date, change.time, change.endDate, change.endTime, change.place, change.text,
+                change.flight).all { it.isBlank() } -> "edit_event needs something to change"
+            else -> travelProblem(change)
+        }
         ACT_CANCEL_EVENT -> if (change.id <= 0 || change.begin <= 0) "cancel_event needs the event's id and begin"
             else null
         ACT_ADD_BILL -> if (change.title.isBlank() || !isDate(change.date)) "a bill needs a title and a due date"

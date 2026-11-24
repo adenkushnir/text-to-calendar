@@ -36,6 +36,7 @@ const val ACT_PAUSE = "pause"
 const val ACT_SETTING = "set_setting"
 const val ACT_SET_LINK = "set_link"
 const val ACT_SET_PLAN_TRAVEL = "set_plan_travel"
+const val ACT_EDIT_EVENT = "edit_event"
 const val TARGET_PLAN = "plan"
 const val TARGET_ITEM = "item"
 const val TARGET_EVENT = "event"
@@ -50,7 +51,7 @@ const val SET_KEEP_TEXTS = "keep_texts"
 val ACTIONS = listOf(ACT_NEW_PLAN, ACT_EDIT_WAITING, ACT_ADD_WAITING, ACT_IGNORE_WAITING, ACT_MOVE_EVENT,
     ACT_CANCEL_EVENT, ACT_ADD_BILL, ACT_ADD_ASSIGNMENT, ACT_ADD_REMINDER, ACT_ADD_NOTE, ACT_ADD_PACKAGE, ACT_EDIT_ITEM,
     ACT_MARK_DONE, ACT_DELETE_ITEM, ACT_PACKAGE_RECEIVED, ACT_ADD_RULE, ACT_TURN_RULE, ACT_DELETE_RULE, ACT_PAUSE,
-    ACT_SETTING, ACT_SET_LINK, ACT_SET_PLAN_TRAVEL)
+    ACT_SETTING, ACT_SET_LINK, ACT_SET_PLAN_TRAVEL, ACT_EDIT_EVENT)
 val SETTINGS = listOf(SET_SUMMARY_TIME, SET_SUMMARY_ON, SET_HOME, SET_TRAVEL_MODE, SET_FLIP_TRIP, SET_KEEP_TEXTS)
 private val TODAY = DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy, h:mm a", Locale.US)
 private val STRING = mapOf("type" to "string")
@@ -71,8 +72,8 @@ private val CHANGE = objectOf(mapOf(
     "action" to mapOf("type" to "string", "enum" to ACTIONS),
     "id" to mapOf("type" to "integer", "description" to "The id of the plan, item, rule or calendar event changed, " +
         "from a find tool"),
-    "begin" to mapOf("type" to "integer", "description" to "For move_event and cancel_event: the event's begin " +
-        "(milliseconds) from find_events"),
+    "begin" to mapOf("type" to "integer", "description" to "For move_event, edit_event and cancel_event: the " +
+        "event's begin (milliseconds) from find_events"),
     "title" to STRING,
     "date" to text("YYYY-MM-DD"),
     "time" to text("HH:MM, 24-hour; empty for all day"),
@@ -81,7 +82,7 @@ private val CHANGE = objectOf(mapOf(
     "place" to STRING,
     "amount" to text("For bills, like \$45"),
     "repeat" to text("An RRULE like FREQ=MONTHLY or FREQ=WEEKLY;BYDAY=MO; empty for none"),
-    "text" to text("A note's text"),
+    "text" to text("A note's text; for edit_event, lines to add to the event's notes"),
     "carrier" to mapOf("type" to "string", "enum" to listOf("", "ups", "fedex", "usps", "amazon", "dhl")),
     "tracking_number" to STRING,
     "rule_kind" to mapOf("type" to "string", "enum" to RULE_KINDS),
@@ -159,8 +160,12 @@ How to work:
 - Answer in a few short plain sentences, no markdown. Quote a message's text when asked what someone said.
 - To change anything, call propose_changes once with every change. Nothing changes until the user confirms, so
   never say a change is done before its result says so. Every confirmed change can be undone.
-- Datebook never writes calendar events itself. new_plan makes an "Add to calendar?" prompt; move_event and
-  cancel_event make a prompt that opens the event in the calendar app. Say so in the summary.
+- Once the user confirms, Datebook writes to their calendar itself and opens the event in their calendar app:
+  new_plan adds the event, move_event changes its time, and edit_event changes an existing event's title, day and
+  time, place or notes (or, with a flight number, fills in that flight's live details). cancel_event makes a prompt
+  that opens the event for the user to delete. Repeating events can't be changed.
+- Before new_plan, check find_events around that day. When the plan is already on the calendar (like "Flight to
+  Boston" when the user gives the flight number), use edit_event on that event instead of making a second one.
 - When the request is unclear (which event, which day, how long), call ask_choice with 2 to 4 short choices.
 - Rules cover future events too. Pick title words that match exactly the events meant: check them with
   find_events, and ask when two kinds of event would match. "Plans like this one" means an ignore rule with words

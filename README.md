@@ -3,9 +3,9 @@
 An Android app that turns plans in your texts and emails into calendar events, and keeps your day in one place.
 
 When a text says "dinner fri 7pm at Luigi's", Datebook asks Claude to read it and shows an **Add to calendar?**
-notification. Tapping **Add** opens your calendar app's new-event screen already filled in: title, time, full
-address, and notes saying who it came from. Datebook never writes to your calendar itself; nothing is saved until you
-tap **Save** there.
+notification. Tapping **Add** saves it straight to your calendar (your Google account's main calendar, or the one
+picked in Settings → Calendars) with its title, time, full address and notes saying who it came from, then opens it
+in your calendar app. Nothing is saved until you tap Add, and Datebook never deletes anything.
 
 Datebook started as a Python script running in Termux (see [Legacy](#legacy-the-termux-script-v020) at the end).
 It's a full Kotlin app, built with Jetpack Compose, in [`android/`](android/); the latest version is 1.1.1.
@@ -56,7 +56,9 @@ It's a full Kotlin app, built with Jetpack Compose, in [`android/`](android/); t
   anything; every change can be undone. Its rules cover travel times, arriving early, what to bring, reminders before
   events, plans to ignore and habits Claude should assume. It can also search the web for anything else.
   Give it a flight number ("my flight tomorrow is B6 1234, I'm taking the train, 30 minutes early") and it looks the
-  flight up live and shows a flight card to confirm; "I'm driving" or "be there early" works for any one plan.
+  flight up live (asking which leg when the number flies more than one) and shows a flight card to confirm; "I'm
+  driving" or "be there early" works for any one plan. It can change events already on your calendar (title, day
+  and time, place, notes), updating the one you mean instead of adding a second; every change can be undone.
 - **Canvas** (Settings → School): your Canvas Calendar Feed link brings assignments, quizzes and exams into Due soon,
   with a notification when one moves or is removed, and offers class events like plans from texts.
 - **Fencing** (Settings → Fencing, off to start): men's foil tournaments to follow and watch, found by Claude's web

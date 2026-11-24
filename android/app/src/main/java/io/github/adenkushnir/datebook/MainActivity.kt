@@ -115,6 +115,9 @@ import io.github.adenkushnir.datebook.followups.WeekAheadSettings
 import io.github.adenkushnir.datebook.followups.bookNextFollowUp
 import io.github.adenkushnir.datebook.followups.weekDays
 import io.github.adenkushnir.datebook.followups.scheduleFollowUps
+import io.github.adenkushnir.datebook.calendar.canWriteCalendar
+import io.github.adenkushnir.datebook.calendar.writableCalendars
+import io.github.adenkushnir.datebook.calendar.writeCalendarId
 import io.github.adenkushnir.datebook.flights.FLIGHT_EARLY_MINUTES
 import io.github.adenkushnir.datebook.flights.INTERNATIONAL_EARLY_MINUTES
 import io.github.adenkushnir.datebook.flights.isFlightTitle
@@ -227,6 +230,7 @@ const val ROUTE_SETTINGS_PLACES = "settings/places"
 const val ROUTE_SETTINGS_FLIGHTS = "settings/flights"
 private val LOCATION_PERMISSIONS = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION,
     Manifest.permission.ACCESS_COARSE_LOCATION)
+private val CALENDAR_PERMISSIONS = arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
 const val ROUTE_SETTINGS_NOTIFICATIONS = "settings/notifications"
 const val ROUTE_SETTINGS_PRIVACY = "settings/privacy"
 const val ROUTE_SETTINGS_ABOUT = "settings/about"
@@ -353,6 +357,13 @@ class MainActivity : ComponentActivity() {
         val askPermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
             refresh()
         }
+        LaunchedEffect(status.calendar) {
+            // Reading the calendar is allowed but not writing (Datebook before 1.3.0): ask once, which Android
+            // grants without asking you again, so confirmed plans go straight onto the calendar
+            if (status.calendar && !canWriteCalendar(applicationContext)) {
+                askPermission.launch(Manifest.permission.WRITE_CALENDAR)
+            }
+        }
         LifecycleResumeEffect(Unit) {
             refresh()  // re-check every step when you come back from Android's settings
             onPauseOrDispose {}
@@ -381,7 +392,7 @@ class MainActivity : ComponentActivity() {
             askNotifications = { askNotifications(askPermission::launch) },
             checkAndSaveKey = { key -> checkAndSaveKey(graph, key, refresh) },
             openBattery = { startActivity(appDetails()) },
-            askCalendar = { askPermission.launch(Manifest.permission.READ_CALENDAR) },
+            askCalendar = { askPermissions.launch(CALENDAR_PERMISSIONS) },
             saveMapsKey = { key -> graph.mapsKeyStore.save(key); refresh() },
         )
         LaunchedEffect(openList) {
@@ -646,8 +657,12 @@ class MainActivity : ComponentActivity() {
             composable(ROUTE_SETTINGS_CALENDARS) {
                 val calendars = remember(status.calendar) { phoneCalendars(applicationContext) }  // again once allowed
                 val switches = graph.calendarSwitches
+                val writable = remember(status.calendar) { writableCalendars(applicationContext) }
+                val firstWriteTo = remember { writeCalendarId(applicationContext, switches.writeCalendar()) }
+                var writeTo by remember { mutableStateOf(firstWriteTo) }
                 CalendarsPage(status.calendar, calendars, switches::isOn, switches::set, actions.askCalendar,
-                    onBack = { nav.popBackStack() })
+                    onBack = { nav.popBackStack() }, writable = writable, writeTo = writeTo,
+                    setWriteTo = { switches.setWriteCalendar(it); writeTo = it })
             }
             composable(ROUTE_SETTINGS_PLACES) {
                 val travel = graph.travelSettings

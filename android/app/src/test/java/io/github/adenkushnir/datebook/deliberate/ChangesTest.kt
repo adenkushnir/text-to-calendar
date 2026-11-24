@@ -104,4 +104,14 @@ class ChangesTest {
         assertNotNull(problemWith(Change(ACT_SET_PLAN_TRAVEL, id = 7, target = TARGET_EVENT, travel = "WALK")))
         assertNull(problemWith(Change(ACT_SET_PLAN_TRAVEL, id = 7, begin = 5, target = TARGET_EVENT, travel = "WALK")))
     }
+
+    // Changing an event needs the event and something to change
+    @Test
+    fun checksEventEdits() {
+        assertNull(problemWith(Change(ACT_EDIT_EVENT, id = 9, begin = 5, title = "Flight B61234")))
+        assertNull(problemWith(Change(ACT_EDIT_EVENT, id = 9, begin = 5, flight = "B61234", to = "BOS")))
+        assertNull(problemWith(Change(ACT_EDIT_EVENT, id = 9, begin = 5, text = "Confirmation: AB12")))
+        assertNotNull(problemWith(Change(ACT_EDIT_EVENT, id = 9, title = "Flight B61234")))
+        assertNotNull(problemWith(Change(ACT_EDIT_EVENT, id = 9, begin = 5)))
+    }
 }
