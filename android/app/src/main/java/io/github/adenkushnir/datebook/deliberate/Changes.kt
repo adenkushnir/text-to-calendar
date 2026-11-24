@@ -6,7 +6,8 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 
-// One proposed change: what to do and the fields Claude filled in (empty or 0 when not given)
+// One proposed change: what to do and the fields Claude filled in (empty or 0 when not given; early is null when not
+// given, since 0 means right on time)
 data class Change(
     val action: String,
     val id: Long = 0,
@@ -31,6 +32,10 @@ data class Change(
     val setting: String = "",
     val target: String = "",
     val link: String = "",
+    val flight: String = "",
+    val travel: String = "",
+    val early: Int? = null,
+    val station: String = "",
 )
 
 // A field of a tool call's input as trimmed text ("" when missing)
@@ -59,6 +64,8 @@ fun changesOf(input: Map<String, Any?>): List<Change> {
             words = field(map, "words").lowercase(), sender = field(map, "sender"), value = field(map, "value"),
             pause = field(map, "pause"), until = field(map, "until"), setting = field(map, "setting"),
             target = field(map, "target"), link = field(map, "link"),
+            flight = field(map, "flight").uppercase().replace(" ", ""), travel = field(map, "travel").uppercase(),
+            early = field(map, "early").toDoubleOrNull()?.toInt(), station = field(map, "station"),
         )
     }
 }
@@ -86,8 +93,20 @@ fun planTime(date: String, time: String): String {
 fun problemWith(change: Change): String? {
     // Check what each action needs
     return when (change.action) {
-        ACT_NEW_PLAN -> if (change.title.isBlank() || !isDate(change.date)) "a new plan needs a title and a date"
-            else null
+        ACT_NEW_PLAN -> when {
+            change.flight.isNotBlank() && !isDate(change.date) -> "a flight plan needs the day it leaves"
+            change.flight.isBlank() && (change.title.isBlank() || !isDate(change.date)) ->
+                "a new plan needs a title and a date"
+            else -> travelProblem(change)
+        }
+        ACT_SET_PLAN_TRAVEL -> when {
+            change.id <= 0 || change.target !in setOf(TARGET_PLAN, TARGET_EVENT) ->
+                "set_plan_travel needs an id and a target (plan or event)"
+            change.target == TARGET_EVENT && change.begin <= 0 -> "set_plan_travel on an event needs its begin"
+            change.travel.isBlank() && change.early == null && change.station.isBlank() ->
+                "set_plan_travel needs travel, early or station"
+            else -> travelProblem(change)
+        }
         ACT_EDIT_WAITING, ACT_ADD_WAITING, ACT_IGNORE_WAITING, ACT_EDIT_ITEM, ACT_MARK_DONE, ACT_DELETE_ITEM,
         ACT_PACKAGE_RECEIVED, ACT_TURN_RULE, ACT_DELETE_RULE -> if (change.id <= 0) "${change.action} needs an id"
             else null
@@ -112,6 +131,18 @@ fun problemWith(change: Change): String? {
             else -> null
         }
         else -> "unknown action ${change.action}"
+    }
+}
+
+// What's wrong with a plan's own travel settings (null when they're fine or not given)
+private fun travelProblem(change: Change): String? {
+    val early = change.early
+
+    // Check the mode and the minutes
+    return when {
+        change.travel !in TRAVEL_CHOICES -> "unknown travel mode ${change.travel}"
+        early != null && (early < 0 || early > MAX_EARLY_MINUTES) -> "early must be 0 to $MAX_EARLY_MINUTES minutes"
+        else -> null
     }
 }
 

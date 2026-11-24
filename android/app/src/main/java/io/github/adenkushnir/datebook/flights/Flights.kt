@@ -5,6 +5,7 @@ import android.content.Context
 import android.util.Log
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.github.adenkushnir.datebook.pipeline.Event
 import io.github.adenkushnir.datebook.pipeline.zoneOf
 import java.net.HttpURLConnection
 import java.net.URL
@@ -19,9 +20,12 @@ private const val TIMEOUT_MILLIS = 10000
 private val MAPPER = ObjectMapper()
 private val CLOCK = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
 private val LOCAL_MINUTES = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
+const val FLIGHT_EARLY_MINUTES = 60  // how early to be at the airport for a flight when nothing else says
+const val INTERNATIONAL_EARLY_MINUTES = 120
+private val FLIGHT_TITLE = Regex("^Flight ([A-Z0-9]{2}[0-9]{1,4})( |$)")
 
 // One flight as AeroDataBox describes it: the number, its status, both airports (code, city, name, time zone), the
-// scheduled and best-known departure and arrival times, and the departure terminal and gate
+// scheduled and best-known departure and arrival times, the departure terminal and gate, and both airports' countries
 data class FlightInfo(
     val number: String,
     val status: String,
@@ -37,6 +41,8 @@ data class FlightInfo(
     val arriveBest: Instant?,
     val terminal: String,
     val gate: String,
+    val fromCountry: String = "",
+    val toCountry: String = "",
 )
 
 // Read a time from AeroDataBox, like "2037-11-13 23:45Z" or "2037-11-13 18:45-05:00" (null when missing or unreadable)
@@ -87,6 +93,8 @@ fun parseFlight(json: String, date: String): FlightInfo? {
         arriveBest = bestTime(arrival),
         terminal = departure.path("terminal").asText(""),
         gate = departure.path("gate").asText(""),
+        fromCountry = departure.path("airport").path("countryCode").asText(""),
+        toCountry = arrival.path("airport").path("countryCode").asText(""),
     )
 }
 
@@ -125,9 +133,50 @@ fun zonedText(instant: Instant, zone: ZoneId): String {
     return LocalDateTime.ofInstant(instant, zone).format(LOCAL_MINUTES)
 }
 
-// Return true if a calendar event is a flight plan, like "Flight UA1234 EWR → SFO" (flights get no leave-by alert)
+// Return true if a calendar event is a flight plan, like "Flight UA1234 EWR → SFO"
 fun isFlightTitle(title: String): Boolean {
-    return Regex("^Flight [A-Z0-9]{2}[0-9]{1,4}( |$)").containsMatchIn(title)
+    return FLIGHT_TITLE.containsMatchIn(title)
+}
+
+// The flight number in a flight plan's title, like UA1234 from "Flight UA1234 EWR → SFO" (null for other titles)
+fun flightOfTitle(title: String): String? {
+    return FLIGHT_TITLE.find(title)?.groupValues?.get(1)
+}
+
+// Return true if a flight leaves one country for another (false when either country is unknown)
+fun isInternational(info: FlightInfo): Boolean {
+    return info.fromCountry.isNotBlank() && info.toCountry.isNotBlank() &&
+        !info.fromCountry.equals(info.toCountry, ignoreCase = true)
+}
+
+// How early to be at the airport for a flight when you haven't said: 2 hours abroad, else 1 hour
+fun flightEarlyMinutes(info: FlightInfo?): Int {
+    return if (info != null && isInternational(info)) INTERNATIONAL_EARLY_MINUTES else FLIGHT_EARLY_MINUTES
+}
+
+// The departure airport in a few words, like "Newark Airport" (its full name when the city isn't known)
+fun airportName(info: FlightInfo): String {
+    return if (info.fromCity.isNotBlank()) "${info.fromCity} Airport" else info.fromName.ifBlank { info.fromCode }
+}
+
+// Fill a flight plan in from live flight data: its title with the route, its departure and arrival in the departure
+// airport's time (the delayed times when it's already delayed, else the scheduled ones), and the airport as its place;
+// it stays as written without data
+fun withFlight(event: Event, info: FlightInfo?): Event {
+    // No data, nothing to fill in
+    if (info == null) {
+        return event
+    }
+    val departs = info.departBest ?: info.departScheduled ?: return event  // no times to fill in
+    val zone = zoneOf(info.fromZone) ?: zoneOf(event.phoneTimezone) ?: ZoneId.systemDefault()
+    val end = (info.arriveBest ?: info.arriveScheduled)?.let { zonedText(it, zone) }.orEmpty()  // empty if unknown
+    return event.copy(title = flightTitle(info), start = zonedText(departs, zone), end = end, allDay = false,
+        timezone = zone.id, location = info.fromName.ifBlank { event.location })
+}
+
+// A flight's status for Nestor's wall: the status line, and whether it's late or cancelled (shown in orange)
+fun wallFlight(info: FlightInfo): Map<String, Any> {
+    return mapOf("text" to statusLine(info), "late" to (minutesLate(info) >= 5 || info.status.startsWith("Canceled")))
 }
 
 // A flight plan's title, like "Flight UA1234 EWR → SFO"
@@ -195,7 +244,8 @@ class FlightStore(context: Context) {
             "fromCity" to info.fromCity, "fromName" to info.fromName, "fromZone" to info.fromZone,
             "toCode" to info.toCode, "toCity" to info.toCity, "departScheduled" to info.departScheduled?.toString(),
             "departBest" to info.departBest?.toString(), "arriveScheduled" to info.arriveScheduled?.toString(),
-            "arriveBest" to info.arriveBest?.toString(), "terminal" to info.terminal, "gate" to info.gate)
+            "arriveBest" to info.arriveBest?.toString(), "terminal" to info.terminal, "gate" to info.gate,
+            "fromCountry" to info.fromCountry, "toCountry" to info.toCountry)
     }
 
     // Read saved plain values back into a flight's details
@@ -206,7 +256,8 @@ class FlightStore(context: Context) {
             node.path("fromCode").asText(""), node.path("fromCity").asText(""), node.path("fromName").asText(""),
             node.path("fromZone").asText(""), node.path("toCode").asText(""), node.path("toCity").asText(""),
             time("departScheduled"), time("departBest"), time("arriveScheduled"), time("arriveBest"),
-            node.path("terminal").asText(""), node.path("gate").asText(""))
+            node.path("terminal").asText(""), node.path("gate").asText(""), node.path("fromCountry").asText(""),
+            node.path("toCountry").asText(""))
     }
 }
 

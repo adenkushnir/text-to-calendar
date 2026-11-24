@@ -1,8 +1,16 @@
 // Answers Claude's look-ups in Deliberate with short plain lines: calendar events (with what the rules change), plans
-// and their messages, lists, settings and rules, and the weather and trains
+// and their messages, lists, settings and rules, the weather and trains, and live flights
 package io.github.adenkushnir.datebook.deliberate
 import android.content.Context
 import io.github.adenkushnir.datebook.AppGraph
+import io.github.adenkushnir.datebook.flights.flightEarlyMinutes
+import io.github.adenkushnir.datebook.flights.isInternational
+import io.github.adenkushnir.datebook.flights.lookupFlight
+import io.github.adenkushnir.datebook.flights.statusLine
+import io.github.adenkushnir.datebook.leaveby.LeaveByStore
+import io.github.adenkushnir.datebook.leaveby.eventKey
+import io.github.adenkushnir.datebook.pipeline.eventTimes
+import io.github.adenkushnir.datebook.pipeline.zoneOf
 import io.github.adenkushnir.datebook.calendar.CalendarEvent
 import io.github.adenkushnir.datebook.calendar.calendarEvents
 import io.github.adenkushnir.datebook.data.FollowUp
@@ -58,8 +66,44 @@ class DeliberateReader(private val context: Context) {
             TOOL_SETTINGS -> settings()
             TOOL_EXTRAS -> extras()
             TOOL_TOURNAMENTS -> tournaments()
+            TOOL_FIND_FLIGHT -> findFlight(input["flight"]?.toString().orEmpty(), input["date"]?.toString().orEmpty())
             else -> "Unknown tool $tool."
         }
+    }
+
+    // A live flight in a line: number, status, both airports and countries, times in the departure airport's zone,
+    // terminal and gate, and how early Datebook aims to get you there; or why it wasn't found. It's remembered, so a
+    // plan made from it needs no second look-up
+    private fun findFlight(flight: String, date: String): String {
+        val number = flight.uppercase().replace(" ", "")
+        val day = runCatching { LocalDate.parse(date) }.getOrNull() ?: return "date must be YYYY-MM-DD."
+
+        // Without a flight data key nothing can be looked up
+        if (graph.flightsKeyStore.load().isNullOrBlank()) {
+            return "Not found: there's no flight data key (Settings → Flights & trains), so ask the user for the " +
+                "time and airport."
+        }
+        val info = lookupFlight(graph.flightsKeyStore.load(), number, day.toString())
+            ?: return "Not found: no live data for $number on $day (a wrong number, too far ahead, or not running " +
+                "that day). Ask the user for the departure time and airport."
+        graph.flightStore.save(day.toString(), info)
+        val at = zoneOf(info.fromZone) ?: zone
+        val departs = (info.departBest ?: info.departScheduled)?.atZone(at)?.format(DAY_TIME) ?: "time unknown"
+        val lands = (info.arriveBest ?: info.arriveScheduled)?.atZone(at)?.format(CLOCK) ?: "unknown"
+        val abroad = if (isInternational(info)) "international" else "domestic"
+        return "${info.number} · ${statusLine(info)} · from ${info.fromName} (${info.fromCode}, " +
+            "${info.fromCountry}) " +
+            "to ${info.toCity} (${info.toCode}, ${info.toCountry}) · departs $departs (${at.id}) · lands $lands · " +
+            "$abroad, so Datebook aims to get the user there ${flightEarlyMinutes(info)} min early unless they say"
+    }
+
+    // A plan's or event's own travel settings in words, like "this plan: TRANSIT, 30 min early" ("" when none)
+    private fun ownTravel(title: String, begin: Long): String {
+        val store = LeaveByStore(context)
+        val key = eventKey(title, begin)
+        val parts = listOfNotNull(store.mode(key), store.early(key)?.let { "$it min early" },
+            graph.trainStore.origin(key)?.let { "leaves from station $it" })
+        return if (parts.isEmpty()) "" else "this plan: ${parts.joinToString(", ")}"
     }
 
     // An event's time in words: "Tue Nov 17, 2026, 6:00 PM–8:00 PM", or the day for all-day events
@@ -100,7 +144,8 @@ class DeliberateReader(private val context: Context) {
             if (ruled.isNotEmpty()) {
                 parts.add("rules: " + ruled.joinToString("; ") { ruleText(it) })
             }
-            parts.joinToString(" · ")
+            parts.add(ownTravel(event.title, event.begin))
+            parts.filter { it.isNotBlank() }.joinToString(" · ")
         }
 
         // Say so when nothing matched
@@ -128,6 +173,11 @@ class DeliberateReader(private val context: Context) {
             parts.add("package ${plan.packageCarrier} ${plan.trackingNumber}")
         }
 
+        if (plan.flight.isNotBlank()) {
+            parts.add("flight ${plan.flight}")
+        }
+        parts.add(ownTravel(plan.title, eventTimes(plan.toEvent()).first))
+
         if (plan.link.isNotBlank()) {
             parts.add("link ${plan.link}")
         }
@@ -135,7 +185,7 @@ class DeliberateReader(private val context: Context) {
         if (plan.message.isNotBlank()) {
             parts.add("message: “${plan.message.replace("\n", " ").take(MAX_MESSAGE)}”")
         }
-        return parts.joinToString(" · ")
+        return parts.filter { it.isNotBlank() }.joinToString(" · ")
     }
 
     // The plans with a status (or any) and the words, newest first

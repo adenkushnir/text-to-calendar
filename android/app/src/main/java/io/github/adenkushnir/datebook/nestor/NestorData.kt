@@ -10,6 +10,8 @@ import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.extras.bringOf
 import io.github.adenkushnir.datebook.fencing.FencingTile
 import io.github.adenkushnir.datebook.fencing.streamWindow
+import io.github.adenkushnir.datebook.flights.FlightInfo
+import io.github.adenkushnir.datebook.flights.wallFlight
 import io.github.adenkushnir.datebook.lists.Trip
 import io.github.adenkushnir.datebook.prompts.fromLine
 import io.github.adenkushnir.datebook.tracking.packageLink
@@ -34,10 +36,10 @@ private const val TRACK = "Track: "
 // A planned leave-by for an event: when to leave and the trip in words ("20 min drive")
 data class PlannedLeave(val leaveAt: Long, val travel: String)
 
-// One calendar event for the snapshot, with its calendar's name, its planned leave-by and the NJ Transit train picked
-// for it (null when none)
+// One calendar event for the snapshot, with its calendar's name, its planned leave-by, the NJ Transit train picked
+// for it and, for flights, the flight's last-known details (null when none)
 data class SnapshotEvent(val event: CalendarEvent, val calendar: String, val leave: PlannedLeave?,
-    val train: TrainPick? = null)
+    val train: TrainPick? = null, val flight: FlightInfo? = null)
 
 // Everything the snapshot is made from
 data class SnapshotParts(
@@ -119,7 +121,8 @@ private fun dueOf(item: FollowUp): String {
     return if (item.time.isBlank()) item.date else "${item.date}T${item.time}"
 }
 
-// A calendar event, for the snapshot (with its train when one is picked, for the wall's Next card)
+// A calendar event, for the snapshot (with its train when one is picked and a flight's status, for the wall's Next
+// card)
 private fun eventJson(item: SnapshotEvent, zone: ZoneId): Map<String, Any> {
     val event = item.event
     val json = mutableMapOf<String, Any>("id" to "${event.eventId}-${event.begin / 1000}", "title" to event.title,
@@ -134,6 +137,11 @@ private fun eventJson(item: SnapshotEvent, zone: ZoneId): Map<String, Any> {
     if (item.train != null) {
         json["train"] = mapOf("departs" to Instant.ofEpochMilli(item.train.departs).atZone(zone).format(CLOCK),
             "from" to item.train.fromName, "to" to item.train.toName)
+    }
+
+    // A flight's status line, orange on the wall when it's late or cancelled
+    if (item.flight != null) {
+        json["flight"] = wallFlight(item.flight)
     }
     return json
 }

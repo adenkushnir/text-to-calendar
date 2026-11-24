@@ -8,8 +8,10 @@ import io.github.adenkushnir.datebook.data.KIND_REMINDER
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.fencing.FencingTile
 import io.github.adenkushnir.datebook.fencing.Tournament
+import io.github.adenkushnir.datebook.flights.FlightInfo
 import io.github.adenkushnir.datebook.trains.TrainPick
 import java.net.InetAddress
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -125,6 +127,21 @@ class NestorDataTest {
         assertEquals("2037-11-20T08:00", foil["live_from"])
         assertEquals("2037-11-20T16:00", foil["live_until"])
         assertFalse(snapshotOf(SnapshotParts(), zone).containsKey("trip"))
+        assertFalse(event.containsKey("flight"))
+    }
+
+    // A flight carries its status line for the wall, orange when it's late
+    @Test
+    fun flightLine() {
+        val flight = CalendarEvent(90, 1, "Flight B61234 EWR → BOS", sixPm, sixPm + 4_620_000, false,
+            "Newark Liberty International")
+        val info = FlightInfo("B61234", "Expected", "EWR", "Newark", "Newark Liberty International", zone.id, "BOS",
+            "Boston", Instant.ofEpochMilli(sixPm), Instant.ofEpochMilli(sixPm + 2_400_000), null, null, "A", "")
+        val json = snapshotOf(SnapshotParts(events = listOf(SnapshotEvent(flight, "Personal", null, flight = info))),
+            zone)
+        val event = (json["events"] as List<*>).single() as Map<*, *>
+        assertEquals(mapOf("text" to "Delayed 40 min · departs 6:40 PM · Terminal A", "late" to true),
+            event["flight"])
     }
 
     // Only home-network addresses are used

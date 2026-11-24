@@ -6,13 +6,11 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import io.github.adenkushnir.datebook.calendar.calendarEvents
-import io.github.adenkushnir.datebook.leaveby.LeaveByStore
-import io.github.adenkushnir.datebook.leaveby.eventKey
+import io.github.adenkushnir.datebook.deliberate.effectsFor
+import io.github.adenkushnir.datebook.leaveby.NETWORK_FRESH
 import io.github.adenkushnir.datebook.leaveby.leaveByCandidates
+import io.github.adenkushnir.datebook.leaveby.leavePlan
 import io.github.adenkushnir.datebook.leaveby.showLeaveBy
-import io.github.adenkushnir.datebook.leaveby.tripText
-import io.github.adenkushnir.datebook.places.travelMinutes
-import java.time.Instant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -36,18 +34,16 @@ class LeaveByNowReceiver : BroadcastReceiver() {
                     Log.i("Datebook", "leave-by now: no event with a place in the next 4 hours")
                     return@launch
                 }
-                val mode = LeaveByStore(appContext).mode(eventKey(event.title, event.begin))
-                    ?: graph.travelSettings.mode()
-                val minutes = travelMinutes(appContext, graph.mapsKeyStore.load(), graph.travelSettings.home(),
-                    event.location, mode, Instant.ofEpochMilli(event.begin))
+                val effects = effectsFor(graph.deliberateDao.rules(), event.title, event.location)
+                val plan = leavePlan(appContext, event, effects, NETWORK_FRESH)
 
                 // Say so when there's no travel time
-                if (minutes == null) {
+                if (plan == null) {
                     Log.i("Datebook", "leave-by now: no travel time for ${event.title}")
                     return@launch
                 }
-                showLeaveBy(appContext, event, minutes, mode)
-                Log.i("Datebook", "leave-by now: ${event.title} · ${tripText(minutes, mode)}")
+                showLeaveBy(appContext, event, plan, effects)
+                Log.i("Datebook", "leave-by now: ${event.title} · ${plan.travel}")
             } finally {
                 pending.finish()
             }

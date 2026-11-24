@@ -115,9 +115,14 @@ import io.github.adenkushnir.datebook.followups.WeekAheadSettings
 import io.github.adenkushnir.datebook.followups.bookNextFollowUp
 import io.github.adenkushnir.datebook.followups.weekDays
 import io.github.adenkushnir.datebook.followups.scheduleFollowUps
+import io.github.adenkushnir.datebook.flights.FLIGHT_EARLY_MINUTES
+import io.github.adenkushnir.datebook.flights.INTERNATIONAL_EARLY_MINUTES
+import io.github.adenkushnir.datebook.flights.isFlightTitle
 import io.github.adenkushnir.datebook.flights.statusLine
 import io.github.adenkushnir.datebook.leaveby.LeaveByStore
+import io.github.adenkushnir.datebook.leaveby.earlyFor
 import io.github.adenkushnir.datebook.leaveby.eventKey
+import io.github.adenkushnir.datebook.leaveby.planLeaveBy
 import io.github.adenkushnir.datebook.leaveby.scheduleLeaveBy
 import io.github.adenkushnir.datebook.pipeline.IncomingText
 import io.github.adenkushnir.datebook.pipeline.eventTimes
@@ -200,6 +205,8 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.runningFold
@@ -864,8 +871,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // A plan's card (a suggestion, or a calendar event shown as one) with its travel modes, live trains on its day,
-    // flight status and buttons; changes to the travel mode or train are remembered for its leave-by alert
+    // A plan's card (a suggestion, or a calendar event shown as one) with its travel modes and how early to be there,
+    // live trains on its day, flight status (with when to be at the airport) and buttons; changes to the travel mode,
+    // early minutes or train are remembered for its leave-by alert
     @Composable
     private fun PlanCard(
         graph: AppGraph,
@@ -879,6 +887,11 @@ class MainActivity : ComponentActivity() {
         var travelMode by remember(plan) { mutableStateOf(plan?.let { modeFor(graph, it) }) }
         var trainChoices by remember { mutableStateOf<TrainChoices?>(null) }
         var trainRefresh by remember { mutableIntStateOf(0) }
+        var early by remember(plan) { mutableStateOf<Int?>(null) }
+        LaunchedEffect(plan) {
+            val shown = plan ?: return@LaunchedEffect
+            early = earlyFor(applicationContext, shown.title, shown.location, planBegin(shown))
+        }
         LaunchedEffect(plan, travelMode, trainRefresh) {
             val shown = plan ?: return@LaunchedEffect
             trainChoices = trainsBefore(graph, shown)
@@ -897,6 +910,16 @@ class MainActivity : ComponentActivity() {
             onOpenMaps = { place -> openMaps(place, travelMode ?: graph.travelSettings.mode()) },
             onTrack = { url -> openLink(url) },
             flightStatus = plan?.let { flightStatusFor(graph, it) },
+            beThere = plan?.let { shown -> early?.let { beThereFor(shown, it) } },
+            early = early?.takeIf { plan?.location?.isNotBlank() == true },
+            earlyHint = plan?.let { earlyHintFor(it) },
+            onEarly = { minutes ->
+                val shown = plan ?: return@SuggestionScreen
+                LeaveByStore(applicationContext).setEarly(eventKey(shown.title, planBegin(shown)), minutes)
+                early = minutes
+                trainRefresh += 1
+                lifecycleScope.launch(Dispatchers.IO) { planLeaveBy(applicationContext) }  // book the alert again
+            },
             trains = trainChoices,
             guessText = guessText,
             onOpenCalendar = onOpenCalendar,
@@ -905,6 +928,7 @@ class MainActivity : ComponentActivity() {
                 val key = eventKey(shown.title, planBegin(shown))
                 graph.trainStore.setChoice(key, row.pick.trainId)
                 graph.trainStore.setPick(key, row.pick)
+                LeaveByStore(applicationContext).setTrainNote(key, "", "")  // your own pick: no "was cancelled" note
                 trainRefresh += 1
             },
             onSwitchOrigin = { code ->
@@ -1102,8 +1126,30 @@ class MainActivity : ComponentActivity() {
         return graph.flightStore.info(plan.flight, plan.start)?.let { statusLine(it) }
     }
 
+    // Return true if a plan is a flight ("Flight B61234 EWR → BOS", or one with a flight number)
+    private fun isFlight(plan: Suggestion): Boolean {
+        return plan.flight.isNotBlank() || isFlightTitle(plan.title)
+    }
+
+    // A flight's "Be at the airport by 5:35 PM" line (null for other plans)
+    private fun beThereFor(plan: Suggestion, early: Int): String? {
+        // Only flights
+        if (!isFlight(plan)) {
+            return null
+        }
+        val at = Instant.ofEpochMilli(planBegin(plan) - early * 60_000L).atZone(ZoneId.systemDefault())
+        return "Be at the airport by ${at.format(DateTimeFormatter.ofPattern("h:mm a", Locale.US))}"
+    }
+
+    // Under the stepper for flights still on the default: where the minutes come from (null otherwise)
+    private fun earlyHintFor(plan: Suggestion): String? {
+        val chosen = LeaveByStore(applicationContext).early(eventKey(plan.title, planBegin(plan)))
+        return if (isFlight(plan) && chosen == null) "Flights start at $FLIGHT_EARLY_MINUTES min " +
+            "($INTERNATIONAL_EARLY_MINUTES abroad) until you change it." else null
+    }
+
     // Return true if a plan gets NJ Transit trains: it goes by transit, has a place, and an NJ Transit account is saved
-    private fun showsTrains(graph: AppGraph, plan: Suggestion): Boolean {
+    private suspend fun showsTrains(graph: AppGraph, plan: Suggestion): Boolean {
         return !graph.njtUserStore.load().isNullOrBlank() && wantsTrain(applicationContext, plan)
     }
 
@@ -1115,7 +1161,7 @@ class MainActivity : ComponentActivity() {
 
     // What a plan's train section shows before the live list loads: nothing for other plans, "Trains show on the day"
     // before its day, or "Loading trains…"
-    private fun trainsBefore(graph: AppGraph, plan: Suggestion): TrainChoices? {
+    private suspend fun trainsBefore(graph: AppGraph, plan: Suggestion): TrainChoices? {
         // Pick the waiting message for the plan
         return when {
             !showsTrains(graph, plan) -> null

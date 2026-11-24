@@ -1,5 +1,6 @@
 // The tools Deliberate gives Claude: look things up (calendar, plans and their messages, lists, settings, weather and
-// trains), ask you a question with choices, and propose changes for you to confirm; plus Deliberate's instructions
+// trains, live flights), ask you a question with choices, and propose changes for you to confirm; plus Deliberate's
+// instructions
 package io.github.adenkushnir.datebook.deliberate
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -10,6 +11,7 @@ const val TOOL_FIND_ITEMS = "find_items"
 const val TOOL_SETTINGS = "get_settings"
 const val TOOL_EXTRAS = "get_weather_and_trains"
 const val TOOL_TOURNAMENTS = "find_tournaments"
+const val TOOL_FIND_FLIGHT = "find_flight"
 const val TOOL_ASK = "ask_choice"
 const val TOOL_PROPOSE = "propose_changes"
 const val ACT_NEW_PLAN = "new_plan"
@@ -33,8 +35,12 @@ const val ACT_DELETE_RULE = "delete_rule"
 const val ACT_PAUSE = "pause"
 const val ACT_SETTING = "set_setting"
 const val ACT_SET_LINK = "set_link"
+const val ACT_SET_PLAN_TRAVEL = "set_plan_travel"
 const val TARGET_PLAN = "plan"
 const val TARGET_ITEM = "item"
+const val TARGET_EVENT = "event"
+const val MAX_EARLY_MINUTES = 180
+val TRAVEL_CHOICES = listOf("", "DRIVE", "TRANSIT", "WALK", "BICYCLE")
 const val SET_SUMMARY_TIME = "summary_time"
 const val SET_SUMMARY_ON = "summary_on"
 const val SET_HOME = "home_address"
@@ -44,7 +50,7 @@ const val SET_KEEP_TEXTS = "keep_texts"
 val ACTIONS = listOf(ACT_NEW_PLAN, ACT_EDIT_WAITING, ACT_ADD_WAITING, ACT_IGNORE_WAITING, ACT_MOVE_EVENT,
     ACT_CANCEL_EVENT, ACT_ADD_BILL, ACT_ADD_ASSIGNMENT, ACT_ADD_REMINDER, ACT_ADD_NOTE, ACT_ADD_PACKAGE, ACT_EDIT_ITEM,
     ACT_MARK_DONE, ACT_DELETE_ITEM, ACT_PACKAGE_RECEIVED, ACT_ADD_RULE, ACT_TURN_RULE, ACT_DELETE_RULE, ACT_PAUSE,
-    ACT_SETTING, ACT_SET_LINK)
+    ACT_SETTING, ACT_SET_LINK, ACT_SET_PLAN_TRAVEL)
 val SETTINGS = listOf(SET_SUMMARY_TIME, SET_SUMMARY_ON, SET_HOME, SET_TRAVEL_MODE, SET_FLIP_TRIP, SET_KEEP_TEXTS)
 private val TODAY = DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy, h:mm a", Locale.US)
 private val STRING = mapOf("type" to "string")
@@ -88,10 +94,19 @@ private val CHANGE = objectOf(mapOf(
     "pause" to mapOf("type" to "string", "enum" to PAUSE_KINDS),
     "until" to text("For pause: YYYY-MM-DDTHH:MM, when the pause ends"),
     "setting" to mapOf("type" to "string", "enum" to SETTINGS),
-    "target" to mapOf("type" to "string", "enum" to listOf(TARGET_PLAN, TARGET_ITEM), "description" to "For " +
-        "set_link: plan for a package or trip booking (from find_plans or find_items' packages), item for a bill " +
-        "or other list item"),
+    "target" to mapOf("type" to "string", "enum" to listOf(TARGET_PLAN, TARGET_ITEM, TARGET_EVENT), "description" to
+        "For set_link: plan for a package or trip booking (from find_plans or find_items' packages), item for a bill " +
+        "or other list item. For set_plan_travel: plan for a plan from find_plans, event for a calendar event (with " +
+        "its begin)"),
     "link" to text("For set_link: the web link to save, or empty to remove it"),
+    "flight" to text("For new_plan: the flight number, airline code and number with no space, like B61234; Datebook " +
+        "fills in the title, times and airport from live data"),
+    "travel" to mapOf("type" to "string", "enum" to TRAVEL_CHOICES, "description" to "For new_plan and " +
+        "set_plan_travel: how the user gets there, for this plan only (TRANSIT means NJ Transit trains); empty to " +
+        "leave it"),
+    "early" to mapOf("type" to "integer", "description" to "For new_plan and set_plan_travel: minutes early to be " +
+        "there, for this plan only (0 to $MAX_EARLY_MINUTES); leave it out to keep the default"),
+    "station" to text("For new_plan and set_plan_travel: the NJ Transit station to leave from, for this plan only"),
 ), listOf("action"))
 
 // Every tool Deliberate offers
@@ -115,6 +130,11 @@ val DELIBERATE_TOOLS = listOf(
     ToolSpec(TOOL_TOURNAMENTS, "Read the men's foil fencing tournaments Datebook found for the coming weeks (the " +
         "user follows and watches them): days, start times, today's stream times and stage, and Watch and Results " +
         "links.", objectOf(emptyMap())),
+    ToolSpec(TOOL_FIND_FLIGHT, "Look up a flight live by number and departure date: its airports and countries, " +
+        "scheduled and current times, terminal, gate and status, and how early Datebook aims to get the user there. " +
+        "Says when it isn't found.",
+        objectOf(mapOf("flight" to text("Airline code and number, like B61234 or UA 1234"),
+            "date" to text("YYYY-MM-DD, the local departure day")), listOf("flight", "date"))),
     ToolSpec(TOOL_ASK, "Ask the user a question with 2 to 4 short choices to tap (they can also type an answer). " +
         "Use it whenever the request is unclear, then wait for the answer.",
         objectOf(mapOf("question" to STRING, "choices" to mapOf("type" to "array", "items" to STRING)),
@@ -148,6 +168,15 @@ How to work:
 - Habits are things Claude should assume when it reads new texts, like "dinners last 2 hours".
 - Pauses end at the time given; "this weekend" ends Monday at 6:00.
 - set_link saves a web link on a bill (Pay), a package (Order) or a trip booking (Booking).
+- Flights: call find_flight first. When it's found, make the plan with new_plan and its flight number (Datebook
+  fills in the title, times and airport), the date it leaves. When it isn't found, say so and ask for the departure
+  time and airport with ask_choice, then make it with new_plan with the flight number, date and time anyway. Check
+  find_plans for the same flight number on that day first: if there is one, change it with set_plan_travel instead
+  of making a second plan. Flights aim to get the user to the airport 60 minutes early (2 hours abroad) unless they
+  say otherwise.
+- "I'm taking the train", "drive me", "be there 30 minutes early" for one plan: put travel, early and station on the
+  new_plan, or use set_plan_travel for a plan or calendar event that exists. Use rules only when the user means
+  every plan like it.
 - For anything outside Datebook's data (any fencing tournament, past or future, its results or stream, a venue,
   opening hours, news), search the web with web_search and read pages with web_fetch. Give the useful link in
   your answer.

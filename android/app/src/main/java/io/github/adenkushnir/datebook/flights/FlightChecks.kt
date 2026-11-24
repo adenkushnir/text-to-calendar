@@ -1,5 +1,6 @@
 // Background checks on flights you have plans for: the day before, then 3 hours, 1 hour and 30 minutes before
-// departure, and at landing (about 6 lookups a flight); an alert goes out only when something changed
+// departure, and at landing (about 6 lookups a flight); an alert goes out only when something changed. A flight that
+// wasn't found yet is looked for once an hour from 2 days before its day
 package io.github.adenkushnir.datebook.flights
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -22,11 +23,14 @@ import io.github.adenkushnir.datebook.R
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.prompts.EXTRA_SUGGESTION_ID
 import io.github.adenkushnir.datebook.prompts.canNotify
+import java.time.LocalDate
 import java.util.concurrent.TimeUnit
 const val CHANGES_CHANNEL = "travel_changes"
 private const val CHECK_WORK = "datebook-flight-checks"
 private const val MINUTE = 60_000L
 private val BEFORE_DEPARTURE = listOf(24 * 60, 3 * 60, 60, 30)  // minutes before departure
+private const val HOUR = 60 * MINUTE
+private const val LOOK_FROM_DAYS = 2L  // a flight not found yet is looked for from this many days before its day
 
 // When to check a flight: the day before, 3 h, 1 h and 30 min before departure, and at landing (empty when its
 // departure time is unknown)
@@ -51,7 +55,8 @@ suspend fun checkFlights(context: Context) {
     // Look at each flight plan
     for (plan in graph.dao.flightSuggestions()) {
         val date = plan.start.take(10)
-        val before = graph.flightStore.info(plan.flight, date) ?: continue  // never found
+        val before = graph.flightStore.info(plan.flight, date) ?: findLate(context, key, plan.flight, date, now)
+            ?: continue  // not found yet
         val due = checkTimes(before).filter { it <= now && !graph.flightStore.checked(plan.flight, date, it) }
 
         // Skip flights with no check due
@@ -69,6 +74,21 @@ suspend fun checkFlights(context: Context) {
             showFlightChange(context, plan, change, statusLine(after))
         }
     }
+}
+
+// Look again for a flight that wasn't found when its plan was made (too far ahead, or no data yet): once an hour from 2
+// days before its day, remembering it once found; null until then
+private fun findLate(context: Context, key: String, flight: String, date: String, now: Long): FlightInfo? {
+    val store = AppGraph.get(context).flightStore
+    val day = runCatching { LocalDate.parse(date) }.getOrNull() ?: return null
+    val hour = now / HOUR * HOUR
+
+    // Only close to its day, and once an hour
+    if (LocalDate.now().plusDays(LOOK_FROM_DAYS).isBefore(day) || store.checked(flight, date, -hour)) {
+        return null
+    }
+    store.setChecked(flight, date, -hour)  // a negative time, so it can't clash with the real checks
+    return lookupFlight(key, flight, date)?.also { store.save(date, it) }
 }
 
 // Post an alert that a flight changed, like "UA1234 now departs 7:10 PM (25 min late)"; tapping it opens the plan

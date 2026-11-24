@@ -71,4 +71,37 @@ class ChangesTest {
         assertEquals(3, joined.last().blocks.size)
         assertEquals(emptyList<Turn>(), turnsFromJson("not json"))
     }
+
+    // A flight number is tidied, and a plan's own travel (mode, early minutes, station) is read; early stays unknown
+    // when not given, since 0 means right on time
+    @Test
+    fun readsFlightAndTravel() {
+        val input = mapOf("changes" to listOf(
+            mapOf("action" to "new_plan", "flight" to "b6 1234", "date" to "2026-11-25", "travel" to "transit",
+                "early" to 30, "station" to "New Brunswick"),
+            mapOf("action" to "set_plan_travel", "target" to "plan", "id" to 7, "early" to 0),
+            mapOf("action" to "set_plan_travel", "target" to "plan", "id" to 7, "travel" to "DRIVE"),
+        ))
+        val changes = changesOf(input)
+        assertEquals("B61234", changes[0].flight)
+        assertEquals("TRANSIT", changes[0].travel)
+        assertEquals(30, changes[0].early)
+        assertEquals("New Brunswick", changes[0].station)
+        assertEquals(0, changes[1].early)
+        assertNull(changes[2].early)
+    }
+
+    // A flight plan needs only its day; per-plan travel needs a target and something to set, in range
+    @Test
+    fun checksTravel() {
+        assertNull(problemWith(Change(ACT_NEW_PLAN, flight = "B61234", date = "2026-11-25", travel = "TRANSIT",
+            early = 30)))
+        assertNotNull(problemWith(Change(ACT_NEW_PLAN, flight = "B61234")))
+        assertNotNull(problemWith(Change(ACT_NEW_PLAN, title = "Lunch", date = "2026-11-21", travel = "TELEPORT")))
+        assertNotNull(problemWith(Change(ACT_NEW_PLAN, title = "Lunch", date = "2026-11-21", early = 500)))
+        assertNull(problemWith(Change(ACT_SET_PLAN_TRAVEL, id = 7, target = TARGET_PLAN, early = 0)))
+        assertNotNull(problemWith(Change(ACT_SET_PLAN_TRAVEL, id = 7, target = TARGET_PLAN)))
+        assertNotNull(problemWith(Change(ACT_SET_PLAN_TRAVEL, id = 7, target = TARGET_EVENT, travel = "WALK")))
+        assertNull(problemWith(Change(ACT_SET_PLAN_TRAVEL, id = 7, begin = 5, target = TARGET_EVENT, travel = "WALK")))
+    }
 }

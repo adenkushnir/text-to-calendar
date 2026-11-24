@@ -26,9 +26,13 @@ It's a full Kotlin app, built with Jetpack Compose, in [`android/`](android/); t
 **Knowing your calendar**
 - Warns about clashes, skips plans already on your calendar, and turns "moved to 8" or "cancelled" into a
   **Move Dinner to 8 PM?** prompt that opens the event.
-- **Leave-by alerts** with travel time (drive, transit, walk or bike) and **Open in Maps**.
-- **Flights** filled in from live flight data, with delay and gate alerts. **NJ Transit** trains toward a plan, with
-  your train on the leave-by alert. **Track** links for UPS, FedEx, USPS, Amazon and DHL packages.
+- **Leave-by alerts** with travel time (drive, transit, walk or bike) and **Open in Maps**. Each plan can have its own
+  travel mode and **Be there early** minutes (on its card, or by telling Deliberate).
+- **Flights** filled in from live flight data, with delay and gate alerts, and a leave-by alert for the airport: be
+  there 60 minutes early (2 hours abroad) unless you say otherwise. One plan per flight, however many emails mention it.
+- **NJ Transit** trains toward a plan: by transit, the leave-by comes from your train (its time, less the walk or
+  drive to the station). If your train is cancelled or too late, Datebook picks another and updates the alert, or
+  says no train makes it and gives the drive. **Track** links for UPS, FedEx, USPS, Amazon and DHL packages.
 - Bills and assignments become reminders, not events. Loose plans ("we should get lunch next week") get a nudge to
   pin them down.
 
@@ -51,6 +55,8 @@ It's a full Kotlin app, built with Jetpack Compose, in [`android/`](android/); t
   get to"). It looks things up, asks follow-up questions with choices, and shows a preview before it changes
   anything; every change can be undone. Its rules cover travel times, arriving early, what to bring, reminders before
   events, plans to ignore and habits Claude should assume. It can also search the web for anything else.
+  Give it a flight number ("my flight tomorrow is B6 1234, I'm taking the train, 30 minutes early") and it looks the
+  flight up live and shows a flight card to confirm; "I'm driving" or "be there early" works for any one plan.
 - **Canvas** (Settings → School): your Canvas Calendar Feed link brings assignments, quizzes and exams into Due soon,
   with a notification when one moves or is removed, and offers class events like plans from texts.
 - **Fencing** (Settings → Fencing, off to start): men's foil tournaments to follow and watch, found by Claude's web
@@ -64,7 +70,8 @@ finds it by itself (mDNS, `_nestor._tcp`) and, once paired, keeps it up to date:
 - **Pairing:** on the computer running Nestor, run `python -m nestor --pair`, then type the 6-digit code in Settings →
   Nestor. Android 17 also asks to let Datebook find devices on your Wi-Fi.
 - **What Nestor gets:** a snapshot of your waiting plans, lists, notes, reminders, train trip and the next 14 days of
-  your calendar (with the train picked for each leave-by), and this week's men's foil when fencing is on, sent again
+  your calendar (with the train picked for each leave-by and each flight's live status), and this week's men's foil
+  when fencing is on, sent again
   whenever something changes. Nestor uses it for its wall screen and its voice assistant, so it needs no Google login
   of its own.
 - **What Nestor says:** leave-by alerts, travel changes, reminders and follow-ups, and the evening heads-ups. The

@@ -239,7 +239,7 @@ class Deliberate(private val context: Context, private val ask: (system: String,
                 waiting = true
             } else if (block.name == TOOL_PROPOSE) {
                 val changes = changesOf(input)
-                val problems = changes.mapNotNull { problemWith(it) }
+                val problems = changes.mapNotNull { problemWith(it) }.ifEmpty { runner.problems(changes) }
 
                 // A proposal Datebook can't show goes back to Claude to fix
                 if (changes.isEmpty() || problems.isNotEmpty()) {
@@ -250,7 +250,8 @@ class Deliberate(private val context: Context, private val ask: (system: String,
                 val preview = runner.preview(changes)
                 line(chatId, LINE_PREVIEW, input["title"]?.toString().orEmpty().ifBlank { "Changes" },
                     mapOf("toolUseId" to block.id, "title" to input["title"], "summary" to input["summary"],
-                        "lines" to preview.lines, "matches" to preview.matches, "input" to input))
+                        "lines" to preview.lines, "matches" to preview.matches, "input" to input,
+                        "card" to preview.card))
                 waiting = true
             } else {
                 val answer = try {

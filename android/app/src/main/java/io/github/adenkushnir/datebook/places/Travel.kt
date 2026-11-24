@@ -18,10 +18,11 @@ private const val ROUTE_FIELDS = "routes.duration"
 private const val LOCATION_WAIT_SECONDS = 15L
 private val MAPPER = ObjectMapper()
 
-// The route request: from your location (or home when it isn't known) to the place, by the mode; driving uses live
-// traffic and transit aims to arrive on time; null when there is nowhere to start from
-fun routeBody(from: Pair<Double, Double>?, home: String, to: String, mode: String, arriveAt: Instant):
-    Map<String, Any>? {
+// The route request: from your location (or home when it isn't known) to the place (or the exact spot when given, like
+// a station), by the mode; driving uses live traffic and transit aims to arrive on time; null when there is nowhere to
+// start from
+fun routeBody(from: Pair<Double, Double>?, home: String, to: String, mode: String, arriveAt: Instant,
+    toSpot: Pair<Double, Double>? = null): Map<String, Any>? {
     // Pick where the trip starts
     val origin = when {
         from != null -> mapOf("location" to mapOf("latLng" to mapOf("latitude" to from.first,
@@ -29,8 +30,9 @@ fun routeBody(from: Pair<Double, Double>?, home: String, to: String, mode: Strin
         home.isNotBlank() -> mapOf("address" to home)
         else -> return null
     }
-    val body = mutableMapOf("origin" to origin, "destination" to mapOf("address" to to),
-        "travelMode" to travelMode(mode).id)
+    val destination = if (toSpot != null) mapOf("location" to mapOf("latLng" to mapOf("latitude" to toSpot.first,
+        "longitude" to toSpot.second))) else mapOf("address" to to)
+    val body = mutableMapOf("origin" to origin, "destination" to destination, "travelMode" to travelMode(mode).id)
 
     // Add what each mode allows: live traffic for driving, an arrival time for transit
     if (travelMode(mode).id == TRAVEL_DRIVE) {
@@ -53,14 +55,17 @@ fun parseMinutes(json: String): Int? {
     return ceil(seconds / 60).toInt()
 }
 
-// Ask Google how many minutes it takes to get to a place by a mode, arriving at a time; null without a key, without a
-// starting point, without a route, or on any failure; this waits on the network, so call it off the main thread
-fun travelMinutes(context: Context, key: String?, home: String, place: String, mode: String, arriveAt: Instant): Int? {
+// Ask Google how many minutes it takes to get to a place (or an exact spot) by a mode, arriving at a time; null without
+// a key, without a starting point, without a route, or on any failure; this waits on the network, so call it off the
+// main thread
+fun travelMinutes(context: Context, key: String?, home: String, place: String, mode: String, arriveAt: Instant,
+    toSpot: Pair<Double, Double>? = null): Int? {
     // Nothing to ask without a key or a place
-    if (key.isNullOrBlank() || place.isBlank()) {
+    if (key.isNullOrBlank() || (place.isBlank() && toSpot == null)) {
         return null
     }
-    val body = routeBody(currentLocation(context), home, place, mode, arriveAt) ?: return null  // nowhere to start
+    val body = routeBody(currentLocation(context), home, place, mode, arriveAt, toSpot)
+        ?: return null  // nowhere to start
 
     // Any network or reply problem means no travel time
     return try {
