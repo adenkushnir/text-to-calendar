@@ -16,6 +16,7 @@ const val LINE_PREVIEW = "preview"
 const val LINE_DONE = "done"
 const val LINE_NOTE = "note"
 const val LINE_ERROR = "error"
+const val LINE_JOURNEY = "journey"  // a journey card, with Add as a plan
 const val STATE_CONFIRMED = "confirmed"
 const val STATE_CANCELLED = "cancelled"
 

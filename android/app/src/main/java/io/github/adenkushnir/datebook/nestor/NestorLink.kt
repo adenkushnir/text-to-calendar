@@ -29,6 +29,10 @@ import io.github.adenkushnir.datebook.fencing.FencingSettings
 import io.github.adenkushnir.datebook.fencing.fencingTiles
 import io.github.adenkushnir.datebook.followups.FOLLOW_UP_IDS
 import io.github.adenkushnir.datebook.followups.bookNextFollowUp
+import io.github.adenkushnir.datebook.deliberate.ACT_NEW_PLAN
+import io.github.adenkushnir.datebook.deliberate.Change
+import io.github.adenkushnir.datebook.deliberate.DeliberateRunner
+import io.github.adenkushnir.datebook.journeys.JourneyStore
 import io.github.adenkushnir.datebook.leaveby.LeaveByStore
 import io.github.adenkushnir.datebook.leaveby.NETWORK_NONE
 import io.github.adenkushnir.datebook.leaveby.eventKey
@@ -347,6 +351,7 @@ object NestorLink {
         val events = runCatching { calendarEvents(context, from, to, switchedOff) }.getOrDefault(emptyList())
         val rules = graph.deliberateDao.rules()
         val leaveBy = LeaveByStore(context)
+        val journeys = JourneyStore(context)
         val fencing = FencingSettings(context)
         val stations = graph.trainSettings.stations().associate { it.code to it.name }
         val trip = graph.trainSettings.trip()?.let {
@@ -370,7 +375,8 @@ object NestorLink {
                 val booked = leaveBy.bookedFor(key) != null
                 val plan = if (booked) leavePlan(context, event, effects, NETWORK_NONE) else null
                 SnapshotEvent(event, names[event.calendarId].orEmpty(), plan?.let { PlannedLeave(it.leaveAt,
-                    it.travel, it.early) }, plan?.train, flightFor(context, event.title, event.begin).second)
+                    it.travel, it.early) }, plan?.train, flightFor(context, event.title, event.begin).second,
+                    journeys.journey(key)?.first)
             },
         )
     }
@@ -502,8 +508,25 @@ object NestorLink {
     }
 }
 
+// Make John's journey a plan, from {"title", "start" (YYYY-MM-DDTHH:MM), "place", "mode"}: saved straight to the
+// calendar like a confirmed Deliberate plan (nothing happens when the details can't be read)
+private suspend fun addJourney(context: Context, text: String) {
+    val fields = runCatching { MAPPER.readTree(text) }.getOrNull() ?: return
+    val start = fields.path("start").asText("")
+
+    // A plan needs a title and a day
+    if (fields.path("title").asText("").isBlank() || start.length < 10) {
+        return
+    }
+    val change = Change(ACT_NEW_PLAN, title = fields.path("title").asText(""), date = start.take(10),
+        time = start.drop(11).take(5), place = fields.path("place").asText(""),
+        travel = fields.path("mode").asText("").uppercase())
+    DeliberateRunner(context).apply(listOf(change))
+}
+
 // Carry out one action from Nestor: add (show the Add to calendar? prompt again), ignore, done (a bill, assignment or
-// reminder) or new_plan (read like something typed, with prompts for its plans)
+// reminder), new_plan (read like something typed, with prompts for its plans) or add_journey (John's journey, which you
+// said to make a plan: saved straight to your calendar with its travel mode)
 suspend fun perform(context: Context, action: String, item: Long, text: String) {
     val graph = AppGraph.get(context)
 
@@ -514,6 +537,7 @@ suspend fun perform(context: Context, action: String, item: Long, text: String) 
         "ignore" -> ignoreSuggestion(context, item)
         "done" -> markDone(context, item)
         "new_plan" -> if (text.isNotBlank()) graph.pipeline.typed(text, announce = true)
+        "add_journey" -> addJourney(context, text)
         else -> Log.w(TAG, "nestor: unknown action $action")
     }
 }

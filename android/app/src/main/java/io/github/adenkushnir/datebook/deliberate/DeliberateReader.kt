@@ -6,6 +6,8 @@ import io.github.adenkushnir.datebook.AppGraph
 import io.github.adenkushnir.datebook.flights.flightEarlyMinutes
 import io.github.adenkushnir.datebook.flights.isInternational
 import io.github.adenkushnir.datebook.flights.FlightInfo
+import io.github.adenkushnir.datebook.journeys.Journey
+import io.github.adenkushnir.datebook.journeys.planJourney
 import io.github.adenkushnir.datebook.flights.lookupFlights
 import io.github.adenkushnir.datebook.flights.statusLine
 import io.github.adenkushnir.datebook.leaveby.LeaveByStore
@@ -112,6 +114,27 @@ class DeliberateReader(private val context: Context) {
             "${info.fromCountry}) " +
             "to ${info.toCity} (${info.toCode}, ${info.toCountry}) · departs $departs (${at.id}) · lands $lands · " +
             "$abroad, so Datebook aims to get the user there ${flightEarlyMinutes(info)} min early unless they say"
+    }
+
+    // Plan a journey for find_journey: the journey (null when there's no route), what it's for, and a short version
+    // for Claude
+    fun journey(input: Map<String, Any?>): Triple<Journey?, String, String> {
+        val place = input["to"]?.toString().orEmpty().trim()
+        val mode = input["mode"]?.toString().orEmpty().ifBlank { "TRANSIT" }
+        val only = input["only"]?.toString().orEmpty().takeIf { it == "TRAIN" || it == "BUS" }
+        val at = { name: String -> runCatching { java.time.LocalDateTime.parse(input[name]?.toString().orEmpty()) }
+            .getOrNull()?.atZone(zone)?.toInstant()?.toEpochMilli() }
+        val title = input["title"]?.toString().orEmpty().ifBlank { place.substringBefore(",") }
+        val journey = planJourney(context, graph.mapsKeyStore.load(), graph.travelSettings.home(), place,
+            place.substringBefore(","), mode, at("leave_at"), at("arrive_by"), listOfNotNull(only))
+
+        // No route (no Maps key, no internet, or nowhere Google knows)
+        if (journey == null) {
+            return Triple(null, title, "No journey found to $place (no route, no internet, or no Google Maps key).")
+        }
+        val clock = { millis: Long -> Instant.ofEpochMilli(millis).atZone(zone).format(CLOCK) }
+        val steps = journey.steps.joinToString("; ") { "${clock(it.starts)} ${it.title} (${it.under})" }
+        return Triple(journey, title, "Shown to the user as a card. ${journey.minutes} min: $steps")
     }
 
     // A plan's or event's own travel settings in words, like "this plan: TRANSIT, 30 min early" ("" when none)

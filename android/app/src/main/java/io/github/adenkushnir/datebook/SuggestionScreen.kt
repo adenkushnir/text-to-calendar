@@ -47,6 +47,8 @@ import io.github.adenkushnir.datebook.ui.SegmentedBar
 import io.github.adenkushnir.datebook.ui.PlainButton
 import io.github.adenkushnir.datebook.ui.travelIcon
 import io.github.adenkushnir.datebook.deliberate.minutesText
+import io.github.adenkushnir.datebook.journeys.Journey
+import io.github.adenkushnir.datebook.journeys.JourneySteps
 
 private val AIRPORT_LINE = Color(0xFFFFBE6A)  // "Be at the airport by", in the warning colour
 private const val EARLY_STEP = 5  // the Be there early stepper moves 5 minutes a tap, up to 3 hours
@@ -68,6 +70,7 @@ fun SuggestionScreen(
     early: Int? = null,
     earlyHint: String? = null,
     onEarly: (Int) -> Unit = {},
+    journey: Journey? = null,
     trains: TrainChoices? = null,
     onPickTrain: (TrainRow) -> Unit = {},
     onSwitchOrigin: (String) -> Unit = {},
@@ -119,6 +122,18 @@ fun SuggestionScreen(
                 }
 
                 Muted(statusText(suggestion))
+            }
+
+            // The whole trip there, step by step
+            if (journey != null) {
+                DatebookCard {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        SectionLabel("Your trip")
+                        Text("", modifier = Modifier.weight(1f))
+                        Text(minutesText(journey.minutes), fontWeight = FontWeight.SemiBold)
+                    }
+                    JourneySteps(journey)
+                }
             }
 
             // Show the plan's NJ Transit trains when it goes by transit

@@ -49,6 +49,10 @@ import androidx.compose.ui.unit.sp
 import io.github.adenkushnir.datebook.DatebookCard
 import io.github.adenkushnir.datebook.Muted
 import io.github.adenkushnir.datebook.SectionLabel
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
+import io.github.adenkushnir.datebook.journeys.Journey
+import io.github.adenkushnir.datebook.journeys.JourneySteps
 import io.github.adenkushnir.datebook.ui.DatebookIcons
 import io.github.adenkushnir.datebook.ui.GelButton
 import io.github.adenkushnir.datebook.ui.GelSwitch
@@ -103,6 +107,7 @@ class DeliberateActions(
     val onRetry: suspend (Long) -> Unit = {},
     val onRuleOn: suspend (Rule, Boolean) -> Unit = { _, _ -> },
     val onDeleteRule: suspend (Long) -> Unit = {},
+    val onAddJourney: suspend (Long) -> Unit = {},
     val onOpenChat: (Long) -> Unit = {},
     val onNewChat: () -> Unit = {},
 )
@@ -270,6 +275,7 @@ private fun LineView(line: DeliberateLine, changes: List<DeliberateChange>, busy
             }
         }
         LINE_PREVIEW -> PreviewCard(line, data, busy, actions, work)
+        LINE_JOURNEY -> JourneyCard(line, data, busy, actions, work)
         LINE_DONE -> DatebookCard {
             Text(line.text)
             val changeId = (data["changeId"] as? Number)?.toLong() ?: 0
@@ -334,6 +340,40 @@ private fun FlightPreview(card: Map<*, *>) {
         for (text in (card["chips"] as? List<*>).orEmpty()) {
             Text(text.toString(), fontSize = 14.sp, modifier = Modifier.clip(chip).background(CHIP_FILL)
                 .border(1.dp, CHIP_EDGE, chip).padding(horizontal = 12.dp, vertical = 6.dp))
+        }
+    }
+}
+
+// A journey from find_journey: when you'd get there and how long it takes, every step, then Add as a plan (saved
+// straight to your calendar) and Other times (asks Deliberate); once added it says so
+@Composable
+private fun JourneyCard(line: DeliberateLine, data: Map<String, Any?>, busy: Boolean, actions: DeliberateActions,
+    work: (suspend () -> Unit) -> Unit) {
+    val journey = remember(line.id) {
+        runCatching { jacksonObjectMapper().readValue<Journey>(data["journey"].toString()) }.getOrNull()
+    } ?: return
+    val arrive = Instant.ofEpochMilli(journey.arrive).atZone(ZoneId.systemDefault())
+        .format(DateTimeFormatter.ofPattern("h:mm a", Locale.US))
+    DatebookCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SectionLabel("Journey · there by $arrive")
+            Text("", modifier = Modifier.weight(1f))
+            Text(minutesText(journey.minutes), fontWeight = FontWeight.SemiBold)
+        }
+        JourneySteps(journey)
+
+        // Add it until it's added, then say so
+        if (line.state.isBlank()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                GelButton(onClick = { work { actions.onAddJourney(line.id) } }, green = true, enabled = !busy) {
+                    Text("Add as a plan")
+                }
+                GlassButton(onClick = { work { actions.onSend("Other times for that journey?") } }, enabled = !busy) {
+                    Text("Other times")
+                }
+            }
+        } else {
+            Muted("✓ Added to your calendar")
         }
     }
 }

@@ -164,6 +164,13 @@ import io.github.adenkushnir.datebook.setup.setupFinished
 import io.github.adenkushnir.datebook.setup.showSamplePrompt
 import io.github.adenkushnir.datebook.summary.scheduleSummary
 import io.github.adenkushnir.datebook.extras.scheduleEvening
+import io.github.adenkushnir.datebook.journeys.Journey
+import io.github.adenkushnir.datebook.places.TRAVEL_DRIVE
+import io.github.adenkushnir.datebook.places.TRAVEL_TRANSIT
+import io.github.adenkushnir.datebook.prompts.isChange
+import io.github.adenkushnir.datebook.journeys.JourneyStore
+import io.github.adenkushnir.datebook.journeys.planJourney
+import io.github.adenkushnir.datebook.journeys.withLiveTrain
 import io.github.adenkushnir.datebook.trains.ON_THE_DAY
 import io.github.adenkushnir.datebook.trains.TrainBoard
 import io.github.adenkushnir.datebook.trains.TrainChoices
@@ -595,6 +602,7 @@ class MainActivity : ComponentActivity() {
                     onRetry = { id -> deliberate.retry(id) },
                     onRuleOn = { rule, on -> deliberate.setRuleOn(rule, on) },
                     onDeleteRule = { id -> deliberate.deleteRule(id) },
+                    onAddJourney = { id -> deliberate.addJourney(id) },
                     onOpenChat = { id -> chatId = id },
                     onNewChat = { chatId = 0 },
                 )
@@ -903,9 +911,14 @@ class MainActivity : ComponentActivity() {
         var trainChoices by remember { mutableStateOf<TrainChoices?>(null) }
         var trainRefresh by remember { mutableIntStateOf(0) }
         var early by remember(plan) { mutableStateOf<Int?>(null) }
+        var journey by remember(plan) { mutableStateOf<Journey?>(null) }
         LaunchedEffect(plan) {
             val shown = plan ?: return@LaunchedEffect
             early = earlyFor(applicationContext, shown.title, shown.location, planBegin(shown))
+        }
+        LaunchedEffect(plan, travelMode, early, trainRefresh) {
+            val shown = plan ?: return@LaunchedEffect
+            journey = withContext(Dispatchers.IO) { journeyFor(graph, shown, travelMode, early ?: 0) }
         }
         LaunchedEffect(plan, travelMode, trainRefresh) {
             val shown = plan ?: return@LaunchedEffect
@@ -926,6 +939,7 @@ class MainActivity : ComponentActivity() {
             onTrack = { url -> openLink(url) },
             flightStatus = plan?.let { flightStatusFor(graph, it) },
             beThere = plan?.let { shown -> early?.let { beThereFor(shown, it) } },
+            journey = journey,
             early = early?.takeIf { plan?.location?.isNotBlank() == true },
             earlyHint = plan?.let { earlyHintFor(it) },
             onEarly = { minutes ->
@@ -1139,6 +1153,31 @@ class MainActivity : ComponentActivity() {
             return null
         }
         return graph.flightStore.info(plan.flight, plan.start)?.let { statusLine(it) }
+    }
+
+    // A plan's journey for its card: the kept one, worked out again when it was kept for another mode or (on the plan's
+    // day) over 10 minutes ago, with the picked NJ Transit train's live state; null for plans without a place, changes
+    // and plans already past (call it off the main thread)
+    private fun journeyFor(graph: AppGraph, plan: Suggestion, mode: String?, early: Int): Journey? {
+        val begin = planBegin(plan)
+        val now = System.currentTimeMillis()
+
+        // Only plans you still have to get to
+        if (plan.location.isBlank() || isChange(plan) || begin <= now) {
+            return null
+        }
+        val key = eventKey(plan.title, begin)
+        val wanted = mode ?: graph.travelSettings.mode()
+        val store = JourneyStore(applicationContext)
+        val walking = wanted !in setOf(TRAVEL_TRANSIT, TRAVEL_DRIVE)  // walk and bike plans are planned as a walk
+        val kept = store.journey(key)?.takeIf { it.first.mode == wanted || walking }
+        val stale = kept == null || (isPlanDay(plan) && now - kept.second > 10 * 60_000)
+        val journey = if (!stale) kept!!.first else planJourney(applicationContext, graph.mapsKeyStore.load(),
+            graph.travelSettings.home(), plan.location, plan.location.substringBefore(","), wanted, null,
+            begin - early * 60_000L)?.also { store.save(key, it, now) } ?: kept?.first ?: return null
+        val pick = graph.trainStore.pick(key) ?: return journey
+        return withLiveTrain(journey, pick.trainId, pick.track, pick.secondsLate / 60,
+            pick.status.contains("cancel", ignoreCase = true))
     }
 
     // Return true if a plan is a flight ("Flight B61234 EWR → BOS", or one with a flight number)

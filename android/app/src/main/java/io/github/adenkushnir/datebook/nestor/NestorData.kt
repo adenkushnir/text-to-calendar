@@ -11,6 +11,7 @@ import io.github.adenkushnir.datebook.extras.bringOf
 import io.github.adenkushnir.datebook.fencing.FencingTile
 import io.github.adenkushnir.datebook.fencing.streamWindow
 import io.github.adenkushnir.datebook.flights.FlightInfo
+import io.github.adenkushnir.datebook.journeys.Journey
 import io.github.adenkushnir.datebook.flights.wallFlight
 import io.github.adenkushnir.datebook.lists.Trip
 import io.github.adenkushnir.datebook.prompts.fromLine
@@ -38,9 +39,9 @@ private const val TRACK = "Track: "
 data class PlannedLeave(val leaveAt: Long, val travel: String, val early: Int = 0)
 
 // One calendar event for the snapshot, with its calendar's name, its planned leave-by, the NJ Transit train picked
-// for it and, for flights, the flight's last-known details (null when none)
+// for it, for flights the flight's last-known details, and the journey kept from its card (null when none)
 data class SnapshotEvent(val event: CalendarEvent, val calendar: String, val leave: PlannedLeave?,
-    val train: TrainPick? = null, val flight: FlightInfo? = null)
+    val train: TrainPick? = null, val flight: FlightInfo? = null, val journey: Journey? = null)
 
 // Everything the snapshot is made from
 data class SnapshotParts(
@@ -140,6 +141,14 @@ private fun eventJson(item: SnapshotEvent, zone: ZoneId): Map<String, Any> {
             "from" to item.train.fromName, "to" to item.train.toName, "id" to item.train.trainId,
             "arrives" to Instant.ofEpochMilli(item.train.arrives).atZone(zone).format(CLOCK),
             "track" to item.train.track, "late" to item.train.secondsLate / 60, "status" to item.train.status)
+    }
+
+    // The journey kept from the plan's card: each step's kind, words, line and colour, and when it starts
+    if (item.journey != null) {
+        json["journey"] = item.journey.steps.map { step ->
+            mapOf("kind" to step.kind, "title" to step.title, "under" to step.under, "line" to step.line,
+                "color" to step.color, "starts" to localMinutes(step.starts, zone))
+        }
     }
 
     // A flight's status line (orange on the wall when it's late or cancelled), and its details for the trip screen

@@ -12,6 +12,7 @@ const val TOOL_SETTINGS = "get_settings"
 const val TOOL_EXTRAS = "get_weather_and_trains"
 const val TOOL_TOURNAMENTS = "find_tournaments"
 const val TOOL_FIND_FLIGHT = "find_flight"
+const val TOOL_FIND_JOURNEY = "find_journey"
 const val TOOL_ASK = "ask_choice"
 const val TOOL_PROPOSE = "propose_changes"
 const val ACT_NEW_PLAN = "new_plan"
@@ -138,6 +139,18 @@ val DELIBERATE_TOOLS = listOf(
         "early Datebook aims to get the user there. Says when it isn't found.",
         objectOf(mapOf("flight" to text("Airline code and number, like B61234 or UA 1234"),
             "date" to text("YYYY-MM-DD, the local departure day")), listOf("flight", "date"))),
+    ToolSpec(TOOL_FIND_JOURNEY, "Plan how to get to a place, step by step: walks, each train or bus (line, where it's " +
+        "headed, the stops to get on and off at, and when), transfers, or a drive, leaving at a time (now when not " +
+        "given) or arriving by one. The user sees the journey as a card with every step and an Add as a plan button, " +
+        "so answer in a line or two instead of listing the steps again.",
+        objectOf(mapOf("to" to text("The place, as an address or a name Google Maps knows"),
+            "mode" to mapOf("type" to "string", "enum" to listOf("TRANSIT", "WALK", "DRIVE")),
+            "only" to mapOf("type" to "string", "enum" to listOf("", "TRAIN", "BUS"), "description" to "For transit: " +
+                "trains only or buses only, when the user asks"),
+            "leave_at" to text("YYYY-MM-DDTHH:MM, when leaving (empty for now)"),
+            "arrive_by" to text("YYYY-MM-DDTHH:MM, when to be there (empty when leaving at a time or now)"),
+            "title" to text("What the trip is for, like \"Dinner with Sam\" (empty: the place)")),
+            listOf("to", "mode"))),
     ToolSpec(TOOL_ASK, "Ask the user a question with 2 to 4 short choices to tap (they can also type an answer). " +
         "Use it whenever the request is unclear, then wait for the answer.",
         objectOf(mapOf("question" to STRING, "choices" to mapOf("type" to "array", "items" to STRING)),
@@ -183,6 +196,9 @@ How to work:
   find_plans for the same flight number on that day first: if there is one, change it with set_plan_travel instead
   of making a second plan. Flights aim to get the user to the airport 60 minutes early (2 hours abroad) unless they
   say otherwise.
+- "How do I get to X", "plan a trip to X by bus", "what would getting there by 5 look like": call find_journey.
+  If the user then wants it, they tap Add as a plan on the card (or ask you, and you make the new_plan with its
+  travel).
 - "I'm taking the train", "drive me", "be there 30 minutes early" for one plan: put travel, early and station on the
   new_plan, or use set_plan_travel for a plan or calendar event that exists. Use rules only when the user means
   every plan like it.

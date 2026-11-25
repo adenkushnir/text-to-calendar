@@ -6,6 +6,13 @@ import android.content.Context
 import android.util.Log
 import io.github.adenkushnir.datebook.AppGraph
 import io.github.adenkushnir.datebook.calendar.openEventIntent
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
+import io.github.adenkushnir.datebook.journeys.Journey
+import io.github.adenkushnir.datebook.journeys.JourneyStore
+import io.github.adenkushnir.datebook.leaveby.eventKey
+import java.time.Instant
+import java.time.ZoneId
 import io.github.adenkushnir.datebook.pipeline.PROBLEM_API_KEY
 import io.github.adenkushnir.datebook.pipeline.classifyError
 import java.time.ZonedDateTime
@@ -26,6 +33,8 @@ fun deliberateError(error: Throwable): String {
         else -> "Something went wrong asking Claude. Try again."
     }
 }
+
+private val JOURNEY_MAPPER = jacksonObjectMapper()  // journeys kept on their cards as JSON
 
 // Deliberate's conversations; ask sends the instructions and turns to Claude and returns its reply's blocks
 class Deliberate(private val context: Context, private val ask: (system: String, turns: List<Turn>) -> List<Block>) {
@@ -124,6 +133,37 @@ class Deliberate(private val context: Context, private val ask: (system: String,
             if (applied.failed.isEmpty()) "" else " Couldn't make: ${applied.failed.joinToString("; ")}."
         val toolUseId = data["toolUseId"]?.toString().orEmpty()
         saveChat(chat.id, turnsFromJson(chat.turns), blocksFromJson(chat.pending) + resultBlock(toolUseId, result))
+    }
+
+    // Add a journey card's trip as a plan: saved straight to your calendar (it opens there) with the journey's
+    // travel mode, the journey kept for the plan's card, and Undo like any other change
+    suspend fun addJourney(lineId: Long) = withContext(Dispatchers.IO) {
+        val card = dao.line(lineId)?.takeIf { it.state.isBlank() } ?: return@withContext
+        val chat = dao.chat(card.chatId) ?: return@withContext
+        val data = mapFromJson(card.data)
+        val journey = runCatching { JOURNEY_MAPPER.readValue<Journey>(data["journey"].toString()) }.getOrNull()
+            ?: return@withContext
+        val arrive = Instant.ofEpochMilli(journey.arrive).atZone(ZoneId.systemDefault())
+        val title = data["title"]?.toString().orEmpty().ifBlank { "Trip" }
+        val change = Change(ACT_NEW_PLAN, title = title, date = arrive.toLocalDate().toString(),
+            time = arrive.toLocalTime().withSecond(0).withNano(0).toString(), place = data["place"].toString(),
+            travel = journey.mode)
+        val applied = runner.apply(listOf(change))
+        dao.updateLine(card.copy(state = STATE_CONFIRMED))
+
+        // Show the new event, and keep the journey for the plan's card
+        if (applied.openEvent > 0) {
+            runCatching { context.startActivity(openEventIntent(applied.openEvent)) }
+        }
+        JourneyStore(context).save(eventKey(title, arrive.withSecond(0).withNano(0).toInstant().toEpochMilli()),
+            journey, System.currentTimeMillis())
+        val changeId = if (applied.done.isEmpty()) 0L else dao.saveChange(DeliberateChange(chatId = chat.id,
+            summary = "Added $title", createdAt = System.currentTimeMillis(), undo = toJson(applied.undo),
+            reverted = false))
+        line(chat.id, LINE_DONE, if (changeId > 0) "Done: added $title to your calendar." else "Couldn't add it.",
+            mapOf("changeId" to changeId))
+        saveChat(chat.id, turnsFromJson(chat.turns), blocksFromJson(chat.pending) +
+            textBlock("(The user added the journey to $title as a plan.)"))
     }
 
     // Cancel a preview: nothing changes
@@ -243,6 +283,15 @@ class Deliberate(private val context: Context, private val ask: (system: String,
                 line(chatId, LINE_CHOICES, input["question"]?.toString().orEmpty(),
                     mapOf("toolUseId" to block.id, "choices" to choices.take(4)))
                 waiting = true
+            } else if (block.name == TOOL_FIND_JOURNEY) {
+                val (journey, title, answer) = reader.journey(input)
+
+                // A journey shows as its card
+                if (journey != null) {
+                    line(chatId, LINE_JOURNEY, title, mapOf("journey" to JOURNEY_MAPPER.writeValueAsString(journey),
+                        "title" to title, "place" to input["to"]?.toString().orEmpty()))
+                }
+                results.add(resultBlock(block.id, answer))
             } else if (block.name == TOOL_PROPOSE) {
                 val changes = changesOf(input)
                 val problems = changes.mapNotNull { problemWith(it) }.ifEmpty { runner.problems(changes) }
