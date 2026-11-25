@@ -370,7 +370,7 @@ object NestorLink {
                 val booked = leaveBy.bookedFor(key) != null
                 val plan = if (booked) leavePlan(context, event, effects, NETWORK_NONE) else null
                 SnapshotEvent(event, names[event.calendarId].orEmpty(), plan?.let { PlannedLeave(it.leaveAt,
-                    it.travel) }, plan?.train, flightFor(context, event.title, event.begin).second)
+                    it.travel, it.early) }, plan?.train, flightFor(context, event.title, event.begin).second)
             },
         )
     }

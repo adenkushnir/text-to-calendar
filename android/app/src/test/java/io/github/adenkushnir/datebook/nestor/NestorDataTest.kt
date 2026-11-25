@@ -117,6 +117,8 @@ class NestorDataTest {
         assertEquals("20 min drive", event["travel"])
         assertEquals("17:50", (event["train"] as Map<*, *>)["departs"])
         assertEquals("New Brunswick", (event["train"] as Map<*, *>)["from"])
+        assertEquals("3847", (event["train"] as Map<*, *>)["id"])
+        assertEquals("18:40", (event["train"] as Map<*, *>)["arrives"])
         val foil = (json["fencing"] as List<*>).single() as Map<*, *>
         assertEquals("Junior Men's Foil", foil["name"])
         assertEquals("November NAC · Columbus", foil["where"])
@@ -140,8 +142,12 @@ class NestorDataTest {
         val json = snapshotOf(SnapshotParts(events = listOf(SnapshotEvent(flight, "Personal", null, flight = info))),
             zone)
         val event = (json["events"] as List<*>).single() as Map<*, *>
-        assertEquals(mapOf("text" to "Delayed 40 min · departs 6:40 PM · Terminal A", "late" to true),
-            event["flight"])
+        val line = event["flight"] as Map<*, *>
+        assertEquals("Delayed 40 min · departs 6:40 PM · Terminal A", line["text"])
+        assertEquals(true, line["late"])
+        assertEquals("Boston", line["to_city"])  // the trip screen's details
+        assertEquals("2037-11-20T18:40", line["departs"])
+        assertEquals("A", line["terminal"])
     }
 
     // Only home-network addresses are used
