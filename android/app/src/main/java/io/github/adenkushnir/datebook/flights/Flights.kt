@@ -5,6 +5,7 @@ import android.content.Context
 import android.util.Log
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.github.adenkushnir.datebook.pipeline.Event
 import io.github.adenkushnir.datebook.pipeline.zoneOf
 import java.net.HttpURLConnection
 import java.net.URL
@@ -19,9 +20,12 @@ private const val TIMEOUT_MILLIS = 10000
 private val MAPPER = ObjectMapper()
 private val CLOCK = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
 private val LOCAL_MINUTES = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
+const val FLIGHT_EARLY_MINUTES = 60  // how early to be at the airport for a flight when nothing else says
+const val INTERNATIONAL_EARLY_MINUTES = 120
+private val FLIGHT_TITLE = Regex("^Flight ([A-Z0-9]{2}[0-9]{1,4})( |$)")
 
 // One flight as AeroDataBox describes it: the number, its status, both airports (code, city, name, time zone), the
-// scheduled and best-known departure and arrival times, and the departure terminal and gate
+// scheduled and best-known departure and arrival times, the departure terminal and gate, and both airports' countries
 data class FlightInfo(
     val number: String,
     val status: String,
@@ -37,6 +41,8 @@ data class FlightInfo(
     val arriveBest: Instant?,
     val terminal: String,
     val gate: String,
+    val fromCountry: String = "",
+    val toCountry: String = "",
 )
 
 // Read a time from AeroDataBox, like "2037-11-13 23:45Z" or "2037-11-13 18:45-05:00" (null when missing or unreadable)
@@ -60,16 +66,40 @@ private fun bestTime(movement: JsonNode): Instant? {
     return order.firstNotNullOfOrNull { flightTime(movement.path(it).path("utc").asText(null)) }
 }
 
-// Read the flights in AeroDataBox's reply, keeping the one departing on the given local date when there are several
-fun parseFlight(json: String, date: String): FlightInfo? {
+// Every leg in AeroDataBox's reply that departs on the given local date (all of them when none does); one flight
+// number can fly several legs a day, like Fort Lauderdale → Newark, then Newark → Boston
+fun parseFlights(json: String, date: String): List<FlightInfo> {
     val flights = MAPPER.readTree(json)
 
     // An empty reply means the flight wasn't found
     if (!flights.isArray || flights.isEmpty) {
-        return null
+        return emptyList()
     }
-    val chosen = flights.firstOrNull { it.path("departure").path("scheduledTime").path("local").asText("")
-        .startsWith(date) } ?: flights.first()
+    val onDay = flights.filter { it.path("departure").path("scheduledTime").path("local").asText("").startsWith(date) }
+    return onDay.ifEmpty { flights.toList() }.map { infoOf(it) }
+}
+
+// Return true if a leg lands where it says: an airport code ("BOS"), a city ("Boston"), or a route ending in one
+// ("EWR-BOS"); any leg matches when nothing is said
+fun legMatches(info: FlightInfo, leg: String): Boolean {
+    val wanted = leg.trim().split("-", "→", ">").last().trim()
+    return wanted.isBlank() || (info.toCode.isNotBlank() && info.toCode.equals(wanted, ignoreCase = true)) ||
+        (info.toCity.isNotBlank() && (info.toCity.contains(wanted, ignoreCase = true) ||
+            wanted.contains(info.toCity, ignoreCase = true)))
+}
+
+// The leg meant (see legMatches), else the first one; null when there are none
+fun pickLeg(legs: List<FlightInfo>, leg: String): FlightInfo? {
+    return legs.firstOrNull { legMatches(it, leg) } ?: legs.firstOrNull()
+}
+
+// Read the flights in AeroDataBox's reply, keeping the leg meant (or the first) departing on the given local date
+fun parseFlight(json: String, date: String, leg: String = ""): FlightInfo? {
+    return pickLeg(parseFlights(json, date), leg)
+}
+
+// One leg of AeroDataBox's reply as a flight's details
+private fun infoOf(chosen: JsonNode): FlightInfo {
     val departure = chosen.path("departure")
     val arrival = chosen.path("arrival")
     return FlightInfo(
@@ -87,15 +117,23 @@ fun parseFlight(json: String, date: String): FlightInfo? {
         arriveBest = bestTime(arrival),
         terminal = departure.path("terminal").asText(""),
         gate = departure.path("gate").asText(""),
+        fromCountry = departure.path("airport").path("countryCode").asText(""),
+        toCountry = arrival.path("airport").path("countryCode").asText(""),
     )
 }
 
-// Look up a flight by number and local date; null without a key, when it isn't found, or on any failure; this waits
-// on the network, so call it off the main thread
-fun lookupFlight(key: String?, flight: String, date: String): FlightInfo? {
+// Look up a flight by number and local date, keeping the leg meant (see legMatches, else the first); null without a
+// key, when it isn't found, or on any failure; this waits on the network, so call it off the main thread
+fun lookupFlight(key: String?, flight: String, date: String, leg: String = ""): FlightInfo? {
+    return pickLeg(lookupFlights(key, flight, date), leg)
+}
+
+// Look up every leg a flight number flies on a local date; empty without a key, when it isn't found, or on any
+// failure; this waits on the network, so call it off the main thread
+fun lookupFlights(key: String?, flight: String, date: String): List<FlightInfo> {
     // Nothing to ask without a key or a flight
     if (key.isNullOrBlank() || flight.isBlank() || date.length < 10) {
-        return null
+        return emptyList()
     }
     val url = "https://$FLIGHTS_HOST/flights/number/$flight/${date.take(10)}" +
         "?withAircraftImage=false&withLocation=false&dateLocalRole=Departure"
@@ -111,10 +149,10 @@ fun lookupFlight(key: String?, flight: String, date: String): FlightInfo? {
         val reply = (if (code in 200..299) connection.inputStream else connection.errorStream)
             ?.bufferedReader()?.use { it.readText() }.orEmpty()
         check(code in 200..299) { "flight data error $code: ${reply.take(200)}" }
-        if (code == 204 || reply.isBlank()) null else parseFlight(reply, date.take(10))  // 204 means not found
+        if (code == 204 || reply.isBlank()) emptyList() else parseFlights(reply, date.take(10))  // 204: not found
     } catch (error: Exception) {  // no internet, a rejected key, or an unreadable reply
         Log.w("Datebook", "flight lookup failed: ${error.message}")
-        null
+        emptyList()
     } finally {
         connection.disconnect()
     }
@@ -125,9 +163,50 @@ fun zonedText(instant: Instant, zone: ZoneId): String {
     return LocalDateTime.ofInstant(instant, zone).format(LOCAL_MINUTES)
 }
 
-// Return true if a calendar event is a flight plan, like "Flight UA1234 EWR → SFO" (flights get no leave-by alert)
+// Return true if a calendar event is a flight plan, like "Flight UA1234 EWR → SFO"
 fun isFlightTitle(title: String): Boolean {
-    return Regex("^Flight [A-Z0-9]{2}[0-9]{1,4}( |$)").containsMatchIn(title)
+    return FLIGHT_TITLE.containsMatchIn(title)
+}
+
+// The flight number in a flight plan's title, like UA1234 from "Flight UA1234 EWR → SFO" (null for other titles)
+fun flightOfTitle(title: String): String? {
+    return FLIGHT_TITLE.find(title)?.groupValues?.get(1)
+}
+
+// Return true if a flight leaves one country for another (false when either country is unknown)
+fun isInternational(info: FlightInfo): Boolean {
+    return info.fromCountry.isNotBlank() && info.toCountry.isNotBlank() &&
+        !info.fromCountry.equals(info.toCountry, ignoreCase = true)
+}
+
+// How early to be at the airport for a flight when you haven't said: 2 hours abroad, else 1 hour
+fun flightEarlyMinutes(info: FlightInfo?): Int {
+    return if (info != null && isInternational(info)) INTERNATIONAL_EARLY_MINUTES else FLIGHT_EARLY_MINUTES
+}
+
+// The departure airport in a few words, like "Newark Airport" (its full name when the city isn't known)
+fun airportName(info: FlightInfo): String {
+    return if (info.fromCity.isNotBlank()) "${info.fromCity} Airport" else info.fromName.ifBlank { info.fromCode }
+}
+
+// Fill a flight plan in from live flight data: its title with the route, its departure and arrival in the departure
+// airport's time (the delayed times when it's already delayed, else the scheduled ones), and the airport as its place;
+// it stays as written without data
+fun withFlight(event: Event, info: FlightInfo?): Event {
+    // No data, nothing to fill in
+    if (info == null) {
+        return event
+    }
+    val departs = info.departBest ?: info.departScheduled ?: return event  // no times to fill in
+    val zone = zoneOf(info.fromZone) ?: zoneOf(event.phoneTimezone) ?: ZoneId.systemDefault()
+    val end = (info.arriveBest ?: info.arriveScheduled)?.let { zonedText(it, zone) }.orEmpty()  // empty if unknown
+    return event.copy(title = flightTitle(info), start = zonedText(departs, zone), end = end, allDay = false,
+        timezone = zone.id, location = info.fromName.ifBlank { event.location })
+}
+
+// A flight's status for Nestor's wall: the status line, and whether it's late or cancelled (shown in orange)
+fun wallFlight(info: FlightInfo): Map<String, Any> {
+    return mapOf("text" to statusLine(info), "late" to (minutesLate(info) >= 5 || info.status.startsWith("Canceled")))
 }
 
 // A flight plan's title, like "Flight UA1234 EWR → SFO"
@@ -168,9 +247,20 @@ fun statusLine(info: FlightInfo): String {
 class FlightStore(context: Context) {
     private val prefs = context.getSharedPreferences("datebook-flights", Context.MODE_PRIVATE)
 
-    // Remember a flight's latest details
+    // Remember a flight's latest details, and which leg it is (where it lands)
     fun save(date: String, info: FlightInfo) {
-        prefs.edit().putString("info:${info.number}|${date.take(10)}", MAPPER.writeValueAsString(toMap(info))).apply()
+        prefs.edit().putString("info:${info.number}|${date.take(10)}", MAPPER.writeValueAsString(toMap(info)))
+            .putString("leg:${info.number}|${date.take(10)}", info.toCode).apply()
+    }
+
+    // Return which leg of a flight number its plan is, as where it lands ("" when not known)
+    fun leg(flight: String, date: String): String {
+        return prefs.getString("leg:$flight|${date.take(10)}", "").orEmpty()
+    }
+
+    // Remember which leg a plan is before its flight is found (an airport code or city)
+    fun setLeg(flight: String, date: String, leg: String) {
+        prefs.edit().putString("leg:$flight|${date.take(10)}", leg).apply()
     }
 
     // Return a flight's last-known details, or null
@@ -195,7 +285,8 @@ class FlightStore(context: Context) {
             "fromCity" to info.fromCity, "fromName" to info.fromName, "fromZone" to info.fromZone,
             "toCode" to info.toCode, "toCity" to info.toCity, "departScheduled" to info.departScheduled?.toString(),
             "departBest" to info.departBest?.toString(), "arriveScheduled" to info.arriveScheduled?.toString(),
-            "arriveBest" to info.arriveBest?.toString(), "terminal" to info.terminal, "gate" to info.gate)
+            "arriveBest" to info.arriveBest?.toString(), "terminal" to info.terminal, "gate" to info.gate,
+            "fromCountry" to info.fromCountry, "toCountry" to info.toCountry)
     }
 
     // Read saved plain values back into a flight's details
@@ -206,7 +297,8 @@ class FlightStore(context: Context) {
             node.path("fromCode").asText(""), node.path("fromCity").asText(""), node.path("fromName").asText(""),
             node.path("fromZone").asText(""), node.path("toCode").asText(""), node.path("toCity").asText(""),
             time("departScheduled"), time("departBest"), time("arriveScheduled"), time("arriveBest"),
-            node.path("terminal").asText(""), node.path("gate").asText(""))
+            node.path("terminal").asText(""), node.path("gate").asText(""), node.path("fromCountry").asText(""),
+            node.path("toCountry").asText(""))
     }
 }
 

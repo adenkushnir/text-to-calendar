@@ -24,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -45,6 +46,11 @@ import io.github.adenkushnir.datebook.ui.Segment
 import io.github.adenkushnir.datebook.ui.SegmentedBar
 import io.github.adenkushnir.datebook.ui.PlainButton
 import io.github.adenkushnir.datebook.ui.travelIcon
+import io.github.adenkushnir.datebook.deliberate.minutesText
+
+private val AIRPORT_LINE = Color(0xFFFFBE6A)  // "Be at the airport by", in the warning colour
+private const val EARLY_STEP = 5  // the Be there early stepper moves 5 minutes a tap, up to 3 hours
+private const val EARLY_MOST = 180
 
 // Show one suggestion; null while it is loading or after it was deleted
 @Composable
@@ -58,6 +64,10 @@ fun SuggestionScreen(
     onTravelMode: (String) -> Unit = {},
     onTrack: (String) -> Unit = {},
     flightStatus: String? = null,
+    beThere: String? = null,
+    early: Int? = null,
+    earlyHint: String? = null,
+    onEarly: (Int) -> Unit = {},
     trains: TrainChoices? = null,
     onPickTrain: (TrainRow) -> Unit = {},
     onSwitchOrigin: (String) -> Unit = {},
@@ -103,6 +113,11 @@ fun SuggestionScreen(
                     }
                 }
 
+                // When to be at the airport, for flights
+                if (beThere != null) {
+                    Text(beThere, color = AIRPORT_LINE, fontWeight = FontWeight.SemiBold)
+                }
+
                 Muted(statusText(suggestion))
             }
 
@@ -118,6 +133,12 @@ fun SuggestionScreen(
                     SectionLabel("Getting there")
                     SegmentedBar(TRAVEL_MODES.map { Segment(it.id, travelIcon(it.id), it.name) }, travelMode,
                         onTravelMode)
+
+                    // How early to be there, for this plan only
+                    if (early != null) {
+                        EarlyStepper(early, onEarly)
+                    }
+                    earlyHint?.let { Muted(it) }
                 }
             }
 
@@ -160,6 +181,23 @@ fun SuggestionScreen(
                     "change anything before saving."
                 Muted(help)
             }
+        }
+    }
+}
+
+// The Be there early stepper: − and + move 5 minutes, from right on time up to 3 hours
+@Composable
+private fun EarlyStepper(minutes: Int, onEarly: (Int) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text("Be there early", modifier = Modifier.weight(1f))
+        GlassButton(onClick = { onEarly(maxOf(0, minutes - EARLY_STEP)) }, enabled = minutes > 0, small = true) {
+            Text("−", fontSize = 18.sp)
+        }
+        Text(if (minutes == 0) "On time" else minutesText(minutes), fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 12.dp))
+        GlassButton(onClick = { onEarly(minOf(EARLY_MOST, minutes + EARLY_STEP)) }, enabled = minutes < EARLY_MOST,
+            small = true) {
+            Text("+", fontSize = 18.sp)
         }
     }
 }

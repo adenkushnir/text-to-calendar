@@ -1,7 +1,8 @@
 // NJ Transit trains for plans: on the day of a plan you're taking transit to, the card lists the live board from your
-// nearest station (or one you switch to) toward the plan, marking the best train and yours; from 3 hours before, the
+// nearest station (or one you switch to) toward the plan, marking the best train and yours; from 4 hours before, the
 // train you chose (or the best) goes on the leave-by alert and you're alerted when it's delayed, cancelled or changes
-// track; also the Next trains card for the saved trip
+// track (once the leave-by alert went out, the alert itself is updated, with a new train when yours no longer makes
+// it); also the Next trains card for the saved trip
 package io.github.adenkushnir.datebook.trains
 import android.content.Context
 import android.util.Log
@@ -14,8 +15,13 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.github.adenkushnir.datebook.AppGraph
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.flights.showFlightChange
+import io.github.adenkushnir.datebook.deliberate.effectsFor
 import io.github.adenkushnir.datebook.leaveby.LeaveByStore
+import io.github.adenkushnir.datebook.leaveby.NOTE_NONE
+import io.github.adenkushnir.datebook.leaveby.NOTE_SWAP
+import io.github.adenkushnir.datebook.leaveby.earlyFor
 import io.github.adenkushnir.datebook.leaveby.eventKey
+import io.github.adenkushnir.datebook.leaveby.reAlert
 import io.github.adenkushnir.datebook.pipeline.eventTimes
 import io.github.adenkushnir.datebook.places.TRAVEL_TRANSIT
 import io.github.adenkushnir.datebook.places.currentLocation
@@ -27,13 +33,15 @@ private const val LEFT_EARLY_MILLIS = 5L * 60 * 1000  // a train gone from the b
 private const val SEEN_FOR_MILLIS = 3L * 60 * 60 * 1000  // how long seen trains are remembered
 const val ON_THE_DAY = "Trains show on the day of the plan"
 private const val MINUTE = 60_000L
-private const val PLAN_AHEAD_MILLIS = 3 * 60 * MINUTE
+private const val PLAN_AHEAD_MILLIS = 4 * 60 * MINUTE
 private const val ARRIVE_BEFORE_MILLIS = 10 * MINUTE
+private const val SPARE_MINUTES = 5  // the train gets there this much before you mean to be there
 private const val TRAIN_WORK = "datebook-trains"
 private val CLOCK = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
 private val MAPPER = ObjectMapper()
 
-// The train picked for a plan: its number and line, where and when it leaves and arrives, its track, delay and status
+// The train picked for a plan: its number and line, where and when it leaves and arrives, its track, delay and status,
+// and the code of the station it leaves from (empty for picks saved before 1.3.0)
 data class TrainPick(
     val trainId: String,
     val line: String,
@@ -44,7 +52,27 @@ data class TrainPick(
     val track: String,
     val secondsLate: Int,
     val status: String,
+    val fromCode: String = "",
 )
+
+// How long before a plan's start its train must get there: 5 minutes before you mean to be there (the minutes early),
+// and never less than 10
+fun arriveBefore(earlyMinutes: Int): Long {
+    return maxOf(ARRIVE_BEFORE_MILLIS, (earlyMinutes + SPARE_MINUTES) * MINUTE)
+}
+
+// Return true if a picked train still gets you there in time: not cancelled, and arriving (with its delay) by the
+// time it must
+fun stillMakesIt(pick: TrainPick, startMillis: Long, beforeMillis: Long): Boolean {
+    return !pick.status.contains("cancel", ignoreCase = true) &&
+        pick.arrives + pick.secondsLate * 1000L <= startMillis - beforeMillis
+}
+
+// What went wrong with a train that no longer works, like "NJT 3863 was cancelled" or "NJT 3863 is 20 min late"
+fun trainProblem(pick: TrainPick): String {
+    return if (pick.status.contains("cancel", ignoreCase = true)) "NJT ${pick.trainId} was cancelled"
+        else "NJT ${pick.trainId} is ${pick.secondsLate / 60} min late"
+}
 
 // A time as the app shows it, in New Jersey time
 private fun clock(millis: Long): String {
@@ -64,9 +92,21 @@ fun pickLine(pick: TrainPick): String {
     return "Take NJT ${pick.trainId} at ${clock(pick.departs)}, ${pick.fromName} → ${pick.toName}$track$late"
 }
 
+// The train on a leave-by alert, like "NJT 3863 at 4:52 PM · Track 2 · arrives Newark Airport 5:21 PM", with its
+// delay added to both times
+fun rideLine(pick: TrainPick): String {
+    val delay = pick.secondsLate * 1000L
+    val track = if (pick.track.isNotBlank()) " · Track ${pick.track}" else ""  // once it's known
+    val late = if (pick.secondsLate >= 60) " · ${pick.secondsLate / 60} min late" else ""
+    return "NJT ${pick.trainId} at ${clock(pick.departs + delay)}$track$late · arrives ${pick.toName} " +
+        clock(pick.arrives + delay)
+}
+
 // Pick the train for a plan from the departure boards of the stations near you: among trains that stop at a station
-// near the plan at least 10 minutes before it starts, the one that leaves last (the least waiting); null if none fits
-fun pickTrain(boards: Map<Station, List<Train>>, destinations: List<Station>, startMillis: Long): TrainPick? {
+// near the plan in time (by default 10 minutes before it starts), the one that leaves last (the least waiting); null if
+// none fits
+fun pickTrain(boards: Map<Station, List<Train>>, destinations: List<Station>, startMillis: Long,
+    beforeMillis: Long = ARRIVE_BEFORE_MILLIS): TrainPick? {
     val options = mutableListOf<TrainPick>()
 
     // Look at every train leaving each nearby station
@@ -80,11 +120,11 @@ fun pickTrain(boards: Map<Station, List<Train>>, destinations: List<Station>, st
             val late = train.secondsLate * 1000L
 
             // Skip cancelled trains and ones that would get there too late
-            if (isCancelled(train) || arrives.toEpochMilli() + late > startMillis - ARRIVE_BEFORE_MILLIS) {
+            if (isCancelled(train) || arrives.toEpochMilli() + late > startMillis - beforeMillis) {
                 continue
             }
             options.add(TrainPick(train.id, train.line, from.name, to.name, departs.toEpochMilli(),
-                arrives.toEpochMilli(), train.track, train.secondsLate, train.status))
+                arrives.toEpochMilli(), train.track, train.secondsLate, train.status, from.code))
         }
     }
     return options.maxByOrNull { it.departs }
@@ -113,20 +153,19 @@ data class TrainChoices(
 )
 
 // Build a plan's train list from the board at the station you leave from: every train that stops at a station near
-// the plan (the first of them any train serves), marking the one that gets there closest to the start but at least
-// 10 minutes early as best, the ones that get there too late, and yours
-fun trainRows(from: Station, trains: List<Train>, destinations: List<Station>, startMillis: Long, mine: String?):
-    Pair<Station?, List<TrainRow>> {
+// the plan (the first of them any train serves), marking the one that gets there closest to the start but in time (by
+// default 10 minutes early) as best, the ones that get there too late, and yours
+fun trainRows(from: Station, trains: List<Train>, destinations: List<Station>, startMillis: Long, mine: String?,
+    beforeMillis: Long = ARRIVE_BEFORE_MILLIS): Pair<Station?, List<TrainRow>> {
     val to = destinations.firstOrNull { station -> trains.any { arrivalAt(it, station.code) != null } }
         ?: return Pair(null, emptyList())
-    val best = pickTrain(mapOf(from to trains), listOf(to), startMillis)?.trainId
+    val best = pickTrain(mapOf(from to trains), listOf(to), startMillis, beforeMillis)?.trainId
     val rows = trains.mapNotNull { train ->
         val departs = train.departs ?: return@mapNotNull null
         val arrives = arrivalAt(train, to.code) ?: return@mapNotNull null  // doesn't stop near the plan
         val pick = TrainPick(train.id, train.line, from.name, to.name, departs.toEpochMilli(), arrives.toEpochMilli(),
-            train.track, train.secondsLate, train.status)
-        val late = isCancelled(train) ||
-            arrives.toEpochMilli() + train.secondsLate * 1000L > startMillis - ARRIVE_BEFORE_MILLIS
+            train.track, train.secondsLate, train.status, from.code)
+        val late = isCancelled(train) || arrives.toEpochMilli() + train.secondsLate * 1000L > startMillis - beforeMillis
         TrainRow(pick, clock(departs.toEpochMilli()), boardLine(train).substringAfter(" · "), clock(
             arrives.toEpochMilli() + train.secondsLate * 1000L), train.id == best, late, train.id == mine)
     }
@@ -156,7 +195,12 @@ class TrainStore(context: Context) {
         return TrainPick(node.path("trainId").asText(""), node.path("line").asText(""),
             node.path("fromName").asText(""), node.path("toName").asText(""), node.path("departs").asLong(),
             node.path("arrives").asLong(), node.path("track").asText(""), node.path("secondsLate").asInt(),
-            node.path("status").asText(""))
+            node.path("status").asText(""), node.path("fromCode").asText(""))
+    }
+
+    // Forget the train picked for a plan (when no train makes it any more)
+    fun clearPick(key: String) {
+        prefs.edit().remove(key).apply()
     }
 
     // Return the train you chose for a plan, or null to follow the best one
@@ -179,24 +223,36 @@ class TrainStore(context: Context) {
         prefs.edit().putString("origin:$key", code).remove("choice:$key").apply()
     }
 
+    // Put back the station a plan left from (null for the nearest), for Undo
+    fun putOrigin(key: String, code: String?) {
+        // Forget the switch, or make it again
+        if (code == null) {
+            prefs.edit().remove("origin:$key").apply()
+        } else {
+            setOrigin(key, code)
+        }
+    }
+
     // Remember the train picked for a plan
     fun setPick(key: String, pick: TrainPick) {
         val plain = mapOf("trainId" to pick.trainId, "line" to pick.line, "fromName" to pick.fromName,
             "toName" to pick.toName, "departs" to pick.departs, "arrives" to pick.arrives, "track" to pick.track,
-            "secondsLate" to pick.secondsLate, "status" to pick.status)
+            "secondsLate" to pick.secondsLate, "status" to pick.status, "fromCode" to pick.fromCode)
         prefs.edit().putString(key, MAPPER.writeValueAsString(plain)).apply()
     }
 }
 
-// Return true if a plan goes by transit and has a known place, so it can get a train
-fun wantsTrain(context: Context, plan: Suggestion): Boolean {
+// Return true if a plan goes by transit (chosen for the plan, by a rule, or the default) and has a known place, so it
+// can get a train
+suspend fun wantsTrain(context: Context, plan: Suggestion): Boolean {
     val graph = AppGraph.get(context)
     val key = eventKey(plan.title, eventTimes(plan.toEvent()).first)
-    val mode = LeaveByStore(context).mode(key) ?: graph.travelSettings.mode()
+    val ruled = effectsFor(graph.deliberateDao.rules(), plan.title, plan.location).mode
+    val mode = LeaveByStore(context).mode(key) ?: ruled ?: graph.travelSettings.mode()
     return mode == TRAVEL_TRANSIT && plan.placeLat != null && plan.placeLng != null && plan.change.isBlank()
 }
 
-// Pick (or re-check) trains for added transit plans starting in the next 3 hours, alerting on changes; also loads
+// Pick (or re-check) trains for added transit plans starting in the next 4 hours, alerting on changes; also loads
 // the station list when it's due; runs every 15 minutes
 suspend fun planTrains(context: Context) {
     val graph = AppGraph.get(context)
@@ -213,23 +269,58 @@ suspend fun planTrains(context: Context) {
     for (plan in graph.dao.suggestionsWithStatus(Suggestion.STATUS_ADDED)) {
         val start = eventTimes(plan.toEvent()).first
 
-        // Only plans starting in the next 3 hours that you're taking transit to
+        // Only plans starting in the next 4 hours that you're taking transit to
         if (start <= now || start > now + PLAN_AHEAD_MILLIS || !wantsTrain(context, plan)) {
             continue
         }
         val key = eventKey(plan.title, start)
-        val choices = trainChoices(context, plan, stations)
-        val rows = choices.rows
-        val pick = (rows.firstOrNull { it.mine } ?: rows.firstOrNull { it.best })?.pick ?: continue  // yours, or best
+        val rows = trainChoices(context, plan, stations).rows
+        val pick = (rows.firstOrNull { it.mine && !it.late } ?: rows.firstOrNull { it.best })?.pick  // yours, or best
         val before = graph.trainStore.pick(key)
+        val leaveBy = LeaveByStore(context)
+        val alerted = leaveBy.alerted(key)
+
+        // An empty board (often no internet) changes nothing; a board where no train makes it drops the old pick, so
+        // the leave-by falls back to Google's time and says why
+        if (rows.isEmpty()) {
+            continue
+        } else if (pick == null) {
+            // Only once, when there was a train before
+            if (before != null) {
+                val problem = rows.firstOrNull { it.pick.trainId == before.trainId }?.pick?.let { trainProblem(it) }
+                graph.trainStore.clearPick(key)
+                leaveBy.setTrainNote(key, NOTE_NONE, problem ?: "NJT ${before.trainId} no longer gets you there")
+                Log.i("Datebook", "no train makes it for ${plan.title} any more")
+                reAlertIfSent(context, key, alerted)
+            }
+            continue
+        }
         graph.trainStore.setPick(key, pick)
         Log.i("Datebook", "train for ${plan.title}: ${pickLine(pick)}")
+        val old = before?.let { gone -> rows.firstOrNull { it.pick.trainId == gone.trainId }?.pick }
+        val inTime = arriveBefore(earlyFor(context, plan.title, plan.location, start))
+        val swapped = old != null && old.trainId != pick.trainId && !stillMakesIt(old, start, inTime)
         val change = if (before != null && before.trainId == pick.trainId) trainChange(before, pick) else null
 
-        // Tell you only when the same train changed
-        if (change != null) {
+        // Your train stopped working and another took its place; the same train changed; or a train makes it again
+        if (old != null && swapped) {
+            leaveBy.setTrainNote(key, NOTE_SWAP, trainProblem(old))
+            reAlertIfSent(context, key, alerted)
+        } else if (change != null && alerted) {
+            reAlert(context, key)
+        } else if (change != null) {
             showFlightChange(context, plan, change, pickLine(pick))
+        } else if (leaveBy.trainNote(key)?.first == NOTE_NONE) {
+            leaveBy.setTrainNote(key, "", "")
         }
+    }
+}
+
+// Update a leave-by alert that already went out (one not sent yet shows the news when it goes)
+private suspend fun reAlertIfSent(context: Context, key: String, alerted: Boolean) {
+    // Only alerts already sent
+    if (alerted) {
+        reAlert(context, key)
     }
 }
 
@@ -242,10 +333,10 @@ fun originsFor(context: Context, stations: List<Station>): List<Station> {
     else stations.filter { it.code == homeCode }  // fall back to the saved home station
 }
 
-// Read a plan's train list now: from the station you switched to (or the nearest), toward the stations near the plan;
-// this waits on the network, so call it off the main thread
-fun trainChoices(context: Context, plan: Suggestion, stations: List<Station> = AppGraph.get(context).trainSettings
-    .stations()): TrainChoices {
+// Read a plan's train list now: from the station you switched to (or the nearest), toward the stations near the plan,
+// getting there in time for how early you mean to be there; this waits on the network, so call it off the main thread
+suspend fun trainChoices(context: Context, plan: Suggestion, stations: List<Station> = AppGraph.get(context)
+    .trainSettings.stations()): TrainChoices {
     val graph = AppGraph.get(context)
     val start = eventTimes(plan.toEvent()).first
     val key = eventKey(plan.title, start)
@@ -258,8 +349,9 @@ fun trainChoices(context: Context, plan: Suggestion, stations: List<Station> = A
     if (destinations.isEmpty()) {
         return TrainChoices(from, origins, null, emptyList(), "No NJ Transit station near this plan.")
     }
+    val before = arriveBefore(earlyFor(context, plan.title, plan.location, start))
     val (to, rows) = trainRows(from, graph.railData.departures(from.code).orEmpty(), destinations, start,
-        graph.trainStore.choice(key))
+        graph.trainStore.choice(key), before)
     val note = if (rows.isEmpty()) "No trains from ${from.name} toward this plan right now." else ""  // board empty
     return TrainChoices(from, (origins + from).distinct(), to, rows, note)
 }

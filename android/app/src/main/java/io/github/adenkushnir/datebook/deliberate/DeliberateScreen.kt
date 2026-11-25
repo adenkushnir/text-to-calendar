@@ -3,6 +3,7 @@
 // are behind the clock button and a new chat behind the plus
 package io.github.adenkushnir.datebook.deliberate
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -67,6 +68,8 @@ const val VIEW_RULES = "rules"
 private val ME_SHAPE = RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp)
 private val ME_GEL = Brush.verticalGradient(listOf(Color(0xFF52C0F6), Color(0xFF178DE0)))
 private val WARN = Color(0xFFFFBE6A)
+private val CHIP_FILL = Color(0xFF5ADBEA).copy(alpha = 0.2f)  // a flight preview's travel chips, in Aero aqua
+private val CHIP_EDGE = Color(0xFF5ADBEA)
 private val WHEN = DateTimeFormatter.ofPattern("EEE MMM d, h:mm a", Locale.US)
 private val WEB_LINK = Regex("https?://[^\\s<>]+")
 private val LINK_BLUE = Color(0xFF9FD8FF)
@@ -300,15 +303,64 @@ private fun LineView(line: DeliberateLine, changes: List<DeliberateChange>, busy
     }
 }
 
-// A preview: what will change, what the new rules cover, and Confirm / Cancel (or what was decided)
+// A new flight in a preview: "New flight plan", the route big with the number, departure and landing, the airport,
+// and this plan's travel as aqua chips
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FlightPreview(card: Map<*, *>) {
+    val chip = RoundedCornerShape(50)
+    Muted(card["heading"]?.toString() ?: "New flight plan")
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+        Text(card["route"].toString(), fontSize = 28.sp, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f))
+        Muted(card["number"].toString())
+    }
+    Row(Modifier.fillMaxWidth()) {
+        Text(card["departs"].toString(), modifier = Modifier.weight(1f))
+        Muted(card["lands"].toString())
+    }
+
+    // The airport and terminal, when known
+    if (card["airport"].toString().isNotBlank()) {
+        Muted(card["airport"].toString())
+    }
+
+    // Say so when there's no live data yet
+    if (card["found"] != true) {
+        Muted("No live data yet: Datebook fills in the times when the flight shows up.")
+    }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // One chip per travel setting
+        for (text in (card["chips"] as? List<*>).orEmpty()) {
+            Text(text.toString(), fontSize = 14.sp, modifier = Modifier.clip(chip).background(CHIP_FILL)
+                .border(1.dp, CHIP_EDGE, chip).padding(horizontal = 12.dp, vertical = 6.dp))
+        }
+    }
+}
+
+// A preview: a new flight's card (then the other changes under "Also"), a line per change, what the new rules cover,
+// and Confirm / Cancel (or what was decided)
 @Composable
 private fun PreviewCard(line: DeliberateLine, data: Map<String, Any?>, busy: Boolean, actions: DeliberateActions,
     work: (suspend () -> Unit) -> Unit) {
     DatebookCard {
         SectionLabel("Preview · ${line.text}")
+        val card = data["card"] as? Map<*, *>
+        val lines = (data["lines"] as? List<*>).orEmpty()
+
+        // A new flight gets its card, with the other changes listed under it
+        if (card != null) {
+            FlightPreview(card)
+        }
+
+        // The other changes go under "Also"
+        if (card != null && lines.isNotEmpty()) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+            Muted("Also")
+        }
 
         // One line per change
-        for (text in (data["lines"] as? List<*>).orEmpty()) {
+        for (text in lines) {
             Text(linked(text.toString()))
         }
         val matches = (data["matches"] as? List<*>).orEmpty()

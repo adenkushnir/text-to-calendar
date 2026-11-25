@@ -1,5 +1,6 @@
 // Carries out Deliberate's changes on the phone: describes each one for the preview (with the events a rule would
-// cover), makes them once you confirm while noting how to put everything back, and undoes them
+// cover, and a card for a new flight), makes them once you confirm while noting how to put everything back, and undoes
+// them
 package io.github.adenkushnir.datebook.deliberate
 import android.content.Context
 import androidx.work.ExistingWorkPolicy
@@ -7,7 +8,13 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import io.github.adenkushnir.datebook.AppGraph
 import io.github.adenkushnir.datebook.calendar.CalendarEvent
+import io.github.adenkushnir.datebook.calendar.EventFields
 import io.github.adenkushnir.datebook.calendar.calendarEvents
+import io.github.adenkushnir.datebook.calendar.canWriteCalendar
+import io.github.adenkushnir.datebook.calendar.deleteEvent
+import io.github.adenkushnir.datebook.calendar.planFields
+import io.github.adenkushnir.datebook.calendar.readEvent
+import io.github.adenkushnir.datebook.calendar.updateEvent
 import io.github.adenkushnir.datebook.data.FollowUp
 import io.github.adenkushnir.datebook.data.KIND_ASSIGNMENT
 import io.github.adenkushnir.datebook.data.KIND_DUE
@@ -19,20 +26,35 @@ import io.github.adenkushnir.datebook.data.firstReminder
 import io.github.adenkushnir.datebook.data.nextBill
 import io.github.adenkushnir.datebook.data.noteTitle
 import io.github.adenkushnir.datebook.data.repeatLabel
+import io.github.adenkushnir.datebook.flights.FlightInfo
+import io.github.adenkushnir.datebook.flights.flightEarlyMinutes
+import io.github.adenkushnir.datebook.flights.flightTitle
+import io.github.adenkushnir.datebook.flights.legMatches
+import io.github.adenkushnir.datebook.flights.lookupFlight
+import io.github.adenkushnir.datebook.flights.withFlight
 import io.github.adenkushnir.datebook.followups.bookNextFollowUp
+import io.github.adenkushnir.datebook.leaveby.LeaveByStore
+import io.github.adenkushnir.datebook.leaveby.eventKey
 import io.github.adenkushnir.datebook.leaveby.leaveTime
 import io.github.adenkushnir.datebook.leaveby.planLeaveBy
 import io.github.adenkushnir.datebook.lists.PackageStore
 import io.github.adenkushnir.datebook.pipeline.CHANGE_CANCELLED
 import io.github.adenkushnir.datebook.pipeline.CHANGE_MOVED
 import io.github.adenkushnir.datebook.pipeline.DELIBERATE_APP
+import io.github.adenkushnir.datebook.pipeline.Event
+import io.github.adenkushnir.datebook.pipeline.eventTimes
 import io.github.adenkushnir.datebook.pipeline.parseLocal
 import io.github.adenkushnir.datebook.pipeline.summary
+import io.github.adenkushnir.datebook.pipeline.zoneOf
+import io.github.adenkushnir.datebook.places.findPlace
 import io.github.adenkushnir.datebook.places.travelMode
+import io.github.adenkushnir.datebook.prompts.addNow
 import io.github.adenkushnir.datebook.prompts.addSuggestion
 import io.github.adenkushnir.datebook.prompts.ignoreSuggestion
 import io.github.adenkushnir.datebook.prompts.promptTitle
 import io.github.adenkushnir.datebook.summary.scheduleSummary
+import io.github.adenkushnir.datebook.trains.Station
+import io.github.adenkushnir.datebook.trains.nameKey
 import io.github.adenkushnir.datebook.widgets.updateWidgets
 import java.time.Duration
 import java.time.Instant
@@ -50,11 +72,14 @@ private val DAY = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US)
 private val DAY_TIME = DateTimeFormatter.ofPattern("EEE MMM d, h:mm a", Locale.US)
 private val CLOCK = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
 
-// What a preview shows: one line per change, and the events or plans the new rules cover
-data class Preview(val lines: List<String>, val matches: List<String>)
+// What a preview shows: one line per change, the events or plans the new rules cover, and for a new flight its card
+// (route, number, times, airport and this plan's travel; null without one), whose change then has no line of its own
+data class Preview(val lines: List<String>, val matches: List<String>, val card: Map<String, Any?>? = null)
 
-// What confirming did: a line per change made, a line per change that couldn't be made, and the steps that undo it
-data class Applied(val done: List<String>, val failed: List<String>, val undo: List<Map<String, Any?>>)
+// What confirming did: a line per change made, a line per change that couldn't be made, the steps that undo it, and
+// the calendar event to open afterwards (0 for none)
+data class Applied(val done: List<String>, val failed: List<String>, val undo: List<Map<String, Any?>>,
+    val openEvent: Long = 0)
 
 // One undo step
 private fun step(op: String, vararg pairs: Pair<String, Any?>): Map<String, Any?> {
@@ -69,6 +94,7 @@ class DeliberateRunner(private val context: Context) {
     private val settings = DeliberateSettings(context)
     private val packages = PackageStore(context)
     private val zone: ZoneId get() = ZoneId.systemDefault()
+    private var opened = 0L  // the last calendar event a confirm wrote, to open afterwards
 
     // A plan's day and time in words, like "Sat Nov 21, 12:00 PM" or "Sat Nov 21"
     private fun whenText(date: String, time: String): String {
@@ -98,9 +124,14 @@ class DeliberateRunner(private val context: Context) {
             graph.calendarSwitches.switchedOff())
     }
 
-    // The preview: a line for each change, and for new rules the upcoming events (or waiting plans) they cover
+    // The preview: a card for the first new flight, a line for each other change, and for new rules the upcoming
+    // events (or waiting plans) they cover
     suspend fun preview(changes: List<Change>, nowMillis: Long = System.currentTimeMillis()): Preview {
-        val lines = changes.map { describe(it) }
+        val flightAt = changes.indexOfFirst {
+            it.action in setOf(ACT_NEW_PLAN, ACT_EDIT_EVENT) && it.flight.isNotBlank()
+        }
+        val card = changes.getOrNull(flightAt)?.let { flightCard(it) }
+        val lines = changes.filterIndexed { index, _ -> index != flightAt }.map { describe(it) }
         val matches = mutableListOf<String>()
 
         // List what each new rule covers
@@ -111,9 +142,134 @@ class DeliberateRunner(private val context: Context) {
         // Keep the list short
         if (matches.size > MAX_MATCHES) {
             val more = matches.size - MAX_MATCHES
-            return Preview(lines, matches.take(MAX_MATCHES) + "and $more more")
+            return Preview(lines, matches.take(MAX_MATCHES) + "and $more more", card)
         }
-        return Preview(lines, matches)
+        return Preview(lines, matches, card)
+    }
+
+    // Problems only the phone can see: a second plan for a flight that already has one on that day
+    suspend fun problems(changes: List<Change>): List<String> {
+        val flights = dao.flightSuggestions()
+        return changes.filter { it.action == ACT_NEW_PLAN && it.flight.isNotBlank() }.mapNotNull { change ->
+            flights.firstOrNull {
+                it.flight.equals(change.flight, ignoreCase = true) && it.start.take(10) == change.date
+            }
+                ?.let { "plan ${it.id} is already flight ${change.flight} on ${change.date}: change it with " +
+                    "set_plan_travel instead of making a second plan" }
+        }
+    }
+
+    // The live details of the flight leg meant (the one landing where to says), remembered or looked up now (null when
+    // it isn't found); this waits on the network, so it's only called off the main thread
+    private fun flightInfo(change: Change): FlightInfo? {
+        return graph.flightStore.info(change.flight, change.date)?.takeIf { legMatches(it, change.to) }
+            ?: lookupFlight(graph.flightsKeyStore.load(), change.flight, change.date, change.to)?.also {
+                graph.flightStore.save(change.date, it)
+            }
+    }
+
+    // A new flight's card for the preview: the route big, the number, departure and landing, the airport and terminal,
+    // and this plan's travel as chips (what was said when the flight isn't found)
+    private fun flightCard(change: Change): Map<String, Any?> {
+        val info = flightInfo(change)
+        val at = info?.let { zoneOf(it.fromZone) } ?: zone
+        val departs = info?.departBest ?: info?.departScheduled
+        val lands = info?.arriveBest ?: info?.arriveScheduled
+        val route = if (info != null && info.fromCode.isNotBlank() && info.toCode.isNotBlank())
+            "${info.fromCode} → ${info.toCode}" else "Flight ${change.flight}"
+        val airport = listOfNotNull(info?.fromName?.ifBlank { null } ?: change.place.ifBlank { null },
+            info?.terminal?.ifBlank { null }?.let { "Terminal $it" }).joinToString(" · ")
+        val heading = if (change.action == ACT_EDIT_EVENT) "Update ${eventName(change)}" else "New flight plan"
+        return mapOf("heading" to heading, "route" to route, "number" to change.flight,
+            "departs" to "Departs " + (departs?.atZone(at)?.format(DAY_TIME) ?: whenText(change.date, change.time)),
+            "lands" to (lands?.let { "Lands ${it.atZone(at).format(CLOCK)}" } ?: ""), "airport" to airport,
+            "chips" to travelChips(change, info, true), "found" to (info != null))
+    }
+
+    // A plan's own travel as short phrases: "🚆 By train", "Be there 30 min early", "From Princeton Junction"; a
+    // flight with no early minutes given shows its default
+    private fun travelChips(change: Change, info: FlightInfo?, isFlight: Boolean): List<String> {
+        val chips = mutableListOf<String>()
+        val early = change.early
+
+        // Name each setting given
+        if (change.travel.isNotBlank()) {
+            chips.add(travelWords(change.travel))
+        }
+
+        if (early != null) {
+            chips.add(if (early == 0) "Right on time" else "Be there ${minutesText(early)} early")
+        } else if (isFlight) {
+            chips.add("Be there ${minutesText(flightEarlyMinutes(info))} early")
+        }
+
+        if (change.station.isNotBlank()) {
+            chips.add("From ${stationFor(change.station)?.name ?: change.station}")
+        }
+        return chips
+    }
+
+    // A travel mode as a chip's words
+    private fun travelWords(mode: String): String {
+        // Word each mode
+        return when (mode) {
+            "TRANSIT" -> "🚆 By train"
+            "WALK" -> "🚶 Walking"
+            "BICYCLE" -> "🚲 By bike"
+            else -> "🚗 Driving"
+        }
+    }
+
+    // A plan's own travel for a line: " · this plan only: 🚆 By train, Be there 30 min early" ("" when none given)
+    private fun travelSuffix(change: Change): String {
+        val chips = travelChips(change, null, false)
+        return if (chips.isEmpty()) "" else " · this plan only: ${chips.joinToString(", ")}"
+    }
+
+    // The NJ Transit station a plan leaves from, by its code or name (null when none matches)
+    private fun stationFor(name: String): Station? {
+        // No station named
+        if (name.isBlank()) {
+            return null
+        }
+        val stations = graph.trainSettings.stations()
+        val wanted = nameKey(name)
+        return stations.firstOrNull { it.code.equals(name.trim(), ignoreCase = true) || nameKey(it.name) == wanted }
+            ?: stations.firstOrNull { nameKey(it.name).contains(wanted) }
+    }
+
+    // The key a plan's travel settings and train are kept under
+    private fun planKey(plan: Suggestion): String {
+        return eventKey(plan.title, eventTimes(plan.toEvent()).first)
+    }
+
+    // Set a plan's own travel (mode, early minutes, station) under its key, returning the step that puts the old ones
+    // back (none when nothing was given)
+    private fun setTravel(key: String, change: Change): List<Map<String, Any?>> {
+        val leaveBy = LeaveByStore(context)
+        val trains = graph.trainStore
+        val station = stationFor(change.station)
+
+        // Nothing to set
+        if (change.travel.isBlank() && change.early == null && station == null) {
+            return emptyList()
+        }
+        val undo = step("plan_travel", "key" to key, "mode" to leaveBy.mode(key), "early" to leaveBy.early(key),
+            "origin" to trains.origin(key))
+
+        // Set each one given
+        if (change.travel.isNotBlank()) {
+            leaveBy.setMode(key, change.travel)
+        }
+
+        if (change.early != null) {
+            leaveBy.setEarly(key, change.early)
+        }
+
+        if (station != null) {
+            trains.setOrigin(key, station.code)
+        }
+        return listOf(undo)
     }
 
     // What a new rule covers: for ignore rules the plans waiting now, for the rest the next two weeks of events with
@@ -146,13 +302,23 @@ class DeliberateRunner(private val context: Context) {
     private suspend fun describe(change: Change): String {
         // Word each action
         return when (change.action) {
-            ACT_NEW_PLAN -> "New plan: ${change.title} · ${whenText(change.date, change.time)}" +
-                (if (change.place.isNotBlank()) " · ${change.place}" else "") + " → an Add to calendar? prompt"
+            ACT_NEW_PLAN -> if (change.flight.isNotBlank()) flightLine(change)
+                else "New plan: ${change.title} · ${whenText(change.date, change.time)}" +
+                    (if (change.place.isNotBlank()) " · ${change.place}" else "") + travelSuffix(change) + addedText()
+            ACT_SET_PLAN_TRAVEL -> {
+                val name = if (change.target == TARGET_EVENT) eventName(change) else planName(change.id)
+                "This plan only, $name: ${travelChips(change, null, false).joinToString(", ")}"
+            }
             ACT_EDIT_WAITING -> "Change the waiting plan ${planName(change.id)}: ${fieldsText(change)}"
-            ACT_ADD_WAITING -> "Add ${planName(change.id)} → opens your calendar app to save it"
+            ACT_ADD_WAITING -> "Add ${planName(change.id)}" +
+                if (canWriteCalendar(context)) " → saved to your calendar" else " → opens your calendar app to save it"
             ACT_IGNORE_WAITING -> "Ignore ${planName(change.id)}"
-            ACT_MOVE_EVENT -> "Move ${eventName(change)} to ${whenText(change.date, change.time)} → a prompt that " +
-                "opens the event in your calendar app"
+            ACT_MOVE_EVENT -> "Move ${eventName(change)} to ${whenText(change.date, change.time)}" +
+                if (canWriteCalendar(context)) " → changed on your calendar"
+                else " → a prompt that opens the event in your calendar app"
+            ACT_EDIT_EVENT -> "Change ${eventName(change)}: " + (if (change.flight.isNotBlank())
+                "flight ${change.flight} from live data" else fieldsText(change)) + travelSuffix(change) +
+                " → changed on your calendar"
             ACT_CANCEL_EVENT -> "${eventName(change)} is cancelled → a prompt that opens the event in your calendar app"
             ACT_ADD_BILL -> "New bill: ${change.title}" +
                 (if (change.amount.isNotBlank()) " · ${change.amount}" else "") +
@@ -179,6 +345,22 @@ class DeliberateRunner(private val context: Context) {
             }
             else -> change.action
         }
+    }
+
+    // A new flight plan in words, with its live title and time when found
+    private fun flightLine(change: Change): String {
+        val info = flightInfo(change)
+        val departs = (info?.departBest ?: info?.departScheduled)?.let { time ->
+            time.atZone(zoneOf(info?.fromZone) ?: zone).format(DAY_TIME)
+        } ?: whenText(change.date, change.time)
+        val place = info?.fromName?.ifBlank { null } ?: change.place.ifBlank { null }
+        return "New flight plan: ${info?.let { flightTitle(it) } ?: "Flight ${change.flight}"} · $departs" +
+            (place?.let { " · $it" } ?: "") + travelSuffix(change) + addedText()
+    }
+
+    // Where a new plan goes: straight onto your calendar, or (without calendar write access) an Add prompt
+    private fun addedText(): String {
+        return if (canWriteCalendar(context)) " → saved to your calendar" else " → an Add to calendar? prompt"
     }
 
     // ", repeats monthly" style words for a repeat rule ("" for none)
@@ -265,6 +447,7 @@ class DeliberateRunner(private val context: Context) {
         val done = mutableListOf<String>()
         val failed = mutableListOf<String>()
         val undo = mutableListOf<Map<String, Any?>>()
+        opened = 0
 
         // Make each change
         for (change in changes) {
@@ -284,7 +467,7 @@ class DeliberateRunner(private val context: Context) {
             }
         }
         afterChanges(changes)
-        return Applied(done, failed, undo)
+        return Applied(done, failed, undo, opened)
     }
 
     // Book what depends on the changes: reminders, the summary, leave-by alerts and the widgets
@@ -338,11 +521,41 @@ class DeliberateRunner(private val context: Context) {
                 val start = planTime(change.date, change.time)
                 val end = if (isDate(change.endDate) || isTime(change.endTime))
                     planTime(change.endDate.ifBlank { change.date }, change.endTime) else ""
-                val plan = deliberatePlan(change.title, start, end, change.place, nowMillis, !isTime(change.time))
-                    .copy(repeat = change.repeat)
+                val title = if (change.flight.isNotBlank()) "Flight ${change.flight}" else change.title
+                val written = Event(title, start, end, !isTime(change.time), change.place, phoneTimezone = zone.id,
+                    flight = change.flight)
+                val info = if (change.flight.isNotBlank()) flightInfo(change) else null
+                val event = if (info != null) withFlight(written, info) else written
+
+                // A flight not found yet keeps which leg it is, for when it shows up
+                if (change.flight.isNotBlank() && info == null && change.to.isNotBlank()) {
+                    graph.flightStore.setLeg(change.flight, change.date, change.to)
+                }
+                val found = if (event.location.isBlank()) null else findPlace(context, graph.mapsKeyStore.load(),
+                    graph.travelSettings.home(), event.location)  // its spot on the map, for trains
+                val plan = deliberatePlan(event.title, event.start, event.end, found?.line ?: event.location, nowMillis,
+                    event.allDay).copy(repeat = change.repeat, flight = change.flight, timezone = event.timezone,
+                    placeLat = found?.lat, placeLng = found?.lng)
                 val id = dao.saveSuggestion(plan)
-                graph.notifier.show(plan.copy(id = id), change.title)
-                listOf(step("delete_plan", "id" to id))
+                val steps = mutableListOf(step("delete_plan", "id" to id))
+
+                // You confirmed it, so it goes straight onto the calendar (else it waits as an Add prompt)
+                if (canWriteCalendar(context)) {
+                    val eventId = addNow(context, id) ?: 0
+                    opened = maxOf(opened, eventId)
+                    steps.add(step("delete_event", "id" to eventId))
+                } else {
+                    graph.notifier.show(plan.copy(id = id), plan.title)
+                }
+                steps + setTravel(planKey(plan), change)
+            }
+            ACT_SET_PLAN_TRAVEL -> {
+                val key = if (change.target == TARGET_EVENT) {
+                    findEvent(change.id, change.begin)?.let { eventKey(it.title, it.begin) }
+                } else {
+                    dao.suggestion(change.id)?.let { planKey(it) }
+                }
+                setTravel(key ?: return null, change).ifEmpty { null }
             }
             ACT_EDIT_WAITING -> {
                 val old = dao.suggestion(change.id)?.takeIf { it.status == Suggestion.STATUS_WAITING } ?: return null
@@ -367,7 +580,12 @@ class DeliberateRunner(private val context: Context) {
                 ignoreSuggestion(context, change.id)
                 listOf(step("put_plan", "row" to MAPPER.writeValueAsString(old)))
             }
+            ACT_EDIT_EVENT -> editEvent(change, nowMillis)
             ACT_MOVE_EVENT, ACT_CANCEL_EVENT -> {
+                // A move is made on the calendar itself when Datebook may write to it
+                if (change.action == ACT_MOVE_EVENT && canWriteCalendar(context)) {
+                    return editEvent(change, nowMillis)
+                }
                 val event = findEvent(change.id, change.begin) ?: return null
                 val oldStart = localTime(event.begin, event.allDay)
                 val oldEnd = localTime(event.end, event.allDay)
@@ -455,6 +673,49 @@ class DeliberateRunner(private val context: Context) {
             }
             else -> null
         }
+    }
+
+    // Change an event on the calendar: its title, day and time, place, notes added at the end, or with a flight number
+    // the flight's live title, times and airport (which also makes a plan for the flight, so it's tracked and gets its
+    // trains); never repeating events, whose whole series would move. Returns the steps that put it back, or null when
+    // it can't be changed
+    private suspend fun editEvent(change: Change, nowMillis: Long): List<Map<String, Any?>>? {
+        val event = findEvent(change.id, change.begin) ?: return null
+        val old = readEvent(context, event.eventId)?.takeIf { it.repeat.isBlank() } ?: return null
+        val oldStart = localTime(event.begin, old.allDay)
+        val oldEnd = localTime(event.end, old.allDay)
+        val retimed = isDate(change.date) || isTime(change.time)
+        val start = if (retimed) planTime(change.date.ifBlank { oldStart.take(10) },
+            change.time.ifBlank { oldStart.drop(11) }) else oldStart
+        val end = if (!retimed && !isDate(change.endDate) && !isTime(change.endTime)) oldEnd
+            else movedEnd(change, start, oldStart, oldEnd)
+        val written = Event(change.title.ifBlank { old.title }, start, end, start.length == 10,
+            change.place.ifBlank { old.location }, phoneTimezone = zone.id, flight = change.flight)
+        val info = if (change.flight.isNotBlank()) flightInfo(change) else null
+        val filled = if (info != null) withFlight(written, info) else written
+        val plan = deliberatePlan(filled.title, filled.start, filled.end, filled.location, nowMillis, filled.allDay)
+            .copy(timezone = filled.timezone, flight = change.flight, status = Suggestion.STATUS_ADDED,
+                calendarEventId = event.eventId)
+        val times = planFields(plan)
+        val notes = listOf(old.notes, change.text).filter { it.isNotBlank() }.joinToString("\n")
+        val new = old.copy(title = times.title, begin = times.begin, end = times.end, allDay = times.allDay,
+            location = times.location, timezone = times.timezone, notes = notes)
+
+        // The calendar can refuse
+        if (!updateEvent(context, event.eventId, new)) {
+            return null
+        }
+        opened = maxOf(opened, event.eventId)
+        val steps = mutableListOf(step("put_event", "id" to event.eventId, "row" to MAPPER.writeValueAsString(old)))
+
+        // A flight gets a plan of its own, with its map spot for trains
+        if (change.flight.isNotBlank()) {
+            val found = if (new.location.isBlank()) null else findPlace(context, graph.mapsKeyStore.load(),
+                graph.travelSettings.home(), new.location)
+            steps.add(step("delete_plan", "id" to dao.saveSuggestion(plan.copy(placeLat = found?.lat,
+                placeLng = found?.lng))))
+        }
+        return steps + setTravel(eventKey(new.title, new.begin), change)
     }
 
     // A calendar event time as Datebook keeps plan times ("YYYY-MM-DDTHH:MM", or the date for all-day events)
@@ -562,6 +823,8 @@ class DeliberateRunner(private val context: Context) {
                     graph.notifier.cancel(id)
                     dao.deleteSuggestion(id)
                 }
+                "delete_event" -> if (id > 0) deleteEvent(context, id)
+                "put_event" -> updateEvent(context, id, MAPPER.readValue<EventFields>(row))
                 "put_plan" -> dao.updateSuggestion(MAPPER.readValue<Suggestion>(row))
                 "delete_item" -> dao.setFollowUpStatus(id, FollowUp.DROPPED)
                 "put_item" -> dao.updateFollowUp(MAPPER.readValue<FollowUp>(row))
@@ -580,6 +843,12 @@ class DeliberateRunner(private val context: Context) {
                 "pause" -> settings.setPausedUntil(undoStep["what"].toString(),
                     (undoStep["until"] as? Number)?.toLong() ?: 0)
                 "setting" -> changeSetting(undoStep["setting"].toString(), undoStep["value"]?.toString().orEmpty())
+                "plan_travel" -> {
+                    val key = undoStep["key"].toString()
+                    LeaveByStore(context).putMode(key, undoStep["mode"]?.toString())
+                    LeaveByStore(context).setEarly(key, (undoStep["early"] as? Number)?.toInt())
+                    graph.trainStore.putOrigin(key, undoStep["origin"]?.toString())
+                }
             }
         }
         bookNextFollowUp(context)

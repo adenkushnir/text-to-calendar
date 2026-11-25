@@ -83,7 +83,7 @@ class AppGraph private constructor(context: Context) {
         },
         calendar = { from, to -> calendarEvents(context, from, to, calendarSwitches.switchedOff()) },
         findPlace = { place -> findPlace(context, mapsKeyStore.load(), travelSettings.home(), place) },
-        lookupFlight = { flight, date -> lookupFlight(flightsKeyStore.load(), flight, date)?.also {
+        lookupFlight = { flight, date, leg -> lookupFlight(flightsKeyStore.load(), flight, date, leg)?.also {
             flightStore.save(date, it)  // remembered for the card and the checks
         } },
         onWithdrawn = { notifier.cancel(it) },

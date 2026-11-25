@@ -5,6 +5,7 @@ package io.github.adenkushnir.datebook.deliberate
 import android.content.Context
 import android.util.Log
 import io.github.adenkushnir.datebook.AppGraph
+import io.github.adenkushnir.datebook.calendar.openEventIntent
 import io.github.adenkushnir.datebook.pipeline.PROBLEM_API_KEY
 import io.github.adenkushnir.datebook.pipeline.classifyError
 import java.time.ZonedDateTime
@@ -103,6 +104,11 @@ class Deliberate(private val context: Context, private val ask: (system: String,
         dao.updateLine(preview.copy(state = STATE_CONFIRMED))
         @Suppress("UNCHECKED_CAST")
         val applied = runner.apply(changesOf((data["input"] as? Map<String, Any?>).orEmpty()))
+
+        // Show the event that was saved or changed in your calendar app
+        if (applied.openEvent > 0) {
+            runCatching { context.startActivity(openEventIntent(applied.openEvent)) }
+        }
         val summary = data["summary"]?.toString().orEmpty().ifBlank { data["title"]?.toString().orEmpty() }
         var changeId = 0L
 
@@ -239,7 +245,7 @@ class Deliberate(private val context: Context, private val ask: (system: String,
                 waiting = true
             } else if (block.name == TOOL_PROPOSE) {
                 val changes = changesOf(input)
-                val problems = changes.mapNotNull { problemWith(it) }
+                val problems = changes.mapNotNull { problemWith(it) }.ifEmpty { runner.problems(changes) }
 
                 // A proposal Datebook can't show goes back to Claude to fix
                 if (changes.isEmpty() || problems.isNotEmpty()) {
@@ -250,7 +256,8 @@ class Deliberate(private val context: Context, private val ask: (system: String,
                 val preview = runner.preview(changes)
                 line(chatId, LINE_PREVIEW, input["title"]?.toString().orEmpty().ifBlank { "Changes" },
                     mapOf("toolUseId" to block.id, "title" to input["title"], "summary" to input["summary"],
-                        "lines" to preview.lines, "matches" to preview.matches, "input" to input))
+                        "lines" to preview.lines, "matches" to preview.matches, "input" to input,
+                        "card" to preview.card))
                 waiting = true
             } else {
                 val answer = try {

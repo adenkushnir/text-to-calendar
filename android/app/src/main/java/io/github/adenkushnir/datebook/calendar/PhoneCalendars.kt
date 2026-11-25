@@ -96,4 +96,14 @@ class CalendarSwitches(context: Context) {
         val off = if (on) switchedOff() - calendarId else switchedOff() + calendarId  // the new list
         prefs.edit().putStringSet("off", off.map { it.toString() }.toSet()).apply()
     }
+
+    // Return the calendar picked for new events, or null for your Google account's main calendar
+    fun writeCalendar(): Long? {
+        return if (prefs.contains("write")) prefs.getLong("write", 0) else null
+    }
+
+    // Pick the calendar new events go to
+    fun setWriteCalendar(calendarId: Long) {
+        prefs.edit().putLong("write", calendarId).apply()
+    }
 }

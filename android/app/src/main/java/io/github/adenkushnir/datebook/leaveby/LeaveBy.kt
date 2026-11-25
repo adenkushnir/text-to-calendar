@@ -1,7 +1,9 @@
 // Leave-by alerts: for each timed calendar event with a place, work out the travel time and, 10 minutes before you
 // need to leave (travel time plus 5 spare minutes before the start), post "Leave by 6:37 PM" with Open in Maps and
 // buttons to switch the travel mode; Deliberate's rules can set the travel time, extra early minutes, an earlier
-// alert, the mode and things to bring, or turn an event's alerts off, and it can pause the alerts
+// alert, the mode and things to bring, or turn an event's alerts off, and it can pause the alerts. Each plan can have
+// its own mode and early minutes; flights aim to get you to the airport 60 minutes early (2 hours abroad); a plan
+// with a picked NJ Transit train leaves by the train (its time less getting to the station)
 package io.github.adenkushnir.datebook.leaveby
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -34,7 +36,10 @@ import io.github.adenkushnir.datebook.deliberate.mergeBring
 import io.github.adenkushnir.datebook.deliberate.planRuleReminders
 import io.github.adenkushnir.datebook.extras.BRING_LABEL
 import io.github.adenkushnir.datebook.extras.bringOf
-import io.github.adenkushnir.datebook.flights.isFlightTitle
+import io.github.adenkushnir.datebook.flights.FlightInfo
+import io.github.adenkushnir.datebook.flights.airportName
+import io.github.adenkushnir.datebook.flights.flightEarlyMinutes
+import io.github.adenkushnir.datebook.flights.flightOfTitle
 import io.github.adenkushnir.datebook.places.TRAVEL_BIKE
 import io.github.adenkushnir.datebook.places.TRAVEL_DRIVE
 import io.github.adenkushnir.datebook.places.TRAVEL_TRANSIT
@@ -43,8 +48,12 @@ import io.github.adenkushnir.datebook.places.mapsIntent
 import io.github.adenkushnir.datebook.places.travelMinutes
 import io.github.adenkushnir.datebook.places.travelMode
 import io.github.adenkushnir.datebook.prompts.canNotify
+import io.github.adenkushnir.datebook.trains.Station
+import io.github.adenkushnir.datebook.trains.TrainPick
 import io.github.adenkushnir.datebook.trains.TrainStore
-import io.github.adenkushnir.datebook.trains.pickLine
+import io.github.adenkushnir.datebook.trains.arriveBefore
+import io.github.adenkushnir.datebook.trains.rideLine
+import io.github.adenkushnir.datebook.trains.stillMakesIt
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -56,6 +65,12 @@ import kotlinx.coroutines.launch
 const val LEAVE_BY_CHANNEL = "leave_by"
 const val BUFFER_MINUTES = 5
 const val HEADS_UP_MINUTES = 10
+const val NOTE_SWAP = "swap"  // a plan's train stopped working and another took its place
+const val NOTE_NONE = "none"  // no train gets you there any more
+const val NETWORK_NONE = 0  // how a leave plan may look things up: only what's remembered (for Nestor's snapshot)
+const val NETWORK_IF_NEEDED = 1  // what's remembered, else ask Google (booking the alerts)
+const val NETWORK_FRESH = 2  // ask Google again, else what's remembered (sending an alert)
+private const val WALK_LIMIT_MINUTES = 20  // a longer walk to the station is timed as a drive
 private const val MINUTE = 60_000L
 private const val LOOK_AHEAD_MILLIS = 4 * 60 * MINUTE
 private const val PLAN_WORK = "datebook-leave-by-plan"
@@ -88,14 +103,71 @@ class LeaveByStore(context: Context) {
         prefs.edit().putString("mode:$key", mode).remove("minutes:$key").apply()
     }
 
-    // Return the last travel time worked out for an event, in minutes, or null
-    fun minutes(key: String): Int? {
-        return if (prefs.contains("minutes:$key")) prefs.getInt("minutes:$key", 0) else null
+    // Return the last travel time worked out for an event by a mode, in minutes, or null
+    fun minutes(key: String, mode: String): Int? {
+        val sameMode = prefs.getString("minutesMode:$key", mode) == mode
+        return if (prefs.contains("minutes:$key") && sameMode) prefs.getInt("minutes:$key", 0) else null
     }
 
-    // Remember an event's travel time
-    fun setMinutes(key: String, minutes: Int) {
-        prefs.edit().putInt("minutes:$key", minutes).apply()
+    // Remember an event's travel time by a mode
+    fun setMinutes(key: String, minutes: Int, mode: String) {
+        prefs.edit().putInt("minutes:$key", minutes).putString("minutesMode:$key", mode).apply()
+    }
+
+    // Return how early you mean to be at an event, chosen for it alone, or null to follow the rules and defaults
+    fun early(key: String): Int? {
+        return if (prefs.contains("early:$key")) prefs.getInt("early:$key", 0) else null
+    }
+
+    // Choose how early to be at an event (null goes back to the rules and defaults)
+    fun setEarly(key: String, minutes: Int?) {
+        val editor = prefs.edit()
+
+        // Forget the choice, or keep the new one
+        if (minutes == null) {
+            editor.remove("early:$key")
+        } else {
+            editor.putInt("early:$key", minutes)
+        }
+        editor.apply()
+    }
+
+    // Put an event's travel mode back to what it was (null for the default), for Undo
+    fun putMode(key: String, mode: String?) {
+        // Forget the choice, or set it again
+        if (mode == null) {
+            prefs.edit().remove("mode:$key").remove("minutes:$key").apply()
+        } else {
+            setMode(key, mode)
+        }
+    }
+
+    // Return the note about an event's train, as its kind (NOTE_SWAP or NOTE_NONE) and words, or null
+    fun trainNote(key: String): Pair<String, String>? {
+        val saved = prefs.getString("note:$key", null) ?: return null
+        return Pair(saved.substringBefore("|"), saved.substringAfter("|"))
+    }
+
+    // Remember a note about an event's train (a blank kind forgets it)
+    fun setTrainNote(key: String, kind: String, text: String) {
+        // Forget it, or keep the new one
+        if (kind.isBlank()) {
+            prefs.edit().remove("note:$key").apply()
+        } else {
+            prefs.edit().putString("note:$key", "$kind|$text").apply()
+        }
+    }
+
+    // Return the last trip worked out to an event's train station, as the station's code, the mode and the minutes
+    fun stationTrip(key: String): Triple<String, String, Int>? {
+        val parts = prefs.getString("station:$key", null)?.split("|") ?: return null
+        val minutes = parts.getOrNull(2)?.toIntOrNull() ?: return null
+        return Triple(parts[0], parts[1], minutes)
+    }
+
+    // Remember the trip to an event's train station
+    fun setStationTrip(key: String, code: String, mode: String, minutes: Int) {
+        prefs.edit().putString("station:$key", "$code|$mode|$minutes").apply()
     }
 
     // Return when an event's alert is booked for, or null
@@ -145,11 +217,10 @@ fun alertTime(begin: Long, minutes: Int, early: Int = 0, earlier: Int = 0): Long
     return leaveTime(begin, minutes, early) - (HEADS_UP_MINUTES + earlier) * MINUTE
 }
 
-// The events that get leave-by alerts: timed ones with a place, starting within the next 4 hours, except flights
+// The events that get leave-by alerts: timed ones with a place (flights included), starting within the next 4 hours
 fun leaveByCandidates(events: List<CalendarEvent>, nowMillis: Long): List<CalendarEvent> {
     return events.filter {
-        !it.allDay && it.location.isNotBlank() && it.begin > nowMillis && it.begin <= nowMillis + LOOK_AHEAD_MILLIS &&
-            !isFlightTitle(it.title)
+        !it.allDay && it.location.isNotBlank() && it.begin > nowMillis && it.begin <= nowMillis + LOOK_AHEAD_MILLIS
     }
 }
 
@@ -177,17 +248,201 @@ fun otherModes(mode: String): List<String> {
     return listOf(TRAVEL_DRIVE, TRAVEL_TRANSIT, TRAVEL_WALK).filter { it != travelMode(mode).id }.take(2)
 }
 
-// Work out an event's travel time now, from where the phone is (or home), by its mode
-private fun freshMinutes(context: Context, event: CalendarEvent, mode: String): Int? {
+// Work out an event's travel time now, from where the phone is (or home), by its mode, arriving when you mean to be
+// there
+private fun freshMinutes(context: Context, event: CalendarEvent, mode: String, early: Int = 0): Int? {
     val graph = AppGraph.get(context)
     return travelMinutes(context, graph.mapsKeyStore.load(), graph.travelSettings.home(), event.location, mode,
-        Instant.ofEpochMilli(event.begin))
+        Instant.ofEpochMilli(event.begin - early * MINUTE))
 }
 
-// Post (or update) an event's leave-by alert, naming the suggested NJ Transit train when there is one and what to
-// bring when the event's notes or Deliberate's rules say
-fun showLeaveBy(context: Context, event: CalendarEvent, minutes: Int, mode: String, trainLine: String? = null,
-    effects: EventEffects = EventEffects()) {
+// How to get to an event: when to leave and when the alert goes, the trip in words (like "18 min drive" or "12 min
+// walk to New Brunswick"), the event's travel mode and how the timed part of the trip goes, its minutes, how early you
+// mean to be there, the train to take (null without one) and the station it leaves from, a note about the train ("NJT
+// 3863 was cancelled"), whether no train gets you there any more, and for flights the flight's last-known details
+data class LeavePlan(
+    val begin: Long,
+    val leaveAt: Long,
+    val alertAt: Long,
+    val travel: String,
+    val mode: String,
+    val tripMode: String,
+    val minutes: Int,
+    val early: Int,
+    val train: TrainPick? = null,
+    val station: Station? = null,
+    val trainNote: String = "",
+    val noTrain: Boolean = false,
+    val isFlight: Boolean = false,
+    val flight: FlightInfo? = null,
+)
+
+// How early to be there: chosen for this plan, else a rule's, else a flight's default, else right on time
+fun chooseEarly(plan: Int?, rule: Int?, isFlight: Boolean, flight: FlightInfo?): Int {
+    return plan ?: rule ?: if (isFlight) flightEarlyMinutes(flight) else 0
+}
+
+// When to leave to catch a train: when it really leaves (with its delay), less getting to the station and 5 spare
+// minutes
+fun trainLeaveTime(pick: TrainPick, toStationMinutes: Int): Long {
+    return pick.departs + pick.secondsLate * 1000L - (toStationMinutes + BUFFER_MINUTES) * MINUTE
+}
+
+// How to get to the station: walking when it takes up to 20 minutes (or when there's no drive time), else driving
+fun stationMode(walkMinutes: Int?, driveMinutes: Int?): String {
+    return if (walkMinutes != null && (walkMinutes <= WALK_LIMIT_MINUTES || driveMinutes == null)) TRAVEL_WALK
+        else TRAVEL_DRIVE
+}
+
+// Whether an event is a flight ("Flight B61234 EWR → BOS"), and its last-known details (null when never looked up)
+fun flightFor(context: Context, title: String, begin: Long): Pair<Boolean, FlightInfo?> {
+    val number = flightOfTitle(title) ?: return Pair(false, null)
+    val date = Instant.ofEpochMilli(begin).atZone(ZoneId.systemDefault()).toLocalDate().toString()
+    return Pair(true, AppGraph.get(context).flightStore.info(number, date))
+}
+
+// How early you mean to be at an event: this plan's choice, a rule, a flight's default, or on time
+suspend fun earlyFor(context: Context, title: String, location: String, begin: Long): Int {
+    val rules = AppGraph.get(context).deliberateDao.rules()
+    val (isFlight, flight) = flightFor(context, title, begin)
+    return chooseEarly(LeaveByStore(context).early(eventKey(title, begin)), effectsFor(rules, title, location).early,
+        isFlight, flight)
+}
+
+// The trip to a train's station: the mode and minutes, remembered or (as allowed) asked of Google, walking when it's
+// short and driving otherwise; null when it can't be worked out
+private fun stationTrip(context: Context, key: String, station: Station, pick: TrainPick, network: Int):
+    Pair<String, Int>? {
+    val store = LeaveByStore(context)
+    val saved = store.stationTrip(key)?.takeIf { it.first == station.code }?.let { Pair(it.second, it.third) }
+
+    // Use what's remembered when that's allowed or enough
+    if (network == NETWORK_NONE || (network == NETWORK_IF_NEEDED && saved != null)) {
+        return saved
+    }
+    val graph = AppGraph.get(context)
+    val mapsKey = graph.mapsKeyStore.load()
+    val home = graph.travelSettings.home()
+    val spot = Pair(station.lat, station.lng)
+    val departs = Instant.ofEpochMilli(pick.departs)
+    val walk = travelMinutes(context, mapsKey, home, station.name, TRAVEL_WALK, departs, spot)
+    val drive = if (walk == null || walk > WALK_LIMIT_MINUTES) travelMinutes(context, mapsKey, home, station.name,
+        TRAVEL_DRIVE, departs, spot) else null
+    val mode = stationMode(walk, drive)
+    val minutes = (if (mode == TRAVEL_WALK) walk else drive) ?: return saved  // no route: keep the last one
+    store.setStationTrip(key, station.code, mode, minutes)
+    return Pair(mode, minutes)
+}
+
+// Plan the trip to an event: by its picked train when it goes by transit and the train still makes it, else by
+// Google's door-to-door time (driving when no train makes it any more); null when there's no travel time
+suspend fun leavePlan(context: Context, event: CalendarEvent, effects: EventEffects, network: Int): LeavePlan? {
+    val graph = AppGraph.get(context)
+    val store = LeaveByStore(context)
+    val key = eventKey(event.title, event.begin)
+    val (isFlight, flight) = flightFor(context, event.title, event.begin)
+    val early = chooseEarly(store.early(key), effects.early, isFlight, flight)
+    val mode = store.mode(key) ?: effects.mode ?: graph.travelSettings.mode()
+    val note = store.trainNote(key)
+    val pick = TrainStore(context).pick(key)?.takeIf {
+        mode == TRAVEL_TRANSIT && stillMakesIt(it, event.begin, arriveBefore(early))
+    }
+    val station = pick?.let { train -> graph.trainSettings.stations().firstOrNull { it.code == train.fromCode } }
+    val toStation = if (pick != null && station != null) stationTrip(context, key, station, pick, network) else null
+
+    // By train: leave in time to get to its station
+    if (pick != null && station != null && toStation != null) {
+        val leaveAt = trainLeaveTime(pick, toStation.second)
+        return LeavePlan(event.begin, leaveAt, leaveAt - (HEADS_UP_MINUTES + effects.alertEarlier) * MINUTE,
+            "${tripText(toStation.second, toStation.first)} to ${station.name}", mode, toStation.first,
+            toStation.second, early, pick, station, note?.takeIf { it.first == NOTE_SWAP }?.second.orEmpty(),
+            isFlight = isFlight, flight = flight)
+    }
+    val noTrain = mode == TRAVEL_TRANSIT && note?.first == NOTE_NONE
+    val tripMode = if (noTrain) TRAVEL_DRIVE else mode
+    val saved = store.minutes(key, tripMode)
+    // A rule's time, else what's remembered or Google's, as the caller allows
+    val minutes = effects.minutes ?: when (network) {
+        NETWORK_NONE -> saved
+        NETWORK_IF_NEEDED -> saved ?: freshMinutes(context, event, tripMode, early)
+        else -> freshMinutes(context, event, tripMode, early) ?: saved
+    } ?: return null
+    store.setMinutes(key, minutes, tripMode)
+    return LeavePlan(event.begin, leaveTime(event.begin, minutes, early),
+        alertTime(event.begin, minutes, early, effects.alertEarlier), tripText(minutes, tripMode), mode, tripMode,
+        minutes, early, trainNote = if (noTrain) note?.second.orEmpty() else "", noTrain = noTrain,
+        isFlight = isFlight, flight = flight)
+}
+
+// What a leave-by alert says: its title, the line under it, and the lines below that
+data class AlertText(val title: String, val text: String, val lines: List<String>)
+
+// A small picture for the way you get to the station
+private fun tripIcon(mode: String): String {
+    return if (mode == TRAVEL_WALK) "🚶" else "🚗"
+}
+
+// A leave-by alert's words. Flights put the airport first ("Leave by 4:35 PM for your flight" / "Be at Newark
+// Airport by 5:35 PM · B61234 departs 6:05 PM" / how to get there); other events keep "Leave by 6:37 PM" / "Dinner
+// · 18 min drive" with the train under it; a train that stopped working or no train at all is said first
+fun alertText(title: String, location: String, plan: LeavePlan, nowMillis: Long, zone: ZoneId): AlertText {
+    val clock = { millis: Long -> Instant.ofEpochMilli(millis).atZone(zone).format(CLOCK) }
+    val leave = if (nowMillis > plan.leaveAt) "Leave now" else "Leave by ${clock(plan.leaveAt)}"
+    val train = plan.train
+    val ride = train?.let { "🚆 ${rideLine(it)}" }
+
+    // Other events: the trip, then the train (with what happened to the last one), or why there's no train
+    if (!plan.isFlight) {
+        val name = title.ifBlank { "Event" }
+        // The train under the trip (with what happened to the last one), or why there is none
+        val lines = when {
+            ride != null && plan.trainNote.isNotBlank() -> listOf("$ride (${plan.trainNote})")
+            ride != null -> listOf(ride)
+            plan.noTrain -> listOf("🚆 ${plan.trainNote}, and no other train gets you there in time")
+            else -> emptyList()
+        }
+        return AlertText(leave, "$name · ${plan.travel}", lines)
+    }
+    val airport = plan.flight?.let { airportName(it) } ?: location.ifBlank { "the airport" }
+    val number = plan.flight?.number ?: flightOfTitle(title).orEmpty()
+    val beThere = "Be at $airport by ${clock(plan.begin - plan.early * MINUTE)}"
+    val departs = "$number departs ${clock(plan.begin)}".trim()
+
+    // Flights: a swapped train, no train, by train, or Google's door-to-door time
+    return when {
+        train != null && plan.trainNote.isNotBlank() -> AlertText("$leave for your flight",
+            "${plan.trainNote} · take NJT ${train.trainId} at ${clock(train.departs + train.secondsLate * 1000L)}",
+            listOf("${tripIcon(plan.tripMode)} ${plan.travel}", ride!!, "✈️ $beThere"))
+        train != null -> AlertText("$leave for your flight", "$beThere · $departs",
+            listOf("${tripIcon(plan.tripMode)} ${plan.travel}", ride!!))
+        plan.noTrain -> AlertText("$leave for your flight",
+            "No train gets you to $airport by ${clock(plan.begin - arriveBefore(plan.early))}",
+            listOf("🚗 ${plan.travel} to ${location.ifBlank { airport }}", plan.trainNote))
+        else -> AlertText("$leave for your flight", "$beThere · $departs", listOf(plan.travel))
+    }
+}
+
+// Update a leave-by alert that went out already (its train changed): find the event again and post it with a fresh
+// plan
+suspend fun reAlert(context: Context, key: String) {
+    val graph = AppGraph.get(context)
+    val now = System.currentTimeMillis()
+    val events = calendarEvents(context, now, now + LOOK_AHEAD_MILLIS, graph.calendarSwitches.switchedOff())
+    val event = events.firstOrNull { eventKey(it.title, it.begin) == key } ?: return  // moved, deleted or started
+    val effects = effectsFor(graph.deliberateDao.rules(), event.title, event.location)
+
+    // Not when its alerts are off or paused
+    if (effects.quiet || graph.deliberateSettings.paused(PAUSE_LEAVE_BY, now)) {
+        return
+    }
+    val plan = leavePlan(context, event, effects, NETWORK_FRESH) ?: return
+    showLeaveBy(context, event, plan, effects)
+    Log.i("Datebook", "leave-by alert updated: ${event.title} · ${plan.travel}")
+}
+
+// Post (or update) an event's leave-by alert from its plan (see alertText), with what to bring when the event's notes
+// or Deliberate's rules say; Open in Maps leads to the train's station when going by train
+fun showLeaveBy(context: Context, event: CalendarEvent, plan: LeavePlan, effects: EventEffects = EventEffects()) {
     // Nothing can be shown without permission to notify
     if (!canNotify(context)) {
         return
@@ -199,16 +454,20 @@ fun showLeaveBy(context: Context, event: CalendarEvent, minutes: Int, mode: Stri
     val id = notificationId(key)
     val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     val openHome = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    val openMaps = mapsIntent(event.location, mode).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    val text = "${event.title.ifBlank { "Event" }} · ${tripText(minutes, mode)}"
+    val station = plan.station
+    val mapsTo = if (plan.train != null && station != null) "${station.lat},${station.lng}" else event.location
+    val openMaps = mapsIntent(mapsTo, plan.tripMode).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    val words = alertText(event.title, event.location, plan, System.currentTimeMillis(), ZoneId.systemDefault())
     val bring = mergeBring(bringOf(event.notes), effects.bring)
+    val place = if (plan.isFlight) null else event.location  // a flight's airport is already in its words
     val builder = NotificationCompat.Builder(context, LEAVE_BY_CHANNEL)
         .setSmallIcon(R.drawable.ic_stat_datebook)
         .setColor(ContextCompat.getColor(context, R.color.brand_aqua))
-        .setContentTitle(leaveByTitle(event.begin, minutes, ZoneId.systemDefault(), early = effects.earlyMinutes))
-        .setContentText(text)
-        .setStyle(NotificationCompat.BigTextStyle().bigText(listOfNotNull(text, trainLine?.let { "🚆 $it" },
-            bring.ifBlank { null }?.let { "🎒 $BRING_LABEL$it" }, event.location).joinToString("\n")))
+        .setContentTitle(words.title)
+        .setContentText(words.text)
+        .setStyle(NotificationCompat.BigTextStyle().bigText((listOf(words.text) + words.lines +
+            listOfNotNull(bring.ifBlank { null }?.let { "🎒 $BRING_LABEL$it" }, place)).filter { it.isNotBlank() }
+            .joinToString("\n")))
         .setCategory(NotificationCompat.CATEGORY_REMINDER)
         .setPriority(NotificationCompat.PRIORITY_HIGH)
         .setAutoCancel(true)
@@ -216,7 +475,7 @@ fun showLeaveBy(context: Context, event: CalendarEvent, minutes: Int, mode: Stri
         .addAction(0, "Open in Maps", PendingIntent.getActivity(context, id + 1, openMaps, flags))
 
     // Offer the other travel modes as buttons
-    for ((i, other) in otherModes(mode).withIndex()) {
+    for ((i, other) in otherModes(if (plan.noTrain) plan.tripMode else plan.mode).withIndex()) {
         val change = Intent(context, LeaveByModeReceiver::class.java).setAction(ACTION_MODE)
             .putExtra(EXTRA_KEY, key).putExtra(EXTRA_EVENT, event.eventId).putExtra(EXTRA_BEGIN, event.begin)
             .putExtra(EXTRA_MODE, other)
@@ -253,7 +512,6 @@ suspend fun planLeaveBy(context: Context) {
     if (graph.deliberateSettings.paused(PAUSE_LEAVE_BY, now)) {
         return
     }
-    val hasMaps = !graph.mapsKeyStore.load().isNullOrBlank()
     store.prune(now)
     val events = calendarEvents(context, now, now + LOOK_AHEAD_MILLIS, graph.calendarSwitches.switchedOff())
 
@@ -262,19 +520,11 @@ suspend fun planLeaveBy(context: Context) {
         val key = eventKey(event.title, event.begin)
         val effects = effectsFor(rules, event.title, event.location)
 
-        // Skip events already alerted, events a rule keeps quiet, and (without a Maps key) events with no rule time
-        if (store.alerted(key) || effects.quiet || (!hasMaps && effects.minutes == null)) {
+        // Skip events already alerted and events a rule keeps quiet
+        if (store.alerted(key) || effects.quiet) {
             continue
         }
-        val mode = store.mode(key) ?: effects.mode ?: graph.travelSettings.mode()
-        val minutes = effects.minutes ?: store.minutes(key) ?: freshMinutes(context, event, mode)
-            ?.also { store.setMinutes(key, it) }
-
-        // Without a travel time there's nothing to book
-        if (minutes == null) {
-            continue
-        }
-        val alertAt = alertTime(event.begin, minutes, effects.earlyMinutes, effects.alertEarlier)
+        val alertAt = leavePlan(context, event, effects, NETWORK_IF_NEEDED)?.alertAt ?: continue  // no travel time
 
         // Only re-book when the alert time changed
         if (store.bookedFor(key) != alertAt) {
@@ -317,14 +567,10 @@ class LeaveByAlertWorker(context: Context, params: WorkerParameters) : Coroutine
         if (effects.quiet) {
             return Result.success()
         }
-        val mode = store.mode(key) ?: effects.mode ?: graph.travelSettings.mode()
-        val minutes = effects.minutes ?: freshMinutes(applicationContext, event, mode) ?: store.minutes(key)
-            ?: return Result.success()
-        store.setMinutes(key, minutes)
-        val train = TrainStore(applicationContext).pick(key)?.let { pickLine(it) }  // only for transit plans
-        showLeaveBy(applicationContext, event, minutes, mode, train, effects)
+        val plan = leavePlan(applicationContext, event, effects, NETWORK_FRESH) ?: return Result.success()
+        showLeaveBy(applicationContext, event, plan, effects)
         store.setAlerted(key)
-        Log.i("Datebook", "leave-by alert: ${event.title} · ${tripText(minutes, mode)}")
+        Log.i("Datebook", "leave-by alert: ${event.title} · ${plan.travel}")
         return Result.success()
     }
 }
@@ -345,9 +591,8 @@ class LeaveByModeReceiver : BroadcastReceiver() {
                 LeaveByStore(appContext).setMode(key, mode)
                 val event = findEvent(appContext, eventId, begin) ?: return@launch
                 val effects = effectsFor(AppGraph.get(appContext).deliberateDao.rules(), event.title, event.location)
-                val minutes = freshMinutes(appContext, event, mode) ?: return@launch
-                LeaveByStore(appContext).setMinutes(key, minutes)
-                showLeaveBy(appContext, event, minutes, mode, effects = effects)
+                val plan = leavePlan(appContext, event, effects, NETWORK_FRESH) ?: return@launch
+                showLeaveBy(appContext, event, plan, effects)
             } finally {
                 pending.finish()
             }

@@ -10,6 +10,8 @@ import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.extras.bringOf
 import io.github.adenkushnir.datebook.fencing.FencingTile
 import io.github.adenkushnir.datebook.fencing.streamWindow
+import io.github.adenkushnir.datebook.flights.FlightInfo
+import io.github.adenkushnir.datebook.flights.wallFlight
 import io.github.adenkushnir.datebook.lists.Trip
 import io.github.adenkushnir.datebook.prompts.fromLine
 import io.github.adenkushnir.datebook.tracking.packageLink
@@ -31,13 +33,14 @@ private val HHMM = Regex("""\d{2}:\d{2}""")  // a start time like "08:00"
 private const val CONFIRMATION = "Confirmation: "
 private const val TRACK = "Track: "
 
-// A planned leave-by for an event: when to leave and the trip in words ("20 min drive")
-data class PlannedLeave(val leaveAt: Long, val travel: String)
+// A planned leave-by for an event: when to leave, the trip in words ("20 min drive") and how many minutes early you
+// mean to be there
+data class PlannedLeave(val leaveAt: Long, val travel: String, val early: Int = 0)
 
-// One calendar event for the snapshot, with its calendar's name, its planned leave-by and the NJ Transit train picked
-// for it (null when none)
+// One calendar event for the snapshot, with its calendar's name, its planned leave-by, the NJ Transit train picked
+// for it and, for flights, the flight's last-known details (null when none)
 data class SnapshotEvent(val event: CalendarEvent, val calendar: String, val leave: PlannedLeave?,
-    val train: TrainPick? = null)
+    val train: TrainPick? = null, val flight: FlightInfo? = null)
 
 // Everything the snapshot is made from
 data class SnapshotParts(
@@ -119,7 +122,8 @@ private fun dueOf(item: FollowUp): String {
     return if (item.time.isBlank()) item.date else "${item.date}T${item.time}"
 }
 
-// A calendar event, for the snapshot (with its train when one is picked, for the wall's Next card)
+// A calendar event, for the snapshot (with its train when one is picked and a flight's status, for the wall's Next
+// card)
 private fun eventJson(item: SnapshotEvent, zone: ZoneId): Map<String, Any> {
     val event = item.event
     val json = mutableMapOf<String, Any>("id" to "${event.eventId}-${event.begin / 1000}", "title" to event.title,
@@ -128,14 +132,32 @@ private fun eventJson(item: SnapshotEvent, zone: ZoneId): Map<String, Any> {
         "from" to fromOfNotes(event.notes), "bring" to bringOf(event.notes),
         "confirmation" to labelled(event.notes, CONFIRMATION), "track_url" to labelled(event.notes, TRACK),
         "leave_by" to (item.leave?.let { localMinutes(it.leaveAt, zone) } ?: ""),
-        "travel" to (item.leave?.travel ?: ""))
+        "travel" to (item.leave?.travel ?: ""), "early" to (item.leave?.early ?: 0))
 
-    // The picked train: when it leaves, and from and to where
+    // The picked train: its number, when it leaves and arrives, from and to where, its track, delay and state
     if (item.train != null) {
         json["train"] = mapOf("departs" to Instant.ofEpochMilli(item.train.departs).atZone(zone).format(CLOCK),
-            "from" to item.train.fromName, "to" to item.train.toName)
+            "from" to item.train.fromName, "to" to item.train.toName, "id" to item.train.trainId,
+            "arrives" to Instant.ofEpochMilli(item.train.arrives).atZone(zone).format(CLOCK),
+            "track" to item.train.track, "late" to item.train.secondsLate / 60, "status" to item.train.status)
+    }
+
+    // A flight's status line (orange on the wall when it's late or cancelled), and its details for the trip screen
+    if (item.flight != null) {
+        json["flight"] = wallFlight(item.flight) + flightDetails(item.flight, zone)
     }
     return json
+}
+
+// A flight's details for the wall's trip screen: its number, where it lands, when it departs and lands (local times,
+// "" when unknown), terminal and gate
+fun flightDetails(info: FlightInfo, zone: ZoneId): Map<String, Any> {
+    val departs = info.departBest ?: info.departScheduled
+    val lands = info.arriveBest ?: info.arriveScheduled
+    return mapOf("number" to info.number, "to_city" to info.toCity, "to_code" to info.toCode,
+        "departs" to (departs?.let { localMinutes(it.toEpochMilli(), zone) } ?: ""),
+        "lands" to (lands?.let { localMinutes(it.toEpochMilli(), zone) } ?: ""), "terminal" to info.terminal,
+        "gate" to info.gate)
 }
 
 // A men's foil event on the wall's schedule: its name, the meet and place, the day it shows (today while it's on) with
@@ -163,11 +185,15 @@ fun snapshotOf(parts: SnapshotParts, zone: ZoneId): Map<String, Any> {
                     "track_url" to (packageLink(it.packageCarrier, it.trackingNumber)?.url ?: ""),
                     "expected" to it.start.take(10))
             },
-            "bills" to parts.bills.map { mapOf("id" to it.id, "title" to it.title, "due" to dueOf(it)) },
-            "assignments" to parts.assignments.map { mapOf("id" to it.id, "title" to it.title, "due" to dueOf(it)) },
-            "trips" to parts.trips.map {
-                mapOf("id" to (it.plans.firstOrNull()?.id ?: 0L), "title" to it.name, "start" to it.first.toString(),
-                    "end" to it.last.toString())
+            "bills" to parts.bills.map { mapOf("id" to it.id, "title" to it.title, "due" to dueOf(it),
+                "amount" to it.amount) },
+            "assignments" to parts.assignments.map { mapOf("id" to it.id, "title" to it.title, "due" to dueOf(it),
+                "class" to it.conversation) },
+            "trips" to parts.trips.map { trip ->
+                mapOf("id" to (trip.plans.firstOrNull()?.id ?: 0L), "title" to trip.name,
+                    "start" to trip.first.toString(), "end" to trip.last.toString(), "plans" to trip.plans.map { plan ->
+                        mapOf("title" to plan.title, "start" to plan.start, "confirmation" to plan.confirmation)
+                    })
             },
         ),
         "notes" to parts.notes.map { mapOf("id" to it.id, "text" to it.body.ifBlank { it.title }) },

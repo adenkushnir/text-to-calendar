@@ -44,6 +44,7 @@ import io.github.adenkushnir.datebook.Muted
 import io.github.adenkushnir.datebook.SectionLabel
 import io.github.adenkushnir.datebook.TopBar
 import io.github.adenkushnir.datebook.calendar.PhoneCalendar
+import io.github.adenkushnir.datebook.calendar.WritableCalendar
 import io.github.adenkushnir.datebook.capture.WatchedApp
 import io.github.adenkushnir.datebook.places.TRAVEL_MODES
 import io.github.adenkushnir.datebook.summary.timeLabel
@@ -122,8 +123,8 @@ fun AppsPage(apps: List<WatchedApp>, isOn: (String) -> Boolean, setOn: (String, 
     }
 }
 
-// Calendars: which of the phone's calendars Datebook reads for clash warnings and skipping plans already added, or
-// a button to allow calendar access
+// Calendars: which of the phone's calendars Datebook reads for clash warnings and skipping plans already added, which
+// one it saves new events to, or a button to allow calendar access
 @Composable
 fun CalendarsPage(
     access: Boolean,
@@ -132,10 +133,14 @@ fun CalendarsPage(
     setOn: (Long, Boolean) -> Unit,
     askAccess: () -> Unit,
     onBack: () -> Unit,
+    writable: List<WritableCalendar> = emptyList(),
+    writeTo: Long? = null,
+    setWriteTo: (Long) -> Unit = {},
 ) {
     SettingsPage("Calendars", onBack) {
         Muted("Datebook reads the calendars switched on here to warn about clashes and skip plans you've already " +
-            "added. It never adds, changes or deletes anything.")
+            "added. Plans you add or confirm are saved to the calendar below, and changes you confirm in " +
+            "Deliberate are made for you; it never deletes anything.")
 
         // Without access there's nothing to list, only a way to allow it
         if (!access) {
@@ -166,6 +171,25 @@ fun CalendarsPage(
                         setOn(calendar.id, checked)
                         on = checked
                     })
+                }
+            }
+        }
+
+        // The calendar new events go to, when Datebook may write to one
+        if (writable.isNotEmpty()) {
+            SectionLabel("Save new events to")
+            DatebookCard {
+                // One choice per calendar you can add to; the chosen one glows
+                for (option in writable) {
+                    val chosen = option.calendar.id == writeTo
+                    val name = option.calendar.name.ifBlank { "Calendar" } + if (option.primary) " (main)" else ""
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(name, fontWeight = if (chosen) FontWeight.SemiBold else FontWeight.Normal)
+                            Muted(option.calendar.account)
+                        }
+                        GelSwitch(checked = chosen, onCheckedChange = { setWriteTo(option.calendar.id) })
+                    }
                 }
             }
         }

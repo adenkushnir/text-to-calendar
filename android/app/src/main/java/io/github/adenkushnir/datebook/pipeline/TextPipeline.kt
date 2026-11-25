@@ -22,8 +22,7 @@ import io.github.adenkushnir.datebook.data.suggestionOf
 import io.github.adenkushnir.datebook.capture.SHOP_APPS
 import io.github.adenkushnir.datebook.capture.isShippingNews
 import io.github.adenkushnir.datebook.flights.FlightInfo
-import io.github.adenkushnir.datebook.flights.flightTitle
-import io.github.adenkushnir.datebook.flights.zonedText
+import io.github.adenkushnir.datebook.flights.withFlight
 import io.github.adenkushnir.datebook.offline.GuessedTime
 import io.github.adenkushnir.datebook.offline.guessTitle
 import io.github.adenkushnir.datebook.places.FoundPlace
@@ -88,7 +87,7 @@ class TextPipeline(
     private val onSuggested: (suggestion: Suggestion, incoming: IncomingText) -> Unit = { _, _ -> },
     private val calendar: (fromMillis: Long, toMillis: Long) -> List<CalendarEvent> = { _, _ -> emptyList() },
     private val findPlace: (place: String) -> FoundPlace? = { null },
-    private val lookupFlight: (flight: String, date: String) -> FlightInfo? = { _, _ -> null },
+    private val lookupFlight: (flight: String, date: String, leg: String) -> FlightInfo? = { _, _, _ -> null },
     private val onWithdrawn: (suggestionId: Long) -> Unit = {},
     private val guessTimes: (text: String, receivedAt: LocalDateTime, zone: String) -> List<GuessedTime> =
         { _, _, _ -> emptyList() },
@@ -195,6 +194,9 @@ class TextPipeline(
                 continue
             } else if (changed == null && alreadyWaiting(event)) {
                 lines.add("already waiting, skipped: ${eventDetails(event)}")
+                continue
+            } else if (changed == null && flightPlanned(event)) {
+                lines.add("flight already planned, skipped: ${eventDetails(event)}")
                 continue
             } else if (event.change == CHANGE_MOVED && changed?.begin == eventTimes(event).first) {
                 lines.add("already moved, skipped: ${eventDetails(event)}")
@@ -549,6 +551,14 @@ class TextPipeline(
         }
     }
 
+    // Return true if a plan for the same flight on the same day exists already (waiting or added, from any text, email
+    // or Deliberate), so one flight never gets two plans
+    private suspend fun flightPlanned(event: Event): Boolean {
+        return event.flight.isNotBlank() && dao.flightSuggestions().any {
+            it.flight.equals(event.flight, ignoreCase = true) && it.start.take(10) == event.start.take(10)
+        }
+    }
+
     // Return true if a text should go to Claude: it passes the date check, or (outside group chats, which always need a
     // clear date) it sounds like a change and there are calendar events it could change
     private suspend fun worthAsking(incoming: IncomingText): Boolean {
@@ -564,20 +574,15 @@ class TextPipeline(
         return incoming.group.isBlank() && soundsLikeChange(incoming.text) && upcomingEvents(incoming).isNotEmpty()
     }
 
-    // Fill a flight plan in from live flight data: its title with the route, its departure and arrival in the
-    // departure airport's time (the delayed times when it's already delayed, else the scheduled ones), and the airport
-    // as its place; it stays as Claude wrote it without data
+    // Fill a flight plan in from live flight data (see withFlight), picking the leg that lands in the trip's city; it
+    // stays as Claude wrote it without data
     private suspend fun withFlightTimes(event: Event): Event {
         // Only flights are looked up
         if (event.flight.isBlank()) {
             return event
         }
-        val info = withContext(Dispatchers.IO) { lookupFlight(event.flight, event.start.take(10)) } ?: return event
-        val departs = info.departBest ?: info.departScheduled ?: return event  // no times to fill in
-        val zone = zoneOf(info.fromZone) ?: zoneOf(event.phoneTimezone) ?: ZoneId.systemDefault()
-        val end = (info.arriveBest ?: info.arriveScheduled)?.let { zonedText(it, zone) }.orEmpty()  // empty if unknown
-        return event.copy(title = flightTitle(info), start = zonedText(departs, zone), end = end, allDay = false,
-            timezone = zone.id, location = info.fromName.ifBlank { event.location })
+        val info = withContext(Dispatchers.IO) { lookupFlight(event.flight, event.start.take(10), event.trip) }
+        return withFlight(event, info)
     }
 
     // Swap a new plan's place, like "Luigi's", for its full address and coordinates, off the main thread; it stays as

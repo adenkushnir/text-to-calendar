@@ -30,14 +30,14 @@ import io.github.adenkushnir.datebook.fencing.fencingTiles
 import io.github.adenkushnir.datebook.followups.FOLLOW_UP_IDS
 import io.github.adenkushnir.datebook.followups.bookNextFollowUp
 import io.github.adenkushnir.datebook.leaveby.LeaveByStore
+import io.github.adenkushnir.datebook.leaveby.NETWORK_NONE
 import io.github.adenkushnir.datebook.leaveby.eventKey
-import io.github.adenkushnir.datebook.leaveby.leaveTime
-import io.github.adenkushnir.datebook.leaveby.tripText
+import io.github.adenkushnir.datebook.leaveby.flightFor
+import io.github.adenkushnir.datebook.leaveby.leavePlan
 import io.github.adenkushnir.datebook.lists.PackageStore
 import io.github.adenkushnir.datebook.lists.tripsOf
 import io.github.adenkushnir.datebook.pipeline.ApiKeyStore
 import io.github.adenkushnir.datebook.prompts.ignoreSuggestion
-import io.github.adenkushnir.datebook.trains.TrainStore
 import io.github.adenkushnir.datebook.widgets.updateWidgets
 import java.net.HttpURLConnection
 import java.net.InetAddress
@@ -347,7 +347,6 @@ object NestorLink {
         val events = runCatching { calendarEvents(context, from, to, switchedOff) }.getOrDefault(emptyList())
         val rules = graph.deliberateDao.rules()
         val leaveBy = LeaveByStore(context)
-        val trainPicks = TrainStore(context)
         val fencing = FencingSettings(context)
         val stations = graph.trainSettings.stations().associate { it.code to it.name }
         val trip = graph.trainSettings.trip()?.let {
@@ -368,12 +367,10 @@ object NestorLink {
             events = events.map { event ->
                 val key = eventKey(event.title, event.begin)
                 val effects = effectsFor(rules, event.title, event.location)
-                val minutes = effects.minutes ?: leaveBy.minutes(key)
-                val mode = leaveBy.mode(key) ?: effects.mode ?: graph.travelSettings.mode()
-                val planned = leaveBy.bookedFor(key) != null && minutes != null
-                SnapshotEvent(event, names[event.calendarId].orEmpty(),
-                    if (planned) PlannedLeave(leaveTime(event.begin, minutes!!, effects.earlyMinutes),
-                        tripText(minutes, mode)) else null, if (planned) trainPicks.pick(key) else null)
+                val booked = leaveBy.bookedFor(key) != null
+                val plan = if (booked) leavePlan(context, event, effects, NETWORK_NONE) else null
+                SnapshotEvent(event, names[event.calendarId].orEmpty(), plan?.let { PlannedLeave(it.leaveAt,
+                    it.travel, it.early) }, plan?.train, flightFor(context, event.title, event.begin).second)
             },
         )
     }

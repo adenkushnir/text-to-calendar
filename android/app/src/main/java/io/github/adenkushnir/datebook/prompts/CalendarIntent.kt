@@ -1,5 +1,5 @@
-// Builds the intent that opens your calendar app's new-event screen with a suggestion filled in (Datebook never
-// writes events itself; you save them in Calendar)
+// Builds the intent that opens your calendar app's new-event screen with a suggestion filled in (used when Datebook
+// may not write to the calendar; otherwise it saves the event itself, see CalendarWrite), and the event's notes
 package io.github.adenkushnir.datebook.prompts
 import android.content.ContentUris
 import android.content.Intent

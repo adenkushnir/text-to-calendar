@@ -15,6 +15,7 @@ import java.time.Instant
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -201,5 +202,35 @@ class TrainsTest {
         compose.onNodeWithText("New Brunswick ▾").performScrollTo().performClick()
         compose.onNodeWithText("Edison").performClick()
         assertEquals(listOf("ED"), switched)
+    }
+
+    // Arriving 30 minutes early means the train must get there 35 minutes before (never less than 10), so a later
+    // train no longer fits; the pick remembers the station it leaves from
+    @Test
+    fun picksTrainForEarly() {
+        val trains = parseBoard(board)
+        val start = Instant.parse("2037-11-13T23:50:00Z").toEpochMilli()  // 6:50 PM
+        assertEquals(10 * 60_000L, arriveBefore(0))
+        assertEquals(35 * 60_000L, arriveBefore(30))
+        val pick = pickTrain(mapOf(newBrunswick to trains), listOf(penn), start, arriveBefore(30))!!
+        assertEquals("3851", pick.trainId)
+        assertEquals("NB", pick.fromCode)
+        val rows = trainRows(newBrunswick, trains, listOf(penn), start, null, arriveBefore(30)).second
+        assertEquals(listOf(false, true), rows.map { it.late })
+    }
+
+    // A picked train still works until it's cancelled or its delay makes it too late, and says which
+    @Test
+    fun trainTrouble() {
+        val start = Instant.parse("2037-11-13T23:50:00Z").toEpochMilli()  // 6:50 PM
+        val pick = pickTrain(mapOf(newBrunswick to parseBoard(board)), listOf(penn), start, arriveBefore(30))!!
+        assertTrue(stillMakesIt(pick, start, arriveBefore(30)))
+        val late = pick.copy(secondsLate = 15 * 60)
+        assertFalse(stillMakesIt(late, start, arriveBefore(30)))
+        assertEquals("NJT 3851 is 15 min late", trainProblem(late))
+        assertEquals("NJT 3851 was cancelled", trainProblem(pick.copy(status = "Cancelled")))
+        assertEquals("NJT 3851 at 5:12 PM · Track 2 · arrives New York Penn Station 6:05 PM", rideLine(pick))
+        assertEquals("NJT 3851 at 5:15 PM · Track 2 · 3 min late · arrives New York Penn Station 6:08 PM",
+            rideLine(pick.copy(secondsLate = 180)))
     }
 }

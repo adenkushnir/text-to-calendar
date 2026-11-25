@@ -19,7 +19,8 @@ private val SPLIT = Regex("\\s*[|,]\\s*")
 
 // What the rules change for one calendar event: its travel time (null to ask Google), extra minutes to arrive early,
 // minutes to bring the alert forward, a travel mode (null for the default), things to bring, reminders before it (in
-// minutes, or the evening before), and whether it gets no alerts at all
+// minutes, or the evening before), whether it gets no alerts at all, and the early minutes a rule set (null when no
+// rule says, so a flight can fall back to its own default)
 data class EventEffects(
     val minutes: Int? = null,
     val earlyMinutes: Int = 0,
@@ -28,6 +29,7 @@ data class EventEffects(
     val bring: List<String> = emptyList(),
     val remindBefore: List<String> = emptyList(),
     val quiet: Boolean = false,
+    val early: Int? = null,
 )
 
 // The phrases a rule's words stand for: "soccer practice|fencing practice" gives both, lowercase
@@ -82,15 +84,17 @@ fun effectsFor(rules: List<Rule>, title: String, location: String): EventEffects
         return matching.filter { it.kind == kind }.firstNotNullOfOrNull { it.value.trim().toIntOrNull() }
     }
     val mode = matching.firstOrNull { it.kind == RULE_MODE && it.value.isNotBlank() }?.value?.trim()?.uppercase()
+    val early = minutesOf(RULE_EARLY)?.coerceIn(0, 24 * 60)
     return EventEffects(
         minutes = minutesOf(RULE_TRAVEL)?.coerceIn(0, 24 * 60),
-        earlyMinutes = minutesOf(RULE_EARLY)?.coerceIn(0, 24 * 60) ?: 0,
+        earlyMinutes = early ?: 0,
         alertEarlier = minutesOf(RULE_ALERT)?.coerceIn(0, 24 * 60) ?: 0,
         mode = mode?.let { travelMode(it).id },
         bring = matching.filter { it.kind == RULE_BRING }.flatMap { it.value.split(SPLIT) }.map { it.trim() }
             .filter { it.isNotBlank() }.distinctBy { it.lowercase() },
         remindBefore = matching.filter { it.kind == RULE_REMIND }.map { it.value.trim() }.filter { it.isNotBlank() },
         quiet = matching.any { it.kind == RULE_QUIET },
+        early = early,
     )
 }
 
