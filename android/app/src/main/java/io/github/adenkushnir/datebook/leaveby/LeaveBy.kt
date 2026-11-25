@@ -38,6 +38,7 @@ import io.github.adenkushnir.datebook.extras.BRING_LABEL
 import io.github.adenkushnir.datebook.extras.bringOf
 import io.github.adenkushnir.datebook.flights.FlightInfo
 import io.github.adenkushnir.datebook.flights.airportName
+import io.github.adenkushnir.datebook.flights.boardingMinutes
 import io.github.adenkushnir.datebook.flights.flightEarlyMinutes
 import io.github.adenkushnir.datebook.flights.flightOfTitle
 import io.github.adenkushnir.datebook.places.TRAVEL_BIKE
@@ -275,7 +276,14 @@ data class LeavePlan(
     val noTrain: Boolean = false,
     val isFlight: Boolean = false,
     val flight: FlightInfo? = null,
+    val boarding: Int = 0,
 )
+
+// How long before an event's start you mean to be there: the early minutes, plus for a flight the time boarding
+// starts before departure (a flight's early minutes count from boarding)
+fun leadMinutes(early: Int, isFlight: Boolean, flight: FlightInfo?): Int {
+    return early + if (isFlight) boardingMinutes(flight) else 0
+}
 
 // How early to be there: chosen for this plan, else a rule's, else a flight's default, else right on time
 fun chooseEarly(plan: Int?, rule: Int?, isFlight: Boolean, flight: FlightInfo?): Int {
@@ -301,7 +309,14 @@ fun flightFor(context: Context, title: String, begin: Long): Pair<Boolean, Fligh
     return Pair(true, AppGraph.get(context).flightStore.info(number, date))
 }
 
-// How early you mean to be at an event: this plan's choice, a rule, a flight's default, or on time
+// How long before an event's start you mean to be there (see leadMinutes): what trains and leave times aim for
+suspend fun leadFor(context: Context, title: String, location: String, begin: Long): Int {
+    val (isFlight, flight) = flightFor(context, title, begin)
+    return leadMinutes(earlyFor(context, title, location, begin), isFlight, flight)
+}
+
+// How early you mean to be at an event (for a flight, before boarding): this plan's choice, a rule, a flight's
+// default, or on time
 suspend fun earlyFor(context: Context, title: String, location: String, begin: Long): Int {
     val rules = AppGraph.get(context).deliberateDao.rules()
     val (isFlight, flight) = flightFor(context, title, begin)
@@ -341,7 +356,8 @@ suspend fun leavePlan(context: Context, event: CalendarEvent, effects: EventEffe
     val store = LeaveByStore(context)
     val key = eventKey(event.title, event.begin)
     val (isFlight, flight) = flightFor(context, event.title, event.begin)
-    val early = chooseEarly(store.early(key), effects.early, isFlight, flight)
+    val early = leadMinutes(chooseEarly(store.early(key), effects.early, isFlight, flight), isFlight, flight)
+    val boarding = if (isFlight) boardingMinutes(flight) else 0
     val mode = store.mode(key) ?: effects.mode ?: graph.travelSettings.mode()
     val note = store.trainNote(key)
     val pick = TrainStore(context).pick(key)?.takeIf {
@@ -356,7 +372,7 @@ suspend fun leavePlan(context: Context, event: CalendarEvent, effects: EventEffe
         return LeavePlan(event.begin, leaveAt, leaveAt - (HEADS_UP_MINUTES + effects.alertEarlier) * MINUTE,
             "${tripText(toStation.second, toStation.first)} to ${station.name}", mode, toStation.first,
             toStation.second, early, pick, station, note?.takeIf { it.first == NOTE_SWAP }?.second.orEmpty(),
-            isFlight = isFlight, flight = flight)
+            isFlight = isFlight, flight = flight, boarding = boarding)
     }
     val noTrain = mode == TRAVEL_TRANSIT && note?.first == NOTE_NONE
     val tripMode = if (noTrain) TRAVEL_DRIVE else mode
@@ -371,7 +387,7 @@ suspend fun leavePlan(context: Context, event: CalendarEvent, effects: EventEffe
     return LeavePlan(event.begin, leaveTime(event.begin, minutes, early),
         alertTime(event.begin, minutes, early, effects.alertEarlier), tripText(minutes, tripMode), mode, tripMode,
         minutes, early, trainNote = if (noTrain) note?.second.orEmpty() else "", noTrain = noTrain,
-        isFlight = isFlight, flight = flight)
+        isFlight = isFlight, flight = flight, boarding = boarding)
 }
 
 // What a leave-by alert says: its title, the line under it, and the lines below that
@@ -406,7 +422,8 @@ fun alertText(title: String, location: String, plan: LeavePlan, nowMillis: Long,
     val airport = plan.flight?.let { airportName(it) } ?: location.ifBlank { "the airport" }
     val number = plan.flight?.number ?: flightOfTitle(title).orEmpty()
     val beThere = "Be at $airport by ${clock(plan.begin - plan.early * MINUTE)}"
-    val departs = "$number departs ${clock(plan.begin)}".trim()
+    val departs = if (plan.boarding > 0) "boarding about ${clock(plan.begin - plan.boarding * MINUTE)}"
+        else "$number departs ${clock(plan.begin)}".trim()
 
     // Flights: a swapped train, no train, by train, or Google's door-to-door time
     return when {

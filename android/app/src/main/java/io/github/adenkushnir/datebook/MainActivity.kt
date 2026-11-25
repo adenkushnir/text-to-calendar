@@ -118,8 +118,11 @@ import io.github.adenkushnir.datebook.followups.scheduleFollowUps
 import io.github.adenkushnir.datebook.calendar.canWriteCalendar
 import io.github.adenkushnir.datebook.calendar.writableCalendars
 import io.github.adenkushnir.datebook.calendar.writeCalendarId
+import io.github.adenkushnir.datebook.flights.BOARDING_MINUTES
+import io.github.adenkushnir.datebook.flights.boardingMinutes
+import io.github.adenkushnir.datebook.leaveby.flightFor
+import io.github.adenkushnir.datebook.leaveby.leadMinutes
 import io.github.adenkushnir.datebook.flights.FLIGHT_EARLY_MINUTES
-import io.github.adenkushnir.datebook.flights.INTERNATIONAL_EARLY_MINUTES
 import io.github.adenkushnir.datebook.flights.isFlightTitle
 import io.github.adenkushnir.datebook.flights.statusLine
 import io.github.adenkushnir.datebook.leaveby.LeaveByStore
@@ -1174,7 +1177,8 @@ class MainActivity : ComponentActivity() {
         val stale = kept == null || (isPlanDay(plan) && now - kept.second > 10 * 60_000)
         val journey = if (!stale) kept!!.first else planJourney(applicationContext, graph.mapsKeyStore.load(),
             graph.travelSettings.home(), plan.location, plan.location.substringBefore(","), wanted, null,
-            begin - early * 60_000L)?.also { store.save(key, it, now) } ?: kept?.first ?: return null
+            begin - leadMinutes(early, isFlight(plan), flightFor(applicationContext, plan.title, begin).second) *
+                60_000L)?.also { store.save(key, it, now) } ?: kept?.first ?: return null
         val pick = graph.trainStore.pick(key) ?: return journey
         return withLiveTrain(journey, pick.trainId, pick.track, pick.secondsLate / 60,
             pick.status.contains("cancel", ignoreCase = true))
@@ -1191,15 +1195,20 @@ class MainActivity : ComponentActivity() {
         if (!isFlight(plan)) {
             return null
         }
-        val at = Instant.ofEpochMilli(planBegin(plan) - early * 60_000L).atZone(ZoneId.systemDefault())
-        return "Be at the airport by ${at.format(DateTimeFormatter.ofPattern("h:mm a", Locale.US))}"
+        val clock = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
+        val (_, flight) = flightFor(applicationContext, plan.title, planBegin(plan))
+        val at = Instant.ofEpochMilli(planBegin(plan) - leadMinutes(early, true, flight) * 60_000L)
+            .atZone(ZoneId.systemDefault())
+        val boards = Instant.ofEpochMilli(planBegin(plan) - boardingMinutes(flight) * 60_000L)
+            .atZone(ZoneId.systemDefault())
+        return "Be at the airport by ${at.format(clock)} · boarding about ${boards.format(clock)}"
     }
 
     // Under the stepper for flights still on the default: where the minutes come from (null otherwise)
     private fun earlyHintFor(plan: Suggestion): String? {
         val chosen = LeaveByStore(applicationContext).early(eventKey(plan.title, planBegin(plan)))
-        return if (isFlight(plan) && chosen == null) "Flights start at $FLIGHT_EARLY_MINUTES min " +
-            "($INTERNATIONAL_EARLY_MINUTES abroad) until you change it." else null
+        return if (!isFlight(plan)) null else (if (chosen == null) "Flights start at $FLIGHT_EARLY_MINUTES min. " else
+            "") + "For flights this counts from boarding (about $BOARDING_MINUTES min before departure)."
     }
 
     // Return true if a plan gets NJ Transit trains: it goes by transit, has a place, and an NJ Transit account is saved

@@ -137,16 +137,20 @@ class LeaveByTest {
         assertEquals(Triple("NB", TRAVEL_WALK, 12), store.stationTrip(key))
     }
 
-    // How early: this plan's choice wins, then a rule (even 0), then a flight's default (2 hours abroad), else on time
+    // How early: this plan's choice wins, then a rule (even 0), then a flight's default (30 min before boarding, 75
+    // abroad), else on time; a flight's lead adds boarding (35 min before departure, 45 abroad)
     @Test
     fun early() {
         val abroad = flight.copy(toCode = "LHR", toCountry = "GB")
         assertEquals(30, chooseEarly(30, 45, true, flight))
         assertEquals(0, chooseEarly(null, 0, true, flight))
-        assertEquals(60, chooseEarly(null, null, true, flight))
-        assertEquals(60, chooseEarly(null, null, true, null))
-        assertEquals(120, chooseEarly(null, null, true, abroad))
+        assertEquals(30, chooseEarly(null, null, true, flight))
+        assertEquals(30, chooseEarly(null, null, true, null))
+        assertEquals(75, chooseEarly(null, null, true, abroad))
         assertEquals(0, chooseEarly(null, null, false, null))
+        assertEquals(65, leadMinutes(30, true, flight))
+        assertEquals(120, leadMinutes(75, true, abroad))
+        assertEquals(30, leadMinutes(30, false, null))
     }
 
     // By train: leave in time to walk to the station, plus 5 spare minutes, counting the train's delay; a walk over 20

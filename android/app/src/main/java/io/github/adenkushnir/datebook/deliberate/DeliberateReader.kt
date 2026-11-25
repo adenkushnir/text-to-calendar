@@ -3,6 +3,7 @@
 package io.github.adenkushnir.datebook.deliberate
 import android.content.Context
 import io.github.adenkushnir.datebook.AppGraph
+import io.github.adenkushnir.datebook.flights.boardingMinutes
 import io.github.adenkushnir.datebook.flights.flightEarlyMinutes
 import io.github.adenkushnir.datebook.flights.isInternational
 import io.github.adenkushnir.datebook.flights.FlightInfo
@@ -113,7 +114,8 @@ class DeliberateReader(private val context: Context) {
         return "${info.number} · ${statusLine(info)} · from ${info.fromName} (${info.fromCode}, " +
             "${info.fromCountry}) " +
             "to ${info.toCity} (${info.toCode}, ${info.toCountry}) · departs $departs (${at.id}) · lands $lands · " +
-            "$abroad, so Datebook aims to get the user there ${flightEarlyMinutes(info)} min early unless they say"
+            "$abroad: boarding about ${boardingMinutes(info)} min before departure, and Datebook aims to get the user " +
+            "there ${flightEarlyMinutes(info)} min before boarding unless they say (early counts from boarding)"
     }
 
     // Plan a journey for find_journey: the journey (null when there's no route), what it's for, and a short version

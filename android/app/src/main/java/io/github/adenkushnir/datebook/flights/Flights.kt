@@ -20,8 +20,10 @@ private const val TIMEOUT_MILLIS = 10000
 private val MAPPER = ObjectMapper()
 private val CLOCK = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
 private val LOCAL_MINUTES = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
-const val FLIGHT_EARLY_MINUTES = 60  // how early to be at the airport for a flight when nothing else says
-const val INTERNATIONAL_EARLY_MINUTES = 120
+const val FLIGHT_EARLY_MINUTES = 30  // how early to be at the airport before boarding when nothing else says
+const val INTERNATIONAL_EARLY_MINUTES = 75  // abroad: about 2 hours before departure in all
+const val BOARDING_MINUTES = 35  // boarding starts about this long before a domestic departure
+const val INTERNATIONAL_BOARDING_MINUTES = 45
 private val FLIGHT_TITLE = Regex("^Flight ([A-Z0-9]{2}[0-9]{1,4})( |$)")
 
 // One flight as AeroDataBox describes it: the number, its status, both airports (code, city, name, time zone), the
@@ -179,9 +181,14 @@ fun isInternational(info: FlightInfo): Boolean {
         !info.fromCountry.equals(info.toCountry, ignoreCase = true)
 }
 
-// How early to be at the airport for a flight when you haven't said: 2 hours abroad, else 1 hour
+// How early to be at the airport before boarding when you haven't said: 30 minutes, or 75 abroad
 fun flightEarlyMinutes(info: FlightInfo?): Int {
     return if (info != null && isInternational(info)) INTERNATIONAL_EARLY_MINUTES else FLIGHT_EARLY_MINUTES
+}
+
+// How long before departure boarding starts: about 35 minutes, or 45 abroad
+fun boardingMinutes(info: FlightInfo?): Int {
+    return if (info != null && isInternational(info)) INTERNATIONAL_BOARDING_MINUTES else BOARDING_MINUTES
 }
 
 // The departure airport in a few words, like "Newark Airport" (its full name when the city isn't known)

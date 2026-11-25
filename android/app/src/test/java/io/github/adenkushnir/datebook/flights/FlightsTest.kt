@@ -88,15 +88,18 @@ class FlightsTest {
         assertNull(flightOfTitle("Flight lessons"))
     }
 
-    // Be at the airport an hour early, or two when leaving the country (an unknown country counts as at home)
+    // Be at the airport 30 min before boarding (75 abroad), boarding 35 min before departure (45 abroad); an unknown
+    // country counts as at home
     @Test
     fun earlyDefaults() {
         val info = parseFlight(reply, "2037-11-13")!!
         assertFalse(isInternational(info))
-        assertEquals(60, flightEarlyMinutes(info))
-        assertEquals(120, flightEarlyMinutes(info.copy(toCountry = "GB")))
-        assertEquals(60, flightEarlyMinutes(info.copy(toCountry = "")))
-        assertEquals(60, flightEarlyMinutes(null))
+        assertEquals(30, flightEarlyMinutes(info))
+        assertEquals(75, flightEarlyMinutes(info.copy(toCountry = "GB")))
+        assertEquals(30, flightEarlyMinutes(info.copy(toCountry = "")))
+        assertEquals(30, flightEarlyMinutes(null))
+        assertEquals(35, boardingMinutes(info))
+        assertEquals(45, boardingMinutes(info.copy(toCountry = "GB")))
         assertEquals("Newark Airport", airportName(info))
         assertEquals("Newark Liberty International", airportName(info.copy(fromCity = "")))
     }

@@ -19,7 +19,7 @@ import io.github.adenkushnir.datebook.deliberate.effectsFor
 import io.github.adenkushnir.datebook.leaveby.LeaveByStore
 import io.github.adenkushnir.datebook.leaveby.NOTE_NONE
 import io.github.adenkushnir.datebook.leaveby.NOTE_SWAP
-import io.github.adenkushnir.datebook.leaveby.earlyFor
+import io.github.adenkushnir.datebook.leaveby.leadFor
 import io.github.adenkushnir.datebook.leaveby.eventKey
 import io.github.adenkushnir.datebook.leaveby.reAlert
 import io.github.adenkushnir.datebook.pipeline.eventTimes
@@ -298,7 +298,7 @@ suspend fun planTrains(context: Context) {
         graph.trainStore.setPick(key, pick)
         Log.i("Datebook", "train for ${plan.title}: ${pickLine(pick)}")
         val old = before?.let { gone -> rows.firstOrNull { it.pick.trainId == gone.trainId }?.pick }
-        val inTime = arriveBefore(earlyFor(context, plan.title, plan.location, start))
+        val inTime = arriveBefore(leadFor(context, plan.title, plan.location, start))
         val swapped = old != null && old.trainId != pick.trainId && !stillMakesIt(old, start, inTime)
         val change = if (before != null && before.trainId == pick.trainId) trainChange(before, pick) else null
 
@@ -349,7 +349,7 @@ suspend fun trainChoices(context: Context, plan: Suggestion, stations: List<Stat
     if (destinations.isEmpty()) {
         return TrainChoices(from, origins, null, emptyList(), "No NJ Transit station near this plan.")
     }
-    val before = arriveBefore(earlyFor(context, plan.title, plan.location, start))
+    val before = arriveBefore(leadFor(context, plan.title, plan.location, start))
     val (to, rows) = trainRows(from, graph.railData.departures(from.code).orEmpty(), destinations, start,
         graph.trainStore.choice(key), before)
     val note = if (rows.isEmpty()) "No trains from ${from.name} toward this plan right now." else ""  // board empty

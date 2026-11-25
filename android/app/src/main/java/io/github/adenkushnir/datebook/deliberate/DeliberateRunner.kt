@@ -198,9 +198,10 @@ class DeliberateRunner(private val context: Context) {
         }
 
         if (early != null) {
-            chips.add(if (early == 0) "Right on time" else "Be there ${minutesText(early)} early")
+            chips.add(if (early == 0) "Right on time" else if (isFlight) "Be there ${minutesText(early)} before boarding"
+                else "Be there ${minutesText(early)} early")
         } else if (isFlight) {
-            chips.add("Be there ${minutesText(flightEarlyMinutes(info))} early")
+            chips.add("Be there ${minutesText(flightEarlyMinutes(info))} before boarding")
         }
 
         if (change.station.isNotBlank()) {
