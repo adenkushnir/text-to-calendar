@@ -110,4 +110,29 @@ class JourneysTest {
         assertTrue(journey.steps[1].under.startsWith("3 min late · Track 1 · "))
         assertTrue(!journey.steps[3].under.contains("late"))
     }
+
+    // Each step knows where it starts and ends, for Maps: the walk from home to the bus stop, the transfer walk
+    @Test
+    fun stepPlaces() {
+        val bus = parseJourney(bus, "Menlo Park Mall", TRAVEL_TRANSIT, null, null, zone)!!
+        assertEquals("", bus.steps[0].fromName)
+        assertEquals("George St at Albany St", bus.steps[0].toName)
+        assertEquals("Menlo Park Mall", bus.steps[2].fromName)
+        val transfer = parseJourney(rail, "Exchange Place", TRAVEL_TRANSIT, null, null, zone)!!
+        assertEquals("Newark Penn Station", transfer.steps[2].fromName)
+        assertEquals("New Brunswick", transfer.steps[1].fromName)
+    }
+
+    // A flight's trip ends with boarding (35 min before, with the gate) and the flight leaving
+    @Test
+    fun flightSteps() {
+        val departs = at("2037-11-25T21:10:00Z")
+        val trip = withFlightSteps(parseJourney(drive, "Newark Airport", TRAVEL_DRIVE, null, departs - 65 * 60_000L,
+            zone)!!, "UA2433", departs, 35, "Terminal C, gate C71", at("2037-11-25T22:27:00Z"), "Boston", zone)
+        assertEquals(listOf(STEP_DRIVE, STEP_ARRIVE, STEP_BOARD, STEP_FLIGHT), trip.steps.map { it.kind })
+        assertEquals("Boarding about 3:35 PM", trip.steps[2].title)
+        assertEquals("Terminal C, gate C71 · 35 min before departure", trip.steps[2].under)
+        assertEquals("UA2433 departs", trip.steps[3].title)
+        assertEquals("Lands 5:27 PM in Boston", trip.steps[3].under)
+    }
 }

@@ -211,6 +211,17 @@ fun withFlight(event: Event, info: FlightInfo?): Event {
         timezone = zone.id, location = info.fromName.ifBlank { event.location })
 }
 
+// The airline's check-in page for a flight number (UA2433 → United), or a web search for its check-in when the airline
+// isn't known
+fun checkInLink(number: String): String {
+    val sites = mapOf("UA" to "https://www.united.com/en/us/checkin", "AA" to "https://www.aa.com/checkin",
+        "DL" to "https://www.delta.com/mytrips/", "B6" to "https://www.jetblue.com/check-in",
+        "WN" to "https://www.southwest.com/air/check-in/", "AS" to "https://www.alaskaair.com/check-in",
+        "NK" to "https://www.spirit.com/check-in", "F9" to "https://www.flyfrontier.com/travel/my-trips/check-in/")
+    return sites[number.take(2).uppercase()] ?: "https://www.google.com/search?q=" +
+        java.net.URLEncoder.encode("$number check in", "UTF-8")
+}
+
 // A flight's status for Nestor's wall: the status line, and whether it's late or cancelled (shown in orange)
 fun wallFlight(info: FlightInfo): Map<String, Any> {
     return mapOf("text" to statusLine(info), "late" to (minutesLate(info) >= 5 || info.status.startsWith("Canceled")))

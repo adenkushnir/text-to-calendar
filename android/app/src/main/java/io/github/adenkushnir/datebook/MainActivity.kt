@@ -134,6 +134,7 @@ import io.github.adenkushnir.datebook.pipeline.IncomingText
 import io.github.adenkushnir.datebook.pipeline.eventTimes
 import io.github.adenkushnir.datebook.pipeline.maskKey
 import io.github.adenkushnir.datebook.pipeline.summary
+import io.github.adenkushnir.datebook.places.TRAVEL_WALK
 import io.github.adenkushnir.datebook.places.mapsIntent
 import io.github.adenkushnir.datebook.scenery.MotionSettings
 import io.github.adenkushnir.datebook.scenery.SceneBackdrop
@@ -171,9 +172,20 @@ import io.github.adenkushnir.datebook.journeys.Journey
 import io.github.adenkushnir.datebook.places.TRAVEL_DRIVE
 import io.github.adenkushnir.datebook.places.TRAVEL_TRANSIT
 import io.github.adenkushnir.datebook.prompts.isChange
+import io.github.adenkushnir.datebook.journeys.FlightDialog
+import io.github.adenkushnir.datebook.journeys.JourneyStep
 import io.github.adenkushnir.datebook.journeys.JourneyStore
+import io.github.adenkushnir.datebook.journeys.STEP_BOARD
+import io.github.adenkushnir.datebook.journeys.STEP_DRIVE
+import io.github.adenkushnir.datebook.journeys.STEP_FLIGHT
+import io.github.adenkushnir.datebook.journeys.STEP_WALK
+import io.github.adenkushnir.datebook.journeys.TrainPickerDialog
+import io.github.adenkushnir.datebook.journeys.journeyChoices
 import io.github.adenkushnir.datebook.journeys.planJourney
+import io.github.adenkushnir.datebook.journeys.withFlightSteps
 import io.github.adenkushnir.datebook.journeys.withLiveTrain
+import io.github.adenkushnir.datebook.flights.checkInLink
+import io.github.adenkushnir.datebook.tracking.trackLinkFor
 import io.github.adenkushnir.datebook.trains.ON_THE_DAY
 import io.github.adenkushnir.datebook.trains.TrainBoard
 import io.github.adenkushnir.datebook.trains.TrainChoices
@@ -915,6 +927,19 @@ class MainActivity : ComponentActivity() {
         var trainRefresh by remember { mutableIntStateOf(0) }
         var early by remember(plan) { mutableStateOf<Int?>(null) }
         var journey by remember(plan) { mutableStateOf<Journey?>(null) }
+        var picking by remember(plan) { mutableStateOf(false) }  // the train picker is open
+        var choices by remember(plan) { mutableStateOf<List<Journey>?>(null) }  // null while they load
+        var flightOpen by remember(plan) { mutableStateOf(false) }
+        LaunchedEffect(picking) {
+            val shown = plan ?: return@LaunchedEffect
+            val current = journey ?: return@LaunchedEffect
+
+            // Look for the other trains each time the picker opens
+            if (picking) {
+                choices = null
+                choices = withContext(Dispatchers.IO) { otherTrains(graph, shown, current, early ?: 0) }
+            }
+        }
         LaunchedEffect(plan) {
             val shown = plan ?: return@LaunchedEffect
             early = earlyFor(applicationContext, shown.title, shown.location, planBegin(shown))
@@ -943,6 +968,19 @@ class MainActivity : ComponentActivity() {
             flightStatus = plan?.let { flightStatusFor(graph, it) },
             beThere = plan?.let { shown -> early?.let { beThereFor(shown, it) } },
             journey = journey,
+            onJourneyStep = { step ->
+                val shown = plan ?: return@SuggestionScreen
+
+                // Walks and drives open Maps for that part; rides open the train picker; boarding and the flight
+                // open its details
+                if (step.kind == STEP_WALK || step.kind == STEP_DRIVE) {
+                    openMapsLeg(step)
+                } else if (step.kind == STEP_BOARD || step.kind == STEP_FLIGHT) {
+                    flightOpen = isFlight(shown)
+                } else {
+                    picking = true
+                }
+            },
             early = early?.takeIf { plan?.location?.isNotBlank() == true },
             earlyHint = plan?.let { earlyHintFor(it) },
             onEarly = { minutes ->
@@ -975,6 +1013,39 @@ class MainActivity : ComponentActivity() {
                 travelMode = mode
             },
         )
+        val shown = plan ?: return
+        val current = journey
+        val (flying, flight) = remember(shown) { flightFor(applicationContext, shown.title, planBegin(shown)) }
+
+        // The train picker, while it's open
+        if (picking && current != null) {
+            val beThere = planBegin(shown) - leadMinutes(early ?: 0, flying, flight) * 60_000L
+            TrainPickerDialog(choices, current, beThere, onPick = { picked ->
+                pickJourney(graph, shown, picked)
+                journey = picked
+                picking = false
+                trainRefresh += 1
+            }, onDismiss = { picking = false })
+        }
+
+        // The flight's details, while they're open
+        if (flightOpen) {
+            val clock = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
+            val at = { instant: Instant? -> instant?.atZone(ZoneId.systemDefault())?.format(clock) ?: "not known" }
+            val departs = flight?.departScheduled ?: flight?.departBest
+            val number = flight?.number ?: shown.flight
+            val lines = listOf(
+                "Terminal · gate" to listOf(flight?.terminal, flight?.gate).filter { !it.isNullOrBlank() }
+                    .joinToString(" · ").ifBlank { "not posted yet" },
+                "Boarding" to "about " + at(departs?.minusSeconds(boardingMinutes(flight) * 60L)),
+                "Departs" to at(flight?.departBest ?: departs),
+                "Lands" to at(flight?.arriveBest ?: flight?.arriveScheduled) +
+                    (flight?.toCity?.ifBlank { null }?.let { " · $it" } ?: ""))
+            val track = trackLinkFor(shown.flight, "", "")
+            FlightDialog(shown.title, flight?.let { statusLine(it) } ?: "No live status yet", lines,
+                onCheckIn = { openLink(checkInLink(number)) }, onTrack = track?.let { link -> { openLink(link.url) } },
+                onDismiss = { flightOpen = false })
+        }
     }
 
     // Home's events: the next month of your switched-on calendars, matched to the plans you added, or without calendar
@@ -1158,6 +1229,40 @@ class MainActivity : ComponentActivity() {
         return graph.flightStore.info(plan.flight, plan.start)?.let { statusLine(it) }
     }
 
+    // The other ways to make a plan's trip for the train picker (see journeyChoices); off the main thread
+    private fun otherTrains(graph: AppGraph, plan: Suggestion, current: Journey, early: Int): List<Journey> {
+        val begin = planBegin(plan)
+        val lead = leadMinutes(early, isFlight(plan), flightFor(applicationContext, plan.title, begin).second)
+        return journeyChoices(applicationContext, graph.mapsKeyStore.load(), graph.travelSettings.home(), plan.location,
+            plan.location.substringBefore(","), current.mode, begin - lead * 60_000L, current)
+    }
+
+    // Keep the train you picked for a plan: the journey (kept as picked, so it's refreshed leaving at the same time)
+    // and, for NJ Transit, the train's number, so the day's live pick and the leave-by alert follow it
+    private fun pickJourney(graph: AppGraph, plan: Suggestion, picked: Journey) {
+        val key = eventKey(plan.title, planBegin(plan))
+        JourneyStore(applicationContext).save(key, picked, System.currentTimeMillis(), picked = true)
+        val number = picked.steps.firstOrNull { it.trainId.isNotBlank() }?.trainId
+
+        // The train's number, when Google gave it
+        if (number != null) {
+            graph.trainStore.setChoice(key, number)
+        }
+        lifecycleScope.launch(Dispatchers.IO) { planLeaveBy(applicationContext) }
+    }
+
+    // Open Google Maps for one walk or drive of a trip, from where it starts (or where you are) to where it ends
+    private fun openMapsLeg(step: JourneyStep) {
+        val mode = if (step.kind == STEP_DRIVE) TRAVEL_DRIVE else TRAVEL_WALK
+
+        // Open the maps app, or say there isn't one
+        try {
+            startActivity(mapsIntent(step.toName, mode, step.fromName))
+        } catch (error: ActivityNotFoundException) {  // no maps app or browser installed
+            Toast.makeText(this, "No maps app found", Toast.LENGTH_LONG).show()
+        }
+    }
+
     // A plan's journey for its card: the kept one, worked out again when it was kept for another mode or (on the plan's
     // day) over 10 minutes ago, with the picked NJ Transit train's live state; null for plans without a place, changes
     // and plans already past (call it off the main thread)
@@ -1175,10 +1280,19 @@ class MainActivity : ComponentActivity() {
         val walking = wanted !in setOf(TRAVEL_TRANSIT, TRAVEL_DRIVE)  // walk and bike plans are planned as a walk
         val kept = store.journey(key)?.takeIf { it.first.mode == wanted || walking }
         val stale = kept == null || (isPlanDay(plan) && now - kept.second > 10 * 60_000)
-        val journey = if (!stale) kept!!.first else planJourney(applicationContext, graph.mapsKeyStore.load(),
-            graph.travelSettings.home(), plan.location, plan.location.substringBefore(","), wanted, null,
-            begin - leadMinutes(early, isFlight(plan), flightFor(applicationContext, plan.title, begin).second) *
-                60_000L)?.also { store.save(key, it, now) } ?: kept?.first ?: return null
+        val (flying, flight) = flightFor(applicationContext, plan.title, begin)
+        val picked = kept != null && store.picked(key)  // a picked train is kept by leaving at the same time
+        val planned = if (!stale) kept!!.first else planJourney(applicationContext, graph.mapsKeyStore.load(),
+            graph.travelSettings.home(), plan.location, plan.location.substringBefore(","), wanted,
+            if (picked) kept!!.first.leave else null,
+            if (picked) null else begin - leadMinutes(early, isFlight(plan), flight) * 60_000L)
+            ?.also { store.save(key, it, now, picked) } ?: kept?.first ?: return null
+        val gate = listOfNotNull(flight?.terminal?.ifBlank { null }?.let { "Terminal $it" },
+            flight?.gate?.ifBlank { null }?.let { "gate $it" }).joinToString(", ")
+        val journey = if (!flying) planned else withFlightSteps(planned, flight?.number ?: plan.flight,
+            (flight?.departScheduled ?: flight?.departBest)?.toEpochMilli() ?: begin, boardingMinutes(flight), gate,
+            (flight?.arriveBest ?: flight?.arriveScheduled)?.toEpochMilli(), flight?.toCity.orEmpty(),
+            ZoneId.systemDefault())
         val pick = graph.trainStore.pick(key) ?: return journey
         return withLiveTrain(journey, pick.trainId, pick.track, pick.secondsLate / 60,
             pick.status.contains("cancel", ignoreCase = true))

@@ -1,7 +1,9 @@
 // A journey's steps as the plan card and Deliberate show them: the time, a coloured dot for the kind of step, the
-// line's short name on a chip (for trains and buses), what happens and a line under it; arriving in the warning colour
+// line's short name on a chip (for trains and buses), what happens and a line under it; arriving in the warning colour.
+// With onTap, steps you can act on (walks, drives, rides, boarding, the flight) are tappable, with a › at the end
 package io.github.adenkushnir.datebook.journeys
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,7 +32,10 @@ private val LABEL = Color(0xFFD6E8FF)
 private val ARRIVE = Color(0xFFFFBE6A)
 private val LINE_DEFAULT = Color(0xFF0E86C4)
 private val DOTS = mapOf(STEP_WALK to Color(0xFF52C0F6), STEP_BUS to Color(0xFF9FB3C8), STEP_TRAIN to Color(0xFF5ADBEA),
-    STEP_SUBWAY to Color(0xFF5ADBEA), STEP_DRIVE to Color(0xFF52C0F6), STEP_ARRIVE to ARRIVE)
+    STEP_SUBWAY to Color(0xFF5ADBEA), STEP_DRIVE to Color(0xFF52C0F6), STEP_ARRIVE to ARRIVE, STEP_BOARD to ARRIVE,
+    STEP_FLIGHT to Color(0xFFEEF5FF))
+private val TAPPABLE = setOf(STEP_WALK, STEP_DRIVE, STEP_TRAIN, STEP_BUS, STEP_SUBWAY, STEP_BOARD, STEP_FLIGHT)
+private val ARROW = Color(0xFF9FD8FF)
 
 // A line's colour from Google ("#0039A6"), or Aero aqua when there's none or it can't be read
 private fun lineColor(text: String): Color {
@@ -38,13 +43,15 @@ private fun lineColor(text: String): Color {
     return hex.toLongOrNull(16)?.takeIf { hex.length == 6 }?.let { Color(0xFF000000 or it) } ?: LINE_DEFAULT
 }
 
-// Every step of a journey, one row each
+// Every step of a journey, one row each (tappable ones call onTap)
 @Composable
-fun JourneySteps(journey: Journey, zone: ZoneId = ZoneId.systemDefault()) {
+fun JourneySteps(journey: Journey, zone: ZoneId = ZoneId.systemDefault(), onTap: ((JourneyStep) -> Unit)? = null) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         // One row per step
         for (step in journey.steps) {
-            Row(verticalAlignment = Alignment.Top) {
+            val tappable = onTap != null && step.kind in TAPPABLE
+            val row = if (tappable) Modifier.clickable { onTap?.invoke(step) }.padding(vertical = 2.dp) else Modifier
+            Row(row, verticalAlignment = Alignment.Top) {
                 Text(Instant.ofEpochMilli(step.starts).atZone(zone).format(CLOCK), color = LABEL,
                     fontWeight = FontWeight.SemiBold, modifier = Modifier.width(52.dp))
                 Box(Modifier.padding(top = 6.dp, end = 10.dp).size(10.dp).clip(CircleShape)
@@ -65,6 +72,11 @@ fun JourneySteps(journey: Journey, zone: ZoneId = ZoneId.systemDefault()) {
                     if (step.under.isNotBlank()) {
                         Muted(step.under)
                     }
+                }
+
+                // A › on steps you can tap
+                if (tappable) {
+                    Text("›", color = ARROW, fontSize = 22.sp, modifier = Modifier.padding(start = 6.dp))
                 }
             }
         }

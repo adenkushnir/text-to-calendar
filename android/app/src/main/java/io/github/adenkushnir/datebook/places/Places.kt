@@ -184,9 +184,11 @@ fun lastLocation(context: Context): Pair<Double, Double>? {
     }
 }
 
-// The intent that starts directions to a place in Google Maps (or any maps app) with a travel mode
-fun mapsIntent(place: String, mode: String): Intent {
-    val link = "https://www.google.com/maps/dir/?api=1&destination=${Uri.encode(place)}" +
+// The intent that starts directions to a place in Google Maps (or any maps app) with a travel mode, from a starting
+// place when one is given (else from where you are)
+fun mapsIntent(place: String, mode: String, origin: String = ""): Intent {
+    val from = if (origin.isBlank()) "" else "&origin=${Uri.encode(origin)}"  // empty: from where you are
+    val link = "https://www.google.com/maps/dir/?api=1$from&destination=${Uri.encode(place)}" +
         "&travelmode=${travelMode(mode).mapsName}"
     return Intent(Intent.ACTION_VIEW, Uri.parse(link))
 }

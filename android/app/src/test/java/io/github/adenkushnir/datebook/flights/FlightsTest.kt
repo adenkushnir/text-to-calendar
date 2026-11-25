@@ -173,4 +173,11 @@ class FlightsTest {
         store.setLeg("B61234", "2037-11-25", "BOS")
         assertEquals("BOS", store.leg("B61234", "2037-11-25"))
     }
+
+    // Check-in goes to the airline's own page when it's known, else a search
+    @Test
+    fun checkIn() {
+        assertEquals("https://www.united.com/en/us/checkin", checkInLink("UA2433"))
+        assertTrue(checkInLink("ZZ123").startsWith("https://www.google.com/search?q=ZZ123"))
+    }
 }

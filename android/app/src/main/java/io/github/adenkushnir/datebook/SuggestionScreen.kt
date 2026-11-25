@@ -48,6 +48,7 @@ import io.github.adenkushnir.datebook.ui.PlainButton
 import io.github.adenkushnir.datebook.ui.travelIcon
 import io.github.adenkushnir.datebook.deliberate.minutesText
 import io.github.adenkushnir.datebook.journeys.Journey
+import io.github.adenkushnir.datebook.journeys.JourneyStep
 import io.github.adenkushnir.datebook.journeys.JourneySteps
 
 private val AIRPORT_LINE = Color(0xFFFFBE6A)  // "Be at the airport by", in the warning colour
@@ -71,6 +72,7 @@ fun SuggestionScreen(
     earlyHint: String? = null,
     onEarly: (Int) -> Unit = {},
     journey: Journey? = null,
+    onJourneyStep: (JourneyStep) -> Unit = {},
     trains: TrainChoices? = null,
     onPickTrain: (TrainRow) -> Unit = {},
     onSwitchOrigin: (String) -> Unit = {},
@@ -128,11 +130,11 @@ fun SuggestionScreen(
             if (journey != null) {
                 DatebookCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        SectionLabel("Your trip")
+                        SectionLabel("Your trip · tap a step")
                         Text("", modifier = Modifier.weight(1f))
                         Text(minutesText(journey.minutes), fontWeight = FontWeight.SemiBold)
                     }
-                    JourneySteps(journey)
+                    JourneySteps(journey, onTap = onJourneyStep)
                 }
             }
 
