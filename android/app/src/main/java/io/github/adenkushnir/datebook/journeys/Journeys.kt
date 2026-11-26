@@ -7,6 +7,7 @@ import android.util.Log
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
+import io.github.adenkushnir.datebook.places.TRAVEL_BIKE
 import io.github.adenkushnir.datebook.places.TRAVEL_DRIVE
 import io.github.adenkushnir.datebook.places.TRAVEL_TRANSIT
 import io.github.adenkushnir.datebook.places.TRAVEL_WALK
@@ -22,6 +23,7 @@ const val STEP_TRAIN = "train"
 const val STEP_BUS = "bus"
 const val STEP_SUBWAY = "subway"
 const val STEP_DRIVE = "drive"
+const val STEP_BIKE = "bike"
 const val STEP_ARRIVE = "arrive"
 const val STEP_BOARD = "board"  // a flight's boarding
 const val STEP_FLIGHT = "flight"  // a flight leaving
@@ -118,8 +120,17 @@ fun parseJourney(json: String, placeName: String, mode: String, leaveAt: Long?, 
         val leave = arriveBy?.let { it - total * 1000 } ?: leaveAt ?: System.currentTimeMillis()
         val arrive = leave + total * 1000
         val minutes = ((total + 59) / 60).toInt()
-        val kind = if (mode == TRAVEL_DRIVE) STEP_DRIVE else STEP_WALK
-        val word = if (kind == STEP_DRIVE) "drive" else "walk"
+        // The kind of step, and its word, by the mode
+        val kind = when (mode) {
+            TRAVEL_DRIVE -> STEP_DRIVE
+            TRAVEL_BIKE -> STEP_BIKE
+            else -> STEP_WALK
+        }
+        val word = when (kind) {
+            STEP_DRIVE -> "drive"
+            STEP_BIKE -> "bike ride"
+            else -> "walk"
+        }
         return Journey(listOf(JourneyStep(kind, "Leave · $minutes min $word", "to $placeName", starts = leave,
             ends = arrive, toName = placeName), JourneyStep(STEP_ARRIVE, "Arrive · $placeName", starts = arrive,
             ends = arrive)), leave, arrive, minutes, mode)
@@ -203,6 +214,11 @@ fun journeyBody(from: Pair<Double, Double>?, home: String, place: String, mode: 
     return body
 }
 
+// The mode a journey is planned by: transit, driving, cycling, else walking
+fun journeyMode(mode: String): String {
+    return if (mode in setOf(TRAVEL_TRANSIT, TRAVEL_DRIVE, TRAVEL_BIKE)) mode else TRAVEL_WALK
+}
+
 // Ask Google for the journey to a place by a mode, from where the phone is (or home); null without a key, a route or
 // on any failure; this waits on the network, so call it off the main thread
 fun planJourney(context: Context, key: String?, home: String, place: String, placeName: String, mode: String,
@@ -211,12 +227,12 @@ fun planJourney(context: Context, key: String?, home: String, place: String, pla
     if (key.isNullOrBlank() || place.isBlank()) {
         return null
     }
-    val walking = if (mode == TRAVEL_TRANSIT || mode == TRAVEL_DRIVE) mode else TRAVEL_WALK
-    val body = journeyBody(currentLocation(context), home, place, walking, leaveAt, arriveBy, allowed) ?: return null
+    val routeMode = journeyMode(mode)
+    val body = journeyBody(currentLocation(context), home, place, routeMode, leaveAt, arriveBy, allowed) ?: return null
 
     // Any network or reply problem means no journey
     return try {
-        parseJourney(postJson(context, ROUTES_URL, key, JOURNEY_FIELDS, body), placeName, walking, leaveAt, arriveBy,
+        parseJourney(postJson(context, ROUTES_URL, key, JOURNEY_FIELDS, body), placeName, routeMode, leaveAt, arriveBy,
             ZoneId.systemDefault())
     } catch (error: Exception) {  // no internet, a rejected key, or an unreadable reply
         Log.w("Datebook", "journey failed: ${error.message}")

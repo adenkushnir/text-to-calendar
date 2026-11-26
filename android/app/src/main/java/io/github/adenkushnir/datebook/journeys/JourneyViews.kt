@@ -32,9 +32,11 @@ private val LABEL = Color(0xFFD6E8FF)
 private val ARRIVE = Color(0xFFFFBE6A)
 private val LINE_DEFAULT = Color(0xFF0E86C4)
 private val DOTS = mapOf(STEP_WALK to Color(0xFF52C0F6), STEP_BUS to Color(0xFF9FB3C8), STEP_TRAIN to Color(0xFF5ADBEA),
-    STEP_SUBWAY to Color(0xFF5ADBEA), STEP_DRIVE to Color(0xFF52C0F6), STEP_ARRIVE to ARRIVE, STEP_BOARD to ARRIVE,
+    STEP_SUBWAY to Color(0xFF5ADBEA), STEP_DRIVE to Color(0xFF52C0F6), STEP_BIKE to Color(0xFF52C0F6),
+    STEP_ARRIVE to ARRIVE, STEP_BOARD to ARRIVE,
     STEP_FLIGHT to Color(0xFFEEF5FF))
-private val TAPPABLE = setOf(STEP_WALK, STEP_DRIVE, STEP_TRAIN, STEP_BUS, STEP_SUBWAY, STEP_BOARD, STEP_FLIGHT)
+private val TAPPABLE = setOf(STEP_WALK, STEP_DRIVE, STEP_BIKE, STEP_TRAIN, STEP_BUS, STEP_SUBWAY, STEP_BOARD,
+    STEP_FLIGHT)
 private val ARROW = Color(0xFF9FD8FF)
 
 // A line's colour from Google ("#0039A6"), or Aero aqua when there's none or it can't be read

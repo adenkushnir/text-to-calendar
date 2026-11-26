@@ -175,7 +175,10 @@ import io.github.adenkushnir.datebook.prompts.isChange
 import io.github.adenkushnir.datebook.journeys.FlightDialog
 import io.github.adenkushnir.datebook.journeys.JourneyStep
 import io.github.adenkushnir.datebook.journeys.JourneyStore
+import io.github.adenkushnir.datebook.journeys.STEP_BIKE
 import io.github.adenkushnir.datebook.journeys.STEP_BOARD
+import io.github.adenkushnir.datebook.journeys.journeyMode
+import io.github.adenkushnir.datebook.places.TRAVEL_BIKE
 import io.github.adenkushnir.datebook.journeys.STEP_DRIVE
 import io.github.adenkushnir.datebook.journeys.STEP_FLIGHT
 import io.github.adenkushnir.datebook.journeys.STEP_WALK
@@ -973,7 +976,7 @@ class MainActivity : ComponentActivity() {
 
                 // Walks and drives open Maps for that part; rides open the train picker; boarding and the flight
                 // open its details
-                if (step.kind == STEP_WALK || step.kind == STEP_DRIVE) {
+                if (step.kind == STEP_WALK || step.kind == STEP_DRIVE || step.kind == STEP_BIKE) {
                     openMapsLeg(step)
                 } else if (step.kind == STEP_BOARD || step.kind == STEP_FLIGHT) {
                     flightOpen = isFlight(shown)
@@ -1253,7 +1256,12 @@ class MainActivity : ComponentActivity() {
 
     // Open Google Maps for one walk or drive of a trip, from where it starts (or where you are) to where it ends
     private fun openMapsLeg(step: JourneyStep) {
-        val mode = if (step.kind == STEP_DRIVE) TRAVEL_DRIVE else TRAVEL_WALK
+        // Maps' mode for the kind of step
+        val mode = when (step.kind) {
+            STEP_DRIVE -> TRAVEL_DRIVE
+            STEP_BIKE -> TRAVEL_BIKE
+            else -> TRAVEL_WALK
+        }
 
         // Open the maps app, or say there isn't one
         try {
@@ -1277,8 +1285,7 @@ class MainActivity : ComponentActivity() {
         val key = eventKey(plan.title, begin)
         val wanted = mode ?: graph.travelSettings.mode()
         val store = JourneyStore(applicationContext)
-        val walking = wanted !in setOf(TRAVEL_TRANSIT, TRAVEL_DRIVE)  // walk and bike plans are planned as a walk
-        val kept = store.journey(key)?.takeIf { it.first.mode == wanted || walking }
+        val kept = store.journey(key)?.takeIf { it.first.mode == journeyMode(wanted) }  // another mode plans again
         val stale = kept == null || (isPlanDay(plan) && now - kept.second > 10 * 60_000)
         val (flying, flight) = flightFor(applicationContext, plan.title, begin)
         val picked = kept != null && store.picked(key)  // a picked train is kept by leaving at the same time

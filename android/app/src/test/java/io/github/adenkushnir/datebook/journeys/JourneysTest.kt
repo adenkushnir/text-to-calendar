@@ -1,8 +1,10 @@
 // Tests for journeys: reading Google's route into steps with times (a bus with walks, a train with a transfer, a
 // drive), the request for a time and for trains or buses only, and a picked train's live state on its ride
 package io.github.adenkushnir.datebook.journeys
+import io.github.adenkushnir.datebook.places.TRAVEL_BIKE
 import io.github.adenkushnir.datebook.places.TRAVEL_DRIVE
 import io.github.adenkushnir.datebook.places.TRAVEL_TRANSIT
+import io.github.adenkushnir.datebook.places.TRAVEL_WALK
 import java.time.Instant
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
@@ -134,5 +136,17 @@ class JourneysTest {
         assertEquals("Terminal C, gate C71 · 35 min before departure", trip.steps[2].under)
         assertEquals("UA2433 departs", trip.steps[3].title)
         assertEquals("Lands 5:27 PM in Boston", trip.steps[3].under)
+    }
+
+    // Walk and bike trips are planned as themselves (a bike ride reads as one), and unknown modes as a walk
+    @Test
+    fun walkAndBike() {
+        val bike = parseJourney(drive.replace("DRIVE", "BICYCLE"), "Busch Campus", TRAVEL_BIKE, at("2037-11-24T19:00:00Z"),
+            null, zone)!!
+        assertEquals(STEP_BIKE, bike.steps[0].kind)
+        assertEquals("Leave · 23 min bike ride", bike.steps[0].title)
+        assertEquals(TRAVEL_BIKE, journeyMode(TRAVEL_BIKE))
+        assertEquals(TRAVEL_WALK, journeyMode(TRAVEL_WALK))
+        assertEquals(TRAVEL_WALK, journeyMode("HOVERBOARD"))
     }
 }
