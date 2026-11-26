@@ -19,6 +19,7 @@ import io.github.adenkushnir.datebook.deliberate.habitsOf
 import io.github.adenkushnir.datebook.deliberate.ignoredByRules
 import io.github.adenkushnir.datebook.email.promptQuote
 import io.github.adenkushnir.datebook.flights.FlightStore
+import io.github.adenkushnir.datebook.flights.BOARDING_FROM_TEXT
 import io.github.adenkushnir.datebook.flights.lookupFlight
 import io.github.adenkushnir.datebook.alerts.clearProblemAlert
 import io.github.adenkushnir.datebook.alerts.showProblemAlert
@@ -86,6 +87,7 @@ class AppGraph private constructor(context: Context) {
         lookupFlight = { flight, date, leg -> lookupFlight(flightsKeyStore.load(), flight, date, leg)?.also {
             flightStore.save(date, it)  // remembered for the card and the checks
         } },
+        onBoarding = { flight, date, time -> flightStore.setBoarding(flight, date, time, BOARDING_FROM_TEXT) },
         onWithdrawn = { notifier.cancel(it) },
         onPackageMoved = { title, newDay, oldDay -> showPackageMoved(context, title, newDay, oldDay) },
         guessTimes = { text, receivedAt, zone -> offlineDates.find(text, receivedAt, ZoneId.of(zone)) },

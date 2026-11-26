@@ -180,4 +180,20 @@ class FlightsTest {
         assertEquals("https://www.united.com/en/us/checkin", checkInLink("UA2433"))
         assertTrue(checkInLink("ZZ123").startsWith("https://www.google.com/search?q=ZZ123"))
     }
+
+    // A real boarding time is kept per flight and day with where it came from, and read as minutes before departure
+    @Test
+    fun boardingTime() {
+        val store = FlightStore(ApplicationProvider.getApplicationContext())
+        assertNull(store.boarding("UA2433", "2037-11-25"))
+        store.setBoarding("UA2433", "2037-11-25", "15:38", BOARDING_FROM_TEXT)
+        assertEquals(Pair("15:38", BOARDING_FROM_TEXT), store.boarding("UA2433", "2037-11-25"))
+        store.setBoarding("UA2433", "2037-11-25", "", BOARDING_FROM_YOU)
+        assertNull(store.boarding("UA2433", "2037-11-25"))
+        val zone = java.time.ZoneId.of("America/New_York")
+        val departs = Instant.parse("2037-11-25T21:10:00Z").toEpochMilli()  // 4:10 PM in New York
+        assertEquals(32, boardingLead(departs, "15:38", zone))
+        assertNull(boardingLead(departs, "16:30", zone))  // after departure
+        assertNull(boardingLead(departs, "soon", zone))
+    }
 }

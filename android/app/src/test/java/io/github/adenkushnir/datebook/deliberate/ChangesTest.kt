@@ -114,4 +114,14 @@ class ChangesTest {
         assertNotNull(problemWith(Change(ACT_EDIT_EVENT, id = 9, title = "Flight B61234")))
         assertNotNull(problemWith(Change(ACT_EDIT_EVENT, id = 9, begin = 5)))
     }
+
+    // A boarding time is read and checked, and is enough for set_plan_travel on its own
+    @Test
+    fun boardingChanges() {
+        val change = changesOf(mapOf("changes" to listOf(mapOf("action" to "set_plan_travel", "target" to "plan",
+            "id" to 7, "boarding" to "15:38")))).single()
+        assertEquals("15:38", change.boarding)
+        assertNull(problemWith(change))
+        assertNotNull(problemWith(change.copy(boarding = "3:38 PM")))
+    }
 }

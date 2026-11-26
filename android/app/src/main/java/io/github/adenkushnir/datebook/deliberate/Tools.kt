@@ -111,6 +111,8 @@ private val CHANGE = objectOf(mapOf(
     "early" to mapOf("type" to "integer", "description" to "For new_plan and set_plan_travel: minutes early to be " +
         "there, for this plan only (0 to $MAX_EARLY_MINUTES); leave it out to keep the default"),
     "station" to text("For new_plan and set_plan_travel: the NJ Transit station to leave from, for this plan only"),
+    "boarding" to text("For a flight (new_plan, edit_event or set_plan_travel): the boarding time the user gives, " +
+        "HH:MM in 24-hour time"),
 ), listOf("action"))
 
 // Every tool Deliberate offers
@@ -200,6 +202,8 @@ How to work:
 - "How do I get to X", "plan a trip to X by bus", "what would getting there by 5 look like": call find_journey.
   If the user then wants it, they tap Add as a plan on the card (or ask you, and you make the new_plan with its
   travel).
+- "My boarding time is 3:38": set boarding (15:38) on set_plan_travel for that flight's plan (or on new_plan /
+  edit_event); it replaces the usual guess of 35 minutes before departure.
 - "I'm taking the train", "drive me", "be there 30 minutes early" for one plan: put travel, early and station on the
   new_plan, or use set_plan_travel for a plan or calendar event that exists. Use rules only when the user means
   every plan like it.

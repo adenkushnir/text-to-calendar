@@ -27,7 +27,9 @@ import io.github.adenkushnir.datebook.data.nextBill
 import io.github.adenkushnir.datebook.data.noteTitle
 import io.github.adenkushnir.datebook.data.repeatLabel
 import io.github.adenkushnir.datebook.flights.FlightInfo
+import io.github.adenkushnir.datebook.flights.BOARDING_FROM_YOU
 import io.github.adenkushnir.datebook.flights.flightEarlyMinutes
+import io.github.adenkushnir.datebook.flights.flightOfTitle
 import io.github.adenkushnir.datebook.flights.flightTitle
 import io.github.adenkushnir.datebook.flights.legMatches
 import io.github.adenkushnir.datebook.flights.lookupFlight
@@ -207,6 +209,10 @@ class DeliberateRunner(private val context: Context) {
         if (change.station.isNotBlank()) {
             chips.add("From ${stationFor(change.station)?.name ?: change.station}")
         }
+
+        if (isTime(change.boarding)) {
+            chips.add("Boarding ${java.time.LocalTime.parse(change.boarding).format(CLOCK)}")
+        }
         return chips
     }
 
@@ -242,6 +248,19 @@ class DeliberateRunner(private val context: Context) {
     // The key a plan's travel settings and train are kept under
     private fun planKey(plan: Suggestion): String {
         return eventKey(plan.title, eventTimes(plan.toEvent()).first)
+    }
+
+    // Keep a flight's boarding time you gave ("HH:MM") for its day, returning the step that puts the old one back (none
+    // when there's no boarding time or no flight)
+    private fun setBoarding(flight: String, date: String, change: Change): List<Map<String, Any?>> {
+        // Only a flight with a boarding time
+        if (flight.isBlank() || !isTime(change.boarding)) {
+            return emptyList()
+        }
+        val old = graph.flightStore.boarding(flight, date)
+        graph.flightStore.setBoarding(flight, date, change.boarding, BOARDING_FROM_YOU)
+        return listOf(step("boarding", "flight" to flight, "date" to date.take(10), "time" to old?.first.orEmpty(),
+            "source" to old?.second.orEmpty()))
     }
 
     // Set a plan's own travel (mode, early minutes, station) under its key, returning the step that puts the old ones
@@ -548,15 +567,15 @@ class DeliberateRunner(private val context: Context) {
                 } else {
                     graph.notifier.show(plan.copy(id = id), plan.title)
                 }
-                steps + setTravel(planKey(plan), change)
+                steps + setTravel(planKey(plan), change) + setBoarding(change.flight, plan.start, change)
             }
             ACT_SET_PLAN_TRAVEL -> {
-                val key = if (change.target == TARGET_EVENT) {
-                    findEvent(change.id, change.begin)?.let { eventKey(it.title, it.begin) }
-                } else {
-                    dao.suggestion(change.id)?.let { planKey(it) }
-                }
-                setTravel(key ?: return null, change).ifEmpty { null }
+                val event = if (change.target == TARGET_EVENT) findEvent(change.id, change.begin) else null
+                val plan = if (change.target == TARGET_EVENT) null else dao.suggestion(change.id)
+                val key = event?.let { eventKey(it.title, it.begin) } ?: plan?.let { planKey(it) } ?: return null
+                val flight = plan?.flight?.ifBlank { null } ?: flightOfTitle(plan?.title ?: event?.title.orEmpty())
+                val day = plan?.start?.take(10) ?: event?.let { localTime(it.begin, false).take(10) }.orEmpty()
+                (setTravel(key, change) + setBoarding(flight.orEmpty(), day, change)).ifEmpty { null }
             }
             ACT_EDIT_WAITING -> {
                 val old = dao.suggestion(change.id)?.takeIf { it.status == Suggestion.STATUS_WAITING } ?: return null
@@ -716,7 +735,9 @@ class DeliberateRunner(private val context: Context) {
             steps.add(step("delete_plan", "id" to dao.saveSuggestion(plan.copy(placeLat = found?.lat,
                 placeLng = found?.lng))))
         }
-        return steps + setTravel(eventKey(new.title, new.begin), change)
+        return steps + setTravel(eventKey(new.title, new.begin), change) +
+            setBoarding(change.flight.ifBlank { flightOfTitle(new.title).orEmpty() }, localTime(new.begin, false),
+                change)
     }
 
     // A calendar event time as Datebook keeps plan times ("YYYY-MM-DDTHH:MM", or the date for all-day events)
@@ -825,6 +846,8 @@ class DeliberateRunner(private val context: Context) {
                     dao.deleteSuggestion(id)
                 }
                 "delete_event" -> if (id > 0) deleteEvent(context, id)
+                "boarding" -> graph.flightStore.setBoarding(undoStep["flight"].toString(), undoStep["date"].toString(),
+                    undoStep["time"].toString(), undoStep["source"].toString())
                 "put_event" -> updateEvent(context, id, MAPPER.readValue<EventFields>(row))
                 "put_plan" -> dao.updateSuggestion(MAPPER.readValue<Suggestion>(row))
                 "delete_item" -> dao.setFollowUpStatus(id, FollowUp.DROPPED)

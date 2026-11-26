@@ -210,4 +210,11 @@ class LeaveByTest {
     private val byTrain = LeavePlan(sevenPm, sevenPm - 90 * 60_000, sevenPm - 100 * 60_000,
         "12 min walk to New Brunswick", TRAVEL_TRANSIT, TRAVEL_WALK, 12, 30, train,
         Station("NB", "New Brunswick", 40.497, -74.445), isFlight = true, flight = flight)
+
+    // A real boarding time replaces the usual 35 minutes in the lead
+    @Test
+    fun realBoardingLead() {
+        assertEquals(62, leadMinutes(30, true, null, 32))
+        assertEquals(65, leadMinutes(30, true, null))
+    }
 }

@@ -24,6 +24,8 @@ const val FLIGHT_EARLY_MINUTES = 30  // how early to be at the airport before bo
 const val INTERNATIONAL_EARLY_MINUTES = 75  // abroad: about 2 hours before departure in all
 const val BOARDING_MINUTES = 35  // boarding starts about this long before a domestic departure
 const val INTERNATIONAL_BOARDING_MINUTES = 45
+const val BOARDING_FROM_TEXT = "boarding pass"  // where a real boarding time came from
+const val BOARDING_FROM_YOU = "you said"
 private val FLIGHT_TITLE = Regex("^Flight ([A-Z0-9]{2}[0-9]{1,4})( |$)")
 
 // One flight as AeroDataBox describes it: the number, its status, both airports (code, city, name, time zone), the
@@ -186,6 +188,16 @@ fun flightEarlyMinutes(info: FlightInfo?): Int {
     return if (info != null && isInternational(info)) INTERNATIONAL_EARLY_MINUTES else FLIGHT_EARLY_MINUTES
 }
 
+// How many minutes before departure a real "HH:MM" boarding time is (on the departure's day, in its zone); null when
+// it can't be read or doesn't fall before departure
+fun boardingLead(departs: Long, time: String, zone: ZoneId): Int? {
+    val clock = runCatching { java.time.LocalTime.parse(time.trim()) }.getOrNull() ?: return null
+    val day = Instant.ofEpochMilli(departs).atZone(zone)
+    val boards = day.toLocalDate().atTime(clock).atZone(zone).toInstant().toEpochMilli()
+    val minutes = ((departs - boards) / 60_000).toInt()
+    return minutes.takeIf { it in 1..180 }
+}
+
 // How long before departure boarding starts: about 35 minutes, or 45 abroad
 fun boardingMinutes(info: FlightInfo?): Int {
     return if (info != null && isInternational(info)) INTERNATIONAL_BOARDING_MINUTES else BOARDING_MINUTES
@@ -269,6 +281,27 @@ class FlightStore(context: Context) {
     fun save(date: String, info: FlightInfo) {
         prefs.edit().putString("info:${info.number}|${date.take(10)}", MAPPER.writeValueAsString(toMap(info)))
             .putString("leg:${info.number}|${date.take(10)}", info.toCode).apply()
+    }
+
+    // Return a flight's real boarding time, as "HH:MM" in the departure airport's time and where it came from (a
+    // boarding pass or email, or you), or null when only the usual guess is known
+    fun boarding(flight: String, date: String): Pair<String, String>? {
+        val saved = prefs.getString("boarding:$flight|${date.take(10)}", null) ?: return null
+        return Pair(saved.substringBefore("|"), saved.substringAfter("|"))
+    }
+
+    // Keep a flight's real boarding time ("HH:MM"; a blank time forgets it), saying where it came from
+    fun setBoarding(flight: String, date: String, time: String, source: String) {
+        val clock = runCatching { java.time.LocalTime.parse(time.trim()) }.getOrNull()
+        val editor = prefs.edit()
+
+        // Forget it, or keep it in the 24-hour form
+        if (clock == null) {
+            editor.remove("boarding:$flight|${date.take(10)}")
+        } else {
+            editor.putString("boarding:$flight|${date.take(10)}", "${clock.withSecond(0).withNano(0)}|$source")
+        }
+        editor.apply()
     }
 
     // Return which leg of a flight number its plan is, as where it lands ("" when not known)

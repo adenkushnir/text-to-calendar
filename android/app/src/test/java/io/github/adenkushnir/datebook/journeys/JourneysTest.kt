@@ -149,4 +149,14 @@ class JourneysTest {
         assertEquals(TRAVEL_WALK, journeyMode(TRAVEL_WALK))
         assertEquals(TRAVEL_WALK, journeyMode("HOVERBOARD"))
     }
+
+    // A real boarding time reads without "about" and says where it came from
+    @Test
+    fun realBoarding() {
+        val departs = at("2037-11-25T21:10:00Z")
+        val trip = withFlightSteps(parseJourney(drive, "Newark Airport", TRAVEL_DRIVE, null, departs - 62 * 60_000L,
+            zone)!!, "UA2433", departs, 32, "", null, "", zone, "boarding pass")
+        assertEquals("Boarding 3:38 PM", trip.steps[2].title)
+        assertEquals("from boarding pass", trip.steps[2].under)
+    }
 }

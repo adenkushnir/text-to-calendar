@@ -120,6 +120,7 @@ import io.github.adenkushnir.datebook.calendar.writableCalendars
 import io.github.adenkushnir.datebook.calendar.writeCalendarId
 import io.github.adenkushnir.datebook.flights.BOARDING_MINUTES
 import io.github.adenkushnir.datebook.flights.boardingMinutes
+import io.github.adenkushnir.datebook.leaveby.boardingFor
 import io.github.adenkushnir.datebook.leaveby.flightFor
 import io.github.adenkushnir.datebook.leaveby.leadMinutes
 import io.github.adenkushnir.datebook.flights.FLIGHT_EARLY_MINUTES
@@ -188,6 +189,7 @@ import io.github.adenkushnir.datebook.journeys.planJourney
 import io.github.adenkushnir.datebook.journeys.withFlightSteps
 import io.github.adenkushnir.datebook.journeys.withLiveTrain
 import io.github.adenkushnir.datebook.flights.checkInLink
+import io.github.adenkushnir.datebook.flights.flightOfTitle
 import io.github.adenkushnir.datebook.tracking.trackLinkFor
 import io.github.adenkushnir.datebook.trains.ON_THE_DAY
 import io.github.adenkushnir.datebook.trains.TrainBoard
@@ -1022,7 +1024,8 @@ class MainActivity : ComponentActivity() {
 
         // The train picker, while it's open
         if (picking && current != null) {
-            val beThere = planBegin(shown) - leadMinutes(early ?: 0, flying, flight) * 60_000L
+            val beThere = planBegin(shown) - leadMinutes(early ?: 0, flying, flight,
+                boardingFor(applicationContext, shown.title, planBegin(shown), flight).first) * 60_000L
             TrainPickerDialog(choices, current, beThere, onPick = { picked ->
                 pickJourney(graph, shown, picked)
                 journey = picked
@@ -1040,7 +1043,10 @@ class MainActivity : ComponentActivity() {
             val lines = listOf(
                 "Terminal · gate" to listOf(flight?.terminal, flight?.gate).filter { !it.isNullOrBlank() }
                     .joinToString(" · ").ifBlank { "not posted yet" },
-                "Boarding" to "about " + at(departs?.minusSeconds(boardingMinutes(flight) * 60L)),
+                "Boarding" to boardingFor(applicationContext, shown.title, planBegin(shown), flight)
+                    .let { (lead, real) ->
+                    (if (real) "" else "about ") + at(departs?.minusSeconds(lead * 60L)) +
+                        if (real) "" else " (a guess: share your boarding pass or tell Deliberate)" },
                 "Departs" to at(flight?.departBest ?: departs),
                 "Lands" to at(flight?.arriveBest ?: flight?.arriveScheduled) +
                     (flight?.toCity?.ifBlank { null }?.let { " · $it" } ?: ""))
@@ -1235,7 +1241,9 @@ class MainActivity : ComponentActivity() {
     // The other ways to make a plan's trip for the train picker (see journeyChoices); off the main thread
     private fun otherTrains(graph: AppGraph, plan: Suggestion, current: Journey, early: Int): List<Journey> {
         val begin = planBegin(plan)
-        val lead = leadMinutes(early, isFlight(plan), flightFor(applicationContext, plan.title, begin).second)
+        val flight = flightFor(applicationContext, plan.title, begin).second
+        val lead = leadMinutes(early, isFlight(plan), flight, boardingFor(applicationContext, plan.title, begin,
+            flight).first)
         return journeyChoices(applicationContext, graph.mapsKeyStore.load(), graph.travelSettings.home(), plan.location,
             plan.location.substringBefore(","), current.mode, begin - lead * 60_000L, current)
     }
@@ -1288,18 +1296,23 @@ class MainActivity : ComponentActivity() {
         val kept = store.journey(key)?.takeIf { it.first.mode == journeyMode(wanted) }  // another mode plans again
         val stale = kept == null || (isPlanDay(plan) && now - kept.second > 10 * 60_000)
         val (flying, flight) = flightFor(applicationContext, plan.title, begin)
+        val (boarding, real) = boardingFor(applicationContext, plan.title, begin, flight)
+        val source = if (!real) "" else flightOfTitle(plan.title)?.let {
+            graph.flightStore.boarding(it, Instant.ofEpochMilli(begin).atZone(ZoneId.systemDefault()).toLocalDate()
+                .toString())?.second
+        }.orEmpty()
         val picked = kept != null && store.picked(key)  // a picked train is kept by leaving at the same time
         val planned = if (!stale) kept!!.first else planJourney(applicationContext, graph.mapsKeyStore.load(),
             graph.travelSettings.home(), plan.location, plan.location.substringBefore(","), wanted,
             if (picked) kept!!.first.leave else null,
-            if (picked) null else begin - leadMinutes(early, isFlight(plan), flight) * 60_000L)
+            if (picked) null else begin - leadMinutes(early, isFlight(plan), flight, boarding) * 60_000L)
             ?.also { store.save(key, it, now, picked) } ?: kept?.first ?: return null
         val gate = listOfNotNull(flight?.terminal?.ifBlank { null }?.let { "Terminal $it" },
             flight?.gate?.ifBlank { null }?.let { "gate $it" }).joinToString(", ")
         val journey = if (!flying) planned else withFlightSteps(planned, flight?.number ?: plan.flight,
-            (flight?.departScheduled ?: flight?.departBest)?.toEpochMilli() ?: begin, boardingMinutes(flight), gate,
+            (flight?.departScheduled ?: flight?.departBest)?.toEpochMilli() ?: begin, boarding, gate,
             (flight?.arriveBest ?: flight?.arriveScheduled)?.toEpochMilli(), flight?.toCity.orEmpty(),
-            ZoneId.systemDefault())
+            ZoneId.systemDefault(), source)
         val pick = graph.trainStore.pick(key) ?: return journey
         return withLiveTrain(journey, pick.trainId, pick.track, pick.secondsLate / 60,
             pick.status.contains("cancel", ignoreCase = true))
@@ -1318,11 +1331,12 @@ class MainActivity : ComponentActivity() {
         }
         val clock = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
         val (_, flight) = flightFor(applicationContext, plan.title, planBegin(plan))
-        val at = Instant.ofEpochMilli(planBegin(plan) - leadMinutes(early, true, flight) * 60_000L)
+        val (boarding, real) = boardingFor(applicationContext, plan.title, planBegin(plan), flight)
+        val at = Instant.ofEpochMilli(planBegin(plan) - leadMinutes(early, true, flight, boarding) * 60_000L)
             .atZone(ZoneId.systemDefault())
-        val boards = Instant.ofEpochMilli(planBegin(plan) - boardingMinutes(flight) * 60_000L)
-            .atZone(ZoneId.systemDefault())
-        return "Be at the airport by ${at.format(clock)} · boarding about ${boards.format(clock)}"
+        val boards = Instant.ofEpochMilli(planBegin(plan) - boarding * 60_000L).atZone(ZoneId.systemDefault())
+        val about = if (real) "" else "about "
+        return "Be at the airport by ${at.format(clock)} · boarding $about${boards.format(clock)}"
     }
 
     // Under the stepper for flights still on the default: where the minutes come from (null otherwise)

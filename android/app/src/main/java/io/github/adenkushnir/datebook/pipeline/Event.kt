@@ -25,6 +25,7 @@ data class Event(
     val calendarRef: Int = 0,
     val calendarEventId: Long = 0,
     val flight: String = "",
+    val boarding: String = "",
     val packageCarrier: String = "",
     val trackingNumber: String = "",
     val confirmation: String = "",

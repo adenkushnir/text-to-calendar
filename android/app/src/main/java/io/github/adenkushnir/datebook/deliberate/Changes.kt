@@ -37,6 +37,7 @@ data class Change(
     val early: Int? = null,
     val station: String = "",
     val to: String = "",
+    val boarding: String = "",
 )
 
 // A field of a tool call's input as trimmed text ("" when missing)
@@ -67,7 +68,7 @@ fun changesOf(input: Map<String, Any?>): List<Change> {
             target = field(map, "target"), link = field(map, "link"),
             flight = field(map, "flight").uppercase().replace(" ", ""), travel = field(map, "travel").uppercase(),
             early = field(map, "early").toDoubleOrNull()?.toInt(), station = field(map, "station"),
-            to = field(map, "to"),
+            to = field(map, "to"), boarding = field(map, "boarding"),
         )
     }
 }
@@ -105,8 +106,8 @@ fun problemWith(change: Change): String? {
             change.id <= 0 || change.target !in setOf(TARGET_PLAN, TARGET_EVENT) ->
                 "set_plan_travel needs an id and a target (plan or event)"
             change.target == TARGET_EVENT && change.begin <= 0 -> "set_plan_travel on an event needs its begin"
-            change.travel.isBlank() && change.early == null && change.station.isBlank() ->
-                "set_plan_travel needs travel, early or station"
+            change.travel.isBlank() && change.early == null && change.station.isBlank() && change.boarding.isBlank() ->
+                "set_plan_travel needs travel, early, station or boarding"
             else -> travelProblem(change)
         }
         ACT_EDIT_WAITING, ACT_ADD_WAITING, ACT_IGNORE_WAITING, ACT_EDIT_ITEM, ACT_MARK_DONE, ACT_DELETE_ITEM,
@@ -150,6 +151,7 @@ private fun travelProblem(change: Change): String? {
     return when {
         change.travel !in TRAVEL_CHOICES -> "unknown travel mode ${change.travel}"
         early != null && (early < 0 || early > MAX_EARLY_MINUTES) -> "early must be 0 to $MAX_EARLY_MINUTES minutes"
+        change.boarding.isNotBlank() && !isTime(change.boarding) -> "boarding must be HH:MM"
         else -> null
     }
 }

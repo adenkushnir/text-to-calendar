@@ -254,14 +254,16 @@ fun journeyChoices(context: Context, key: String?, home: String, place: String, 
         it.kind == STEP_SUBWAY }?.starts ?: journey.leave }.sortedBy { it.leave }
 }
 
-// A flight plan's journey with boarding and the flight after arriving at the airport: "Boarding about 3:35 PM" (the
-// terminal and gate under it) and "UA2433 departs" (when it lands)
+// A flight plan's journey with boarding and the flight after arriving at the airport: "Boarding about 3:35 PM", or
+// "Boarding 3:38 PM" with where the real time came from (the terminal and gate under it), and "UA2433 departs" (when
+// it lands)
 fun withFlightSteps(journey: Journey, number: String, departs: Long, boarding: Int, gate: String, lands: Long?,
-    toCity: String, zone: ZoneId): Journey {
+    toCity: String, zone: ZoneId, source: String = ""): Journey {
     val clock = { millis: Long -> Instant.ofEpochMilli(millis).atZone(zone).format(CLOCK) }
     val boards = departs - boarding * 60_000L
-    val board = JourneyStep(STEP_BOARD, "Boarding about ${clock(boards)}",
-        listOf(gate, "$boarding min before departure").filter { it.isNotBlank() }.joinToString(" · "),
+    val known = if (source.isBlank()) "$boarding min before departure" else "from $source"
+    val board = JourneyStep(STEP_BOARD, "Boarding ${if (source.isBlank()) "about " else ""}${clock(boards)}",
+        listOf(gate, known).filter { it.isNotBlank() }.joinToString(" · "),
         starts = boards, ends = boards)
     val leaving = JourneyStep(STEP_FLIGHT, "${number.ifBlank { "Flight" }} departs",
         lands?.let { "Lands ${clock(it)}" + if (toCity.isNotBlank()) " in $toCity" else "" }.orEmpty(),

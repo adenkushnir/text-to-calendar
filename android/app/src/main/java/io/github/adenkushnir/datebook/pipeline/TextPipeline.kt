@@ -88,6 +88,7 @@ class TextPipeline(
     private val calendar: (fromMillis: Long, toMillis: Long) -> List<CalendarEvent> = { _, _ -> emptyList() },
     private val findPlace: (place: String) -> FoundPlace? = { null },
     private val lookupFlight: (flight: String, date: String, leg: String) -> FlightInfo? = { _, _, _ -> null },
+    private val onBoarding: (flight: String, date: String, time: String) -> Unit = { _, _, _ -> },
     private val onWithdrawn: (suggestionId: Long) -> Unit = {},
     private val guessTimes: (text: String, receivedAt: LocalDateTime, zone: String) -> List<GuessedTime> =
         { _, _, _ -> emptyList() },
@@ -180,6 +181,12 @@ class TextPipeline(
             }
             val (matched, changed) = matchChange(nameGroupBirthday(claudeEvent, incoming), upcoming)
             val event = withFlightTimes(matched)
+
+            // A boarding time (from a boarding pass or check-in email) is kept for the flight, even when its plan
+            // is already there
+            if (event.flight.isNotBlank() && event.boarding.isNotBlank()) {
+                onBoarding(event.flight, event.start.take(10), event.boarding)
+            }
 
             // Don't offer events that have already started
             if (hasStarted(event, now())) {
