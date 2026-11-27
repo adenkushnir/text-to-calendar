@@ -194,6 +194,9 @@ import io.github.adenkushnir.datebook.buses.CampusBuses
 import io.github.adenkushnir.datebook.buses.campusChoices
 import io.github.adenkushnir.datebook.buses.withCampusLive
 import io.github.adenkushnir.datebook.places.uberIntent
+import io.github.adenkushnir.datebook.prompts.UpdateRow
+import io.github.adenkushnir.datebook.prompts.updateRows
+import io.github.adenkushnir.datebook.calendar.readEvent
 import io.github.adenkushnir.datebook.flights.checkInLink
 import io.github.adenkushnir.datebook.flights.flightOfTitle
 import io.github.adenkushnir.datebook.tracking.trackLinkFor
@@ -942,6 +945,17 @@ class MainActivity : ComponentActivity() {
         var pickBuses by remember(plan) { mutableStateOf(false) }  // it's for a campus bus
         var choices by remember(plan) { mutableStateOf<List<Journey>?>(null) }  // null while they load
         var flightOpen by remember(plan) { mutableStateOf(false) }
+        var updateRows by remember(plan) { mutableStateOf(emptyList<UpdateRow>()) }  // a text's update
+        LaunchedEffect(plan) {
+            val shown = plan ?: return@LaunchedEffect
+
+            // Only a text's update compares with the event as it is
+            if (isChange(shown)) {
+                updateRows = withContext(Dispatchers.IO) {
+                    updateRows(readEvent(applicationContext, shown.calendarEventId), shown)
+                }
+            }
+        }
         LaunchedEffect(picking) {
             val shown = plan ?: return@LaunchedEffect
             val current = journey ?: return@LaunchedEffect
@@ -978,6 +992,8 @@ class MainActivity : ComponentActivity() {
             onBack = onBack,
             onAdd = onAdd,
             onIgnore = onIgnore,
+            updateRows = updateRows,
+            onOpenEvent = plan?.takeIf { isChange(it) }?.let { shown -> { openCalendarEvent(shown) } },
             onOpenMaps = { place -> openMaps(place, travelMode ?: graph.travelSettings.mode()) },
             onTrack = { url -> openLink(url) },
             flightStatus = plan?.let { flightStatusFor(graph, it) },

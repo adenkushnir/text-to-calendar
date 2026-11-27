@@ -20,10 +20,11 @@ private val DATE_HINT = Regex(PATTERNS.joinToString("|"), RegexOption.IGNORE_CAS
 
 private val CHANGE_WORDS = Regex("""\b(moved?|moving|cancel+(ed|ing)?|called off|push(ed|ing)? (back|to)|""" +
     """postponed?|resched(uled?)?|instead|delayed|bumped|not happening|rained out|changed? to|now at|actually|""" +
-    """works better|how about|can we do)\b""",
+    """works better|how about|can we do|bring(ing)?|code)\b""",
     RegexOption.IGNORE_CASE)
 
-// Return true if the text sounds like it changes or cancels a plan, like "dinner moved to 8" or "practice is cancelled"
+// Return true if the text sounds like it changes or cancels a plan, like "dinner moved to 8" or "practice is
+// cancelled", or adds something to bring or a code to one ("bring $20", "the gate code is 4412")
 fun soundsLikeChange(text: String?): Boolean {
     return text != null && CHANGE_WORDS.containsMatchIn(text)
 }

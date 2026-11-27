@@ -24,8 +24,11 @@ It's a full Kotlin app, built with Jetpack Compose, in [`android/`](android/); t
 - **Offline backup:** without internet, an on-phone guess waits on Home and Claude checks it once you're back online.
 
 **Knowing your calendar**
-- Warns about clashes, skips plans already on your calendar, and turns "moved to 8" or "cancelled" into a
-  **Move Dinner to 8 PM?** prompt that opens the event.
+- Warns about clashes, skips plans already on your calendar, and turns a text about one into an update: "moved to
+  8" or "bring $20" becomes **Update Dinner with Sam?** (Fri 7:00 PM → 8:00 PM · add Bring: $20) and "cancelled"
+  becomes **Remove Dinner?**. Update or Remove changes the event itself (from the notification or its card), with
+  **Undo** for an hour; things to bring join the event's Bring line and codes get a Code line. Updates that only add
+  notes come quietly.
 - **Leave-by alerts** with travel time (drive, transit, walk, bike, campus bus or Uber) and **Open in Maps**. Each
   plan can have its own travel mode and **Be there early** minutes (on its card, or by telling Deliberate).
 - **Flights** filled in from live flight data, with delay and gate alerts, and a leave-by alert for the airport: be
@@ -138,9 +141,10 @@ accounts added as testers, and signing in lapses about once a week (Datebook rem
 ## Privacy
 
 - Messages without a date or time never leave the phone, with one exception: a one-to-one message that sounds like a
-  change ("sorry, have to cancel") is sent too when you have plans in the next 2 weeks, along with those plans' titles
-  and times, so Datebook can offer to move or cancel one. A message is sent to Claude on its own: never other
-  messages from the chat, and for group chats only the group's name, not the sender's.
+  change ("sorry, have to cancel") or adds something to bring or a code ("bring $20") is sent too when you have plans
+  in the next 2 weeks, along with those plans' titles and times, so Datebook can offer to update or remove one. A
+  message is sent to Claude on its own: never other messages from the chat, and for group chats only the
+  group's name, not the sender's.
 - Datebook keeps what it suggested and what you did with it for 1 year, with the message each plan came from (so
   Deliberate can quote it); turn that off or delete the texts in Settings → Privacy. What Deliberate looks up for a
   question goes to Claude with it.

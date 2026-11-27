@@ -543,6 +543,24 @@ class TextPipelineTest {
         assertEquals(null, pipeline(listOf(cancelled), onCalendar = listOf(practice)).receive(group))
     }
 
+    // A text that only adds something to bring becomes an update at the event's own time; one the notes already have
+    // is skipped
+    @Test
+    fun addedDetails() = runTest {
+        val zone = ZoneId.of(newYork)
+        val dinner = CalendarEvent(7, 1, "Dinner", toMillis("2026-11-13T19:00", zone),
+            toMillis("2026-11-13T21:00", zone), false, notes = "Birthday dinner")
+        val details = Event("Dinner", "2026-11-14T12:00", change = CHANGE_DETAILS, calendarRef = 1, bring = "$20")
+        val text = incoming.copy(text = "bring $20 for the bill")
+        val outcome = pipeline(listOf(details), onCalendar = listOf(dinner)).handle(text)
+        val saved = dao.suggestion(outcome.suggestionIds.single())!!
+        assertEquals(CHANGE_DETAILS, saved.change)
+        assertEquals("2026-11-13T19:00", saved.start)
+        assertEquals("$20", saved.bring)
+        val had = dinner.copy(notes = "Birthday dinner\nBring: $20")
+        assertEquals(0, pipeline(listOf(details), onCalendar = listOf(had)).handle(text).suggestionIds.size)
+    }
+
     // A move takes the calendar's title, keeps the event's length, and doesn't clash with the event it moves; a move
     // to the time the calendar already has is skipped
     @Test

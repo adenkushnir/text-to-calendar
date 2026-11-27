@@ -22,10 +22,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-// Mark a suggestion added, remove its prompt, save it straight to your calendar and open it there (a move changes the
-// event's time first; a cancellation opens the event to delete it); without calendar write access it opens the
-// calendar app's new-event screen instead
+// Mark a suggestion added, remove its prompt, save it straight to your calendar and open it there; a text's update
+// (a move, a cancel, added notes) changes the event itself, with Undo, and opens the event only when it can't; without
+// calendar write access a new plan opens the calendar app's new-event screen instead
 suspend fun addSuggestion(context: Context, suggestionId: Long) {
+    val waiting = AppGraph.get(context).dao.suggestion(suggestionId) ?: return  // already gone
+
+    // An update is applied where it is, unless the calendar can't be written
+    if (isChange(waiting) && applyUpdate(context, suggestionId)) {
+        return
+    }
     val eventId = addNow(context, suggestionId) ?: return  // already gone
     val suggestion = AppGraph.get(context).dao.suggestion(suggestionId) ?: return
 

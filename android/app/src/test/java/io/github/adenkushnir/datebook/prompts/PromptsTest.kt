@@ -109,8 +109,8 @@ class PromptsTest {
     fun changeTitlesAndIntent() {
         val moved = dinner.copy(title = "Dinner", start = "2037-11-13T20:00", change = CHANGE_MOVED,
             calendarEventId = 42)
-        assertEquals("Move Dinner to Fri Nov 13, 8:00 PM?", promptTitle(moved))
-        assertEquals("Dinner on Fri Nov 13 is cancelled", promptTitle(moved.copy(change = CHANGE_CANCELLED)))
+        assertEquals("Update Dinner?", promptTitle(moved))
+        assertEquals("Remove Dinner?", promptTitle(moved.copy(change = CHANGE_CANCELLED)))
         assertEquals("Dinner at Joe's", promptTitle(dinner))
         val intent = calendarEventIntent(moved)
         assertEquals(android.content.Intent.ACTION_VIEW, intent.action)

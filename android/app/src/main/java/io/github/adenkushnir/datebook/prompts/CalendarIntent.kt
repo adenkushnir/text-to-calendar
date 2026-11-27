@@ -9,6 +9,7 @@ import io.github.adenkushnir.datebook.capture.WATCHABLE_APPS
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.email.GMAIL_APP
 import io.github.adenkushnir.datebook.pipeline.CHANGE_CANCELLED
+import io.github.adenkushnir.datebook.pipeline.CHANGE_DETAILS
 import io.github.adenkushnir.datebook.pipeline.CHANGE_MOVED
 import io.github.adenkushnir.datebook.pipeline.SHARED_IMAGE_APP
 import io.github.adenkushnir.datebook.pipeline.SHARED_PDF_APP
@@ -67,8 +68,8 @@ fun promptTitle(suggestion: Suggestion): String {
 
     // Pick the wording for the kind of suggestion
     return when (suggestion.change) {
-        CHANGE_MOVED -> "Move ${suggestion.title} to $whenText?"
-        CHANGE_CANCELLED -> "${suggestion.title} on ${whenText.substringBefore(",")} is cancelled"
+        CHANGE_MOVED, CHANGE_DETAILS -> "Update ${suggestion.title}?"
+        CHANGE_CANCELLED -> "Remove ${suggestion.title}?"
         else -> suggestion.title
     }
 }

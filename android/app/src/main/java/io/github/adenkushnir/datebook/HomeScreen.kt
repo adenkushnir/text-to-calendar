@@ -60,6 +60,7 @@ import io.github.adenkushnir.datebook.prompts.changedNote
 import io.github.adenkushnir.datebook.prompts.guessNote
 import io.github.adenkushnir.datebook.prompts.fromLine
 import io.github.adenkushnir.datebook.prompts.isChange
+import io.github.adenkushnir.datebook.prompts.actionWord
 import io.github.adenkushnir.datebook.prompts.promptTitle
 import io.github.adenkushnir.datebook.today.TODAY_ASSIGNMENT
 import io.github.adenkushnir.datebook.today.TODAY_BILL
@@ -171,9 +172,9 @@ fun HomeScreen(
                             guessNote(suggestion, suggestion.retryId in checking)?.let { Muted(it) }  // guesses only
                             ClashLine(suggestion.clash)
                         }
-                        val change = isChange(suggestion)  // changes open the event instead
+                        val change = isChange(suggestion)  // changes update the event itself
                         GelButton(onClick = { onAdd(suggestion.id) }, green = !change, small = true) {
-                            Text(if (change) "Open" else "Add")
+                            Text(actionWord(suggestion))
                         }
                         GlassIconButton(DatebookIcons.Close, "Ignore", onClick = { onIgnore(suggestion.id) })
                     }

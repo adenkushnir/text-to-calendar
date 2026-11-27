@@ -40,11 +40,14 @@ private val DAY_FORMAT = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US)
 private val CLOCK_FORMAT = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
 const val CHANGE_MOVED = "moved"
 const val CHANGE_CANCELLED = "cancelled"
+const val CHANGE_DETAILS = "details"  // a text adds what to bring or a code to an event, without moving it
 private const val CHANGE_RULES = "The calendar lists the phone owner's events for the next 2 weeks. If the message " +
     "moves or cancels one of them, return that event with its title from the calendar, change set to \"moved\" " +
     "(with its new start and end) or \"cancelled\" (with its current start and end), and calendar_event set to its " +
-    "number. For every other event, set change to \"\" and calendar_event to 0. Don't list calendar events the " +
-    "message doesn't change."
+    "number. If it only adds something to bring or a code (a gate code, a room or confirmation code) to one of them, " +
+    "return it with change \"details\" and its current start and end. Put what to bring in bring and a code in " +
+    "confirmation_code, for moves too. For every other event, set change to \"\" and calendar_event to 0. Don't " +
+    "list calendar events the message doesn't change."
 private val MAPPER = ObjectMapper()
 val SYSTEM_PROMPT: String = loadSystemPrompt()
 private val EVENT_ITEM = mapOf(
@@ -57,7 +60,7 @@ private val EVENT_ITEM = mapOf(
         "location" to mapOf("type" to "string"),
         "repeat" to mapOf("type" to "string"),
         "timezone" to mapOf("type" to "string"),
-        "change" to mapOf("type" to "string", "enum" to listOf("", CHANGE_MOVED, CHANGE_CANCELLED)),
+        "change" to mapOf("type" to "string", "enum" to listOf("", CHANGE_MOVED, CHANGE_CANCELLED, CHANGE_DETAILS)),
         "calendar_event" to mapOf("type" to "integer"),
         "flight" to mapOf("type" to "string"),
         "boarding" to mapOf("type" to "string"),

@@ -25,6 +25,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.text.style.TextDecoration
+import io.github.adenkushnir.datebook.pipeline.CHANGE_CANCELLED
+import io.github.adenkushnir.datebook.prompts.UpdateRow
+import io.github.adenkushnir.datebook.prompts.actionWord
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -52,6 +57,10 @@ import io.github.adenkushnir.datebook.journeys.JourneyStep
 import io.github.adenkushnir.datebook.journeys.JourneySteps
 
 private val AIRPORT_LINE = Color(0xFFFFBE6A)  // "Be at the airport by", in the warning colour
+private val QUOTE = Color(0xFFD6E8FF)
+private val OLD = Color(0xFF9FB3C8)
+private val NEW = Color(0xFFB8F08F)
+private val ADDED = Color(0xFFFFD59A)
 private const val EARLY_STEP = 5  // the Be there early stepper moves 5 minutes a tap, up to 3 hours
 private const val EARLY_MOST = 180
 
@@ -78,6 +87,8 @@ fun SuggestionScreen(
     onSwitchOrigin: (String) -> Unit = {},
     guessText: String? = null,
     onOpenCalendar: (() -> Unit)? = null,
+    updateRows: List<UpdateRow> = emptyList(),
+    onOpenEvent: (() -> Unit)? = null,
 ) {
     Column(Modifier.fillMaxSize()) {  // see-through, so the scene behind shows
         TopBar(if (suggestion?.status == Suggestion.STATUS_CALENDAR) "Event" else "Suggestion", onBack = onBack)
@@ -106,6 +117,11 @@ fun SuggestionScreen(
                     Text("“$guessText”", fontStyle = FontStyle.Italic)
                 }
                 ClashLine(suggestion.clash)
+
+                // A text's update: the text, then each change before → after
+                if (isChange(suggestion)) {
+                    UpdateLines(suggestion, updateRows)
+                }
 
                 // Show the flight's live status when it's known
                 if (flightStatus != null) {
@@ -184,18 +200,30 @@ fun SuggestionScreen(
 
             // Only waiting suggestions can still be added or ignored
             if (suggestion.status == Suggestion.STATUS_WAITING) {
+                val change = isChange(suggestion)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val change = isChange(suggestion)  // changes open the event instead
                     GelButton(onClick = onAdd, green = !change) {
-                        Text(if (change) "Open event" else "Add")
+                        Text(actionWord(suggestion))
                     }
                     GlassButton(onClick = onIgnore) {
-                        Text("Ignore")
+                        Text(if (change) "Not this" else "Ignore")
+                    }
+
+                    // Changes can also open the event, to change it yourself
+                    if (change && onOpenEvent != null) {
+                        GlassButton(onClick = onOpenEvent) {
+                            Text("Open event")
+                        }
                     }
                 }
-                val help = if (isChange(suggestion)) "Open event shows it in your calendar app, where you can " +
-                    "change or delete it." else "Add opens your calendar app with everything filled in, so you can " +
-                    "change anything before saving."
+                // What the main button does
+                val help = when {
+                    suggestion.change == CHANGE_CANCELLED -> "Remove deletes it from your calendar; you can undo it " +
+                        "for an hour."
+                    change -> "Update changes the event on your calendar; you can undo it for an hour."
+                    else -> "Add opens your calendar app with everything filled in, so you can change anything " +
+                        "before saving."
+                }
                 Muted(help)
             }
         }
@@ -268,11 +296,41 @@ private fun TrainList(choices: TrainChoices, onPick: (TrainRow) -> Unit, onSwitc
     }
 }
 
+// A text's update on its card: the text it came from, then each change, the old one struck through and the new one
+// in green (added notes in amber, with a +)
+@Composable
+private fun UpdateLines(suggestion: Suggestion, rows: List<UpdateRow>) {
+    // The text it came from, when it was kept
+    if (suggestion.message.isNotBlank()) {
+        Text("“${suggestion.message.take(300)}”", fontStyle = FontStyle.Italic, color = QUOTE)
+    }
+
+    // Each change, as a row
+    for (row in rows) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(row.label, color = QUOTE, fontSize = 14.sp, modifier = Modifier.width(64.dp))
+
+            // Something that changes shows what it was; something added has a +
+            if (row.old.isNotBlank()) {
+                Text(row.old, textDecoration = TextDecoration.LineThrough, color = OLD,
+                    modifier = Modifier.padding(end = 6.dp))
+                Text(row.new, color = NEW, fontWeight = FontWeight.SemiBold)
+            } else {
+                Text("+ ${row.new}", color = ADDED, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
 // Describe a suggestion's status in words
 private fun statusText(suggestion: Suggestion): String {
     // Pick the words for each status
     return when (suggestion.status) {
-        Suggestion.STATUS_ADDED -> if (isChange(suggestion)) "Opened in your calendar" else "Added to your calendar"
+        Suggestion.STATUS_ADDED -> when {
+            suggestion.change == CHANGE_CANCELLED -> "Removed from your calendar"
+            isChange(suggestion) -> "Updated on your calendar"
+            else -> "Added to your calendar"
+        }
         Suggestion.STATUS_IGNORED -> "Ignored"
         Suggestion.STATUS_CALENDAR -> "On your calendar"
         else -> "Waiting for you"

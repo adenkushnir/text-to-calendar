@@ -118,6 +118,13 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/automatic_mode" />
         </service>
+        <!-- Handles Update or Remove on a text's update, and Undo after it, in the background -->
+        <receiver
+            android:name=".prompts.UpdateReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".prompts.UndoUpdateReceiver"
+            android:exported="false" />
         <!-- Handles the prompt's Ignore button in the background -->
         <receiver
             android:name=".prompts.IgnoreReceiver"

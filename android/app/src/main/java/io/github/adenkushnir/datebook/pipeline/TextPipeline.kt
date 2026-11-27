@@ -3,6 +3,8 @@
 package io.github.adenkushnir.datebook.pipeline
 import io.github.adenkushnir.datebook.calendar.CalendarEvent
 import io.github.adenkushnir.datebook.calendar.alreadyOnCalendar
+import io.github.adenkushnir.datebook.deliberate.mergeBring
+import io.github.adenkushnir.datebook.prompts.updatedNotes
 import io.github.adenkushnir.datebook.calendar.clashText
 import io.github.adenkushnir.datebook.calendar.clashesFor
 import io.github.adenkushnir.datebook.data.DatebookDao
@@ -205,8 +207,13 @@ class TextPipeline(
             } else if (changed == null && flightPlanned(event)) {
                 lines.add("flight already planned, skipped: ${eventDetails(event)}")
                 continue
-            } else if (event.change == CHANGE_MOVED && changed?.begin == eventTimes(event).first) {
+            } else if (event.change == CHANGE_MOVED && changed?.begin == eventTimes(event).first &&
+                updatedNotes(changed.notes, event.bring, event.confirmation) == changed.notes) {
                 lines.add("already moved, skipped: ${eventDetails(event)}")
+                continue
+            } else if (event.change == CHANGE_DETAILS && changed != null &&
+                updatedNotes(changed.notes, event.bring, event.confirmation) == changed.notes) {
+                lines.add("nothing new, skipped: ${eventDetails(event)}")
                 continue
             }
             val placed = withFullAddress(event)
@@ -376,7 +383,8 @@ class TextPipeline(
                 continue
             }
             val others = calendarAround(event).filter { it.eventId != event.calendarEventId }  // not the one it moves
-            val clashes = if (event.change == CHANGE_CANCELLED) emptyList() else clashesFor(event, others)
+            val clashes = if (event.change == CHANGE_CANCELLED || event.change == CHANGE_DETAILS) emptyList()
+                else clashesFor(event, others)  // a cancel or added notes doesn't change when it is
             val clash = clashText(clashes, event.phoneTimezone)
             val skip = !isShared(incoming.app) && ignored(incoming.sender, incoming.group, event.title, event.kind)
             val status = if (skip) Suggestion.STATUS_IGNORED else Suggestion.STATUS_WAITING  // a Deliberate rule
@@ -634,11 +642,18 @@ class TextPipeline(
     private suspend fun updateWaiting(id: Long, event: Event, incoming: IncomingText): Long? {
         val plan = dao.suggestion(id) ?: return null  // already gone
 
-        // A cancelled plan stops waiting and its prompt goes away
+        // A cancelled plan stops waiting and its prompt goes away; one that only gains things to bring or a code keeps
+        // its time
         if (event.change == CHANGE_CANCELLED) {
             dao.setStatus(id, Suggestion.STATUS_IGNORED)
             onWithdrawn(id)
             return null
+        } else if (event.change == CHANGE_DETAILS) {
+            val added = plan.copy(bring = mergeBring(plan.bring, event.bring.split(",").map { it.trim() }
+                .filter { it.isNotBlank() }), confirmation = event.confirmation.ifBlank { plan.confirmation })
+            dao.updateSuggestion(added)
+            onSuggested(added, incoming)  // replaces its prompt
+            return id
         }
         val clash = clashText(clashesFor(event, calendarAround(event)), event.phoneTimezone)
         val moved = plan.copy(start = event.start, end = event.end, allDay = event.allDay, timezone = event.timezone,
@@ -692,8 +707,9 @@ fun matchChange(event: Event, upcoming: List<CalendarEvent>): Pair<Event, Calend
     val matched = event.copy(title = changed.title.ifBlank { event.title }, calendarEventId = changed.eventId,
         allDay = changed.allDay, timezone = "")
 
-    // A cancellation keeps the calendar event's own time; a move keeps its length when no end was given
-    if (matched.change == CHANGE_CANCELLED) {
+    // A cancellation (or added details) keeps the calendar event's own time; a move keeps its length when no end was
+    // given
+    if (matched.change == CHANGE_CANCELLED || matched.change == CHANGE_DETAILS) {
         return Pair(matched.copy(start = localText(changed.begin, changed.allDay, zone),
             end = localText(changed.end, changed.allDay, zone)), changed)
     } else if (matched.end.isBlank() && !changed.allDay) {

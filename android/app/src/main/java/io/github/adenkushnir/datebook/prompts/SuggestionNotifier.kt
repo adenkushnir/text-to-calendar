@@ -14,6 +14,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import io.github.adenkushnir.datebook.MainActivity
 import io.github.adenkushnir.datebook.R
+import io.github.adenkushnir.datebook.calendar.readEvent
 import io.github.adenkushnir.datebook.data.Suggestion
 import io.github.adenkushnir.datebook.pipeline.summary
 const val SUGGESTIONS_CHANNEL = "suggestions"
@@ -43,20 +44,23 @@ class SuggestionNotifier(private val context: Context) {
         val whenAndWhere = summary(suggestion.toEvent()).removePrefix("${suggestion.title} · ")
         val clash = if (suggestion.clash.isNotBlank()) "\n⚠ ${suggestion.clash}" else ""  // only when it clashes
         val changed = changedNote(suggestion)?.let { "\n$it" }.orEmpty()  // only when it changed in the chat
-        val details = "From ${fromLine(suggestion)}: \"$quote\"\n$whenAndWhere$changed$clash"
+        val change = isChange(suggestion)
+        val line = if (change) updateLine(readEvent(context, suggestion.calendarEventId), suggestion) else whenAndWhere
+        val details = "From ${fromLine(suggestion)}: \"$quote\"\n$line$changed$clash"
         val notification = NotificationCompat.Builder(context, SUGGESTIONS_CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_datebook)
             .setColor(ContextCompat.getColor(context, R.color.brand_aqua))
-            .setSubText(if (isChange(suggestion)) "Calendar change" else "Add to calendar?")
+            .setSubText(if (change) "Calendar change" else "Add to calendar?")
             .setContentTitle(promptTitle(suggestion))
-            .setContentText(whenAndWhere)
+            .setContentText(line)
             .setStyle(NotificationCompat.BigTextStyle().bigText(details))
             .setCategory(NotificationCompat.CATEGORY_EVENT)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setSilent(notesOnly(suggestion))  // only things to bring or a code: when you go doesn't change
             .setAutoCancel(true)
             .setContentIntent(openCard(suggestion.id))
-            .addAction(0, if (isChange(suggestion)) "Open event" else "Add", addAction(suggestion.id))
-            .addAction(0, "Ignore", ignoreAction(suggestion.id))
+            .addAction(0, actionWord(suggestion), if (change) updateAction(suggestion.id) else addAction(suggestion.id))
+            .addAction(0, if (change) "Not this" else "Ignore", ignoreAction(suggestion.id))
             .build()
         NotificationManagerCompat.from(context).notify(id, notification)
     }
@@ -82,7 +86,8 @@ class SuggestionNotifier(private val context: Context) {
             .setSilent(true)
             .setAutoCancel(true)
             .setContentIntent(openCard(suggestion.id))
-            .addAction(0, if (isChange(suggestion)) "Open event" else "Add", addAction(suggestion.id))
+            .addAction(0, actionWord(suggestion), if (isChange(suggestion)) updateAction(suggestion.id)
+                else addAction(suggestion.id))
             .addAction(0, "Not now", PendingIntent.getBroadcast(context, requestCode(suggestion.id, 2), notNow, FLAGS))
             .build()
         NotificationManagerCompat.from(context).notify(suggestion.id.toInt(), notification)
@@ -142,6 +147,12 @@ class SuggestionNotifier(private val context: Context) {
         return PendingIntent.getActivity(context, requestCode(suggestionId, 1), intent, FLAGS)
     }
 
+    // Update (or Remove) on a text's update changes the event in the background, without opening anything
+    private fun updateAction(suggestionId: Long): PendingIntent {
+        val intent = Intent(context, UpdateReceiver::class.java).putExtra(EXTRA_SUGGESTION_ID, suggestionId)
+        return PendingIntent.getBroadcast(context, requestCode(suggestionId, 3), intent, FLAGS)
+    }
+
     // Ignore is handled in the background without opening anything
     private fun ignoreAction(suggestionId: Long): PendingIntent {
         val intent = Intent(context, IgnoreReceiver::class.java).setAction(ACTION_IGNORE)
@@ -153,7 +164,7 @@ private const val FLAGS = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLA
 
 // A different request code for each suggestion and button, so their intents don't replace each other
 private fun requestCode(suggestionId: Long, button: Int): Int {
-    return (suggestionId * 3 + button).toInt()
+    return (suggestionId * 4 + button).toInt()
 }
 
 // Return true if Datebook may show notifications (Android 13 and later ask for this permission)
