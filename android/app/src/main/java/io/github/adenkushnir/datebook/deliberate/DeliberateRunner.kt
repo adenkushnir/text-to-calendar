@@ -28,6 +28,7 @@ import io.github.adenkushnir.datebook.data.noteTitle
 import io.github.adenkushnir.datebook.data.repeatLabel
 import io.github.adenkushnir.datebook.flights.FlightInfo
 import io.github.adenkushnir.datebook.flights.BOARDING_FROM_YOU
+import io.github.adenkushnir.datebook.journeys.ORDER_MINUTES
 import io.github.adenkushnir.datebook.flights.flightEarlyMinutes
 import io.github.adenkushnir.datebook.flights.flightOfTitle
 import io.github.adenkushnir.datebook.flights.flightTitle
@@ -213,6 +214,10 @@ class DeliberateRunner(private val context: Context) {
         if (isTime(change.boarding)) {
             chips.add("Boarding ${java.time.LocalTime.parse(change.boarding).format(CLOCK)}")
         }
+
+        if (change.travel == "UBER" || change.order != null) {
+            chips.add("Order the Uber ${minutesText(change.order ?: ORDER_MINUTES)} before")
+        }
         return chips
     }
 
@@ -223,6 +228,8 @@ class DeliberateRunner(private val context: Context) {
             "TRANSIT" -> "🚆 By train"
             "WALK" -> "🚶 Walking"
             "BICYCLE" -> "🚲 By bike"
+            "BUS" -> "🚌 By campus bus"
+            "UBER" -> "🚕 By Uber"
             else -> "🚗 Driving"
         }
     }
@@ -271,11 +278,11 @@ class DeliberateRunner(private val context: Context) {
         val station = stationFor(change.station)
 
         // Nothing to set
-        if (change.travel.isBlank() && change.early == null && station == null) {
+        if (change.travel.isBlank() && change.early == null && station == null && change.order == null) {
             return emptyList()
         }
         val undo = step("plan_travel", "key" to key, "mode" to leaveBy.mode(key), "early" to leaveBy.early(key),
-            "origin" to trains.origin(key))
+            "origin" to trains.origin(key), "order" to leaveBy.orderMinutes(key))
 
         // Set each one given
         if (change.travel.isNotBlank()) {
@@ -288,6 +295,10 @@ class DeliberateRunner(private val context: Context) {
 
         if (station != null) {
             trains.setOrigin(key, station.code)
+        }
+
+        if (change.order != null) {
+            leaveBy.setOrderMinutes(key, change.order)
         }
         return listOf(undo)
     }
@@ -872,6 +883,7 @@ class DeliberateRunner(private val context: Context) {
                     LeaveByStore(context).putMode(key, undoStep["mode"]?.toString())
                     LeaveByStore(context).setEarly(key, (undoStep["early"] as? Number)?.toInt())
                     graph.trainStore.putOrigin(key, undoStep["origin"]?.toString())
+                    LeaveByStore(context).setOrderMinutes(key, (undoStep["order"] as? Number)?.toInt())
                 }
             }
         }

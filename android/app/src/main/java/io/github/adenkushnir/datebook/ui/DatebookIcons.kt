@@ -9,7 +9,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.unit.dp
 import io.github.adenkushnir.datebook.places.TRAVEL_BIKE
+import io.github.adenkushnir.datebook.places.TRAVEL_BUS
 import io.github.adenkushnir.datebook.places.TRAVEL_TRANSIT
+import io.github.adenkushnir.datebook.places.TRAVEL_UBER
 import io.github.adenkushnir.datebook.places.TRAVEL_WALK
 
 // Build an icon from path strings: rounded 2-unit lines, or filled shapes when filled is true (the tint colours either)
@@ -180,6 +182,13 @@ object DatebookIcons {
         "M7.1 20a1.4 1.4 0 1 0 2.8 0a1.4 1.4 0 1 0 -2.8 0",
         "M14.1 20a1.4 1.4 0 1 0 2.8 0a1.4 1.4 0 1 0 -2.8 0",
     )
+    // A car with a sign on its roof, for an Uber
+    val Taxi = icon("taxi", filled = false,
+        "M5 16.5v-4.2l2-4.8h10l2 4.8v4.2z",
+        "M9.5 7.5l.5-2.5h4l.5 2.5M5 12.3h14",
+        "M6.4 19a1.4 1.4 0 1 0 2.8 0a1.4 1.4 0 1 0 -2.8 0",
+        "M14.8 19a1.4 1.4 0 1 0 2.8 0a1.4 1.4 0 1 0 -2.8 0",
+    )
     // A walking person
     val Walk = icon("walk", filled = false,
         "M11.2 4.5a1.8 1.8 0 1 0 3.6 0a1.8 1.8 0 1 0 -3.6 0",
@@ -231,7 +240,9 @@ object DatebookIcons {
 fun travelIcon(mode: String): ImageVector {
     // Pick the icon for the mode
     return when (mode) {
-        TRAVEL_TRANSIT -> DatebookIcons.Bus
+        TRAVEL_TRANSIT -> DatebookIcons.Train
+        TRAVEL_BUS -> DatebookIcons.Bus
+        TRAVEL_UBER -> DatebookIcons.Taxi
         TRAVEL_WALK -> DatebookIcons.Walk
         TRAVEL_BIKE -> DatebookIcons.Bike
         else -> DatebookIcons.Car

@@ -43,7 +43,15 @@ import io.github.adenkushnir.datebook.flights.boardingMinutes
 import io.github.adenkushnir.datebook.pipeline.zoneOf
 import io.github.adenkushnir.datebook.flights.flightEarlyMinutes
 import io.github.adenkushnir.datebook.flights.flightOfTitle
+import io.github.adenkushnir.datebook.journeys.Journey
+import io.github.adenkushnir.datebook.journeys.JourneyStore
+import io.github.adenkushnir.datebook.journeys.ORDER_MINUTES
+import io.github.adenkushnir.datebook.journeys.PICKUP_MINUTES
+import io.github.adenkushnir.datebook.journeys.planJourney
 import io.github.adenkushnir.datebook.places.TRAVEL_BIKE
+import io.github.adenkushnir.datebook.places.TRAVEL_BUS
+import io.github.adenkushnir.datebook.places.TRAVEL_UBER
+import io.github.adenkushnir.datebook.places.uberIntent
 import io.github.adenkushnir.datebook.places.TRAVEL_DRIVE
 import io.github.adenkushnir.datebook.places.TRAVEL_TRANSIT
 import io.github.adenkushnir.datebook.places.TRAVEL_WALK
@@ -115,6 +123,22 @@ class LeaveByStore(context: Context) {
     // Remember an event's travel time by a mode
     fun setMinutes(key: String, minutes: Int, mode: String) {
         prefs.edit().putInt("minutes:$key", minutes).putString("minutesMode:$key", mode).apply()
+    }
+
+    // Return how many minutes before an Uber leaves you're reminded to order it, chosen for that event, or null for
+    // the usual 10
+    fun orderMinutes(key: String): Int? {
+        return if (prefs.contains("order:$key")) prefs.getInt("order:$key", ORDER_MINUTES) else null
+    }
+
+    // Choose how many minutes before an event's Uber leaves to be reminded to order it (null goes back to 10)
+    fun setOrderMinutes(key: String, minutes: Int?) {
+        // Forget the choice, or keep the new one
+        if (minutes == null) {
+            prefs.edit().remove("order:$key").apply()
+        } else {
+            prefs.edit().putInt("order:$key", minutes).apply()
+        }
     }
 
     // Return how early you mean to be at an event, chosen for it alone, or null to follow the rules and defaults
@@ -234,6 +258,8 @@ fun tripText(minutes: Int, mode: String): String {
         TRAVEL_TRANSIT -> "$minutes min by transit"
         TRAVEL_WALK -> "$minutes min walk"
         TRAVEL_BIKE -> "$minutes min bike ride"
+        TRAVEL_BUS -> "$minutes min by campus bus"
+        TRAVEL_UBER -> "$minutes min Uber, pickup included"
         else -> "$minutes min drive"
     }
 }
@@ -364,8 +390,29 @@ private fun stationTrip(context: Context, key: String, station: Station, pick: T
     return Pair(mode, minutes)
 }
 
-// Plan the trip to an event: by its picked train when it goes by transit and the train still makes it, else by
-// Google's door-to-door time (driving when no train makes it any more); null when there's no travel time
+// A plan's journey with a campus bus for its alert: the one kept from its card when it's for the same mode and still
+// gets there in time, else (for the Bus choice, when the network allows) planned again; null when it has no campus
+// bus
+private fun campusJourney(context: Context, key: String, event: CalendarEvent, mode: String, early: Int,
+    network: Int): Journey? {
+    val graph = AppGraph.get(context)
+    val store = JourneyStore(context)
+    val by = event.begin - early * MINUTE
+    val now = System.currentTimeMillis()
+    val kept = store.journey(key)?.first?.takeIf { it.mode == mode && it.arrive <= by && it.leave > now }
+    val journey = kept ?: if (mode == TRAVEL_BUS && network != NETWORK_NONE) {
+        planJourney(context, graph.mapsKeyStore.load(), graph.travelSettings.home(), event.location,
+            event.location.substringBefore(","), mode, null, by)?.also { store.save(key, it, now) }
+    } else {
+        null
+    }
+    return journey?.takeIf { found -> found.steps.any { it.busTrip.isNotBlank() } }
+}
+
+// Plan the trip to an event: by its picked train when it goes by transit and the train still makes it, by its campus
+// bus when its journey has one, else by Google's door-to-door time (driving when no train makes it any more; an Uber
+// adds 5 minutes for pickup and reminds you to order it, 10 minutes before unless you said); null when there's no
+// travel time
 suspend fun leavePlan(context: Context, event: CalendarEvent, effects: EventEffects, network: Int): LeavePlan? {
     val graph = AppGraph.get(context)
     val store = LeaveByStore(context)
@@ -390,6 +437,17 @@ suspend fun leavePlan(context: Context, event: CalendarEvent, effects: EventEffe
             toStation.second, early, pick, station, note?.takeIf { it.first == NOTE_SWAP }?.second.orEmpty(),
             isFlight = isFlight, flight = flight, boarding = boarding, boardingReal = real)
     }
+    val campus = if (mode == TRAVEL_BUS || mode == TRAVEL_TRANSIT) campusJourney(context, key, event, mode, early,
+        network) else null
+
+    // By campus bus: leave when its journey does
+    if (campus != null) {
+        val bus = campus.steps.first { it.busTrip.isNotBlank() }
+        val at = Instant.ofEpochMilli(bus.starts).atZone(ZoneId.systemDefault()).format(CLOCK)
+        return LeavePlan(event.begin, campus.leave, campus.leave - (HEADS_UP_MINUTES + effects.alertEarlier) * MINUTE,
+            "🚌 ${bus.line} bus $at from ${bus.under.substringAfterLast("from ")}", mode, mode, campus.minutes, early,
+            isFlight = isFlight, flight = flight, boarding = boarding, boardingReal = real)
+    }
     val noTrain = mode == TRAVEL_TRANSIT && note?.first == NOTE_NONE
     val tripMode = if (noTrain) TRAVEL_DRIVE else mode
     val saved = store.minutes(key, tripMode)
@@ -400,9 +458,13 @@ suspend fun leavePlan(context: Context, event: CalendarEvent, effects: EventEffe
         else -> freshMinutes(context, event, tripMode, early) ?: saved
     } ?: return null
     store.setMinutes(key, minutes, tripMode)
-    return LeavePlan(event.begin, leaveTime(event.begin, minutes, early),
-        alertTime(event.begin, minutes, early, effects.alertEarlier), tripText(minutes, tripMode), mode, tripMode,
-        minutes, early, trainNote = if (noTrain) note?.second.orEmpty() else "", noTrain = noTrain,
+    val uber = tripMode == TRAVEL_UBER
+    val total = if (uber) minutes + PICKUP_MINUTES else minutes
+    val leaveAt = leaveTime(event.begin, total, early)
+    val alertAt = if (uber) leaveAt - (store.orderMinutes(key) ?: ORDER_MINUTES) * MINUTE
+        else alertTime(event.begin, total, early, effects.alertEarlier)
+    return LeavePlan(event.begin, leaveAt, alertAt, tripText(total, tripMode), mode, tripMode,
+        total, early, trainNote = if (noTrain) note?.second.orEmpty() else "", noTrain = noTrain,
         isFlight = isFlight, flight = flight, boarding = boarding, boardingReal = real)
 }
 
@@ -422,6 +484,13 @@ fun alertText(title: String, location: String, plan: LeavePlan, nowMillis: Long,
     val leave = if (nowMillis > plan.leaveAt) "Leave now" else "Leave by ${clock(plan.leaveAt)}"
     val train = plan.train
     val ride = train?.let { "🚆 ${rideLine(it)}" }
+
+    // An Uber: order it now, with when it should leave
+    if (plan.tripMode == TRAVEL_UBER) {
+        val name = if (plan.isFlight) "your flight" else title.ifBlank { "Event" }
+        val car = if (nowMillis > plan.leaveAt) "now" else "for ${clock(plan.leaveAt)}"
+        return AlertText("Order your Uber $car", "$name · ${plan.travel}", emptyList())
+    }
 
     // Other events: the trip, then the train (with what happened to the last one), or why there's no train
     if (!plan.isFlight) {
@@ -506,7 +575,14 @@ fun showLeaveBy(context: Context, event: CalendarEvent, plan: LeavePlan, effects
         .setPriority(NotificationCompat.PRIORITY_HIGH)
         .setAutoCancel(true)
         .setContentIntent(PendingIntent.getActivity(context, id, openHome, flags))
-        .addAction(0, "Open in Maps", PendingIntent.getActivity(context, id + 1, openMaps, flags))
+
+    // An Uber opens Uber; everything else opens Maps
+    if (plan.tripMode == TRAVEL_UBER) {
+        val openUber = uberIntent(event.location).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        builder.addAction(0, "Open Uber", PendingIntent.getActivity(context, id + 1, openUber, flags))
+    } else {
+        builder.addAction(0, "Open in Maps", PendingIntent.getActivity(context, id + 1, openMaps, flags))
+    }
 
     // Offer the other travel modes as buttons
     for ((i, other) in otherModes(if (plan.noTrain) plan.tripMode else plan.mode).withIndex()) {

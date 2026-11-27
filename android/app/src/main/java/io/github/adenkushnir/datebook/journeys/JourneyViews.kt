@@ -1,6 +1,7 @@
 // A journey's steps as the plan card and Deliberate show them: the time, a coloured dot for the kind of step, the
 // line's short name on a chip (for trains and buses), what happens and a line under it; arriving in the warning colour.
-// With onTap, steps you can act on (walks, drives, rides, boarding, the flight) are tappable, with a › at the end
+// With onTap, steps you can act on (walks, drives, rides, ordering an Uber, boarding, the flight) are tappable, with a
+// › at the end
 package io.github.adenkushnir.datebook.journeys
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -34,15 +35,21 @@ private val LINE_DEFAULT = Color(0xFF0E86C4)
 private val DOTS = mapOf(STEP_WALK to Color(0xFF52C0F6), STEP_BUS to Color(0xFF9FB3C8), STEP_TRAIN to Color(0xFF5ADBEA),
     STEP_SUBWAY to Color(0xFF5ADBEA), STEP_DRIVE to Color(0xFF52C0F6), STEP_BIKE to Color(0xFF52C0F6),
     STEP_ARRIVE to ARRIVE, STEP_BOARD to ARRIVE,
-    STEP_FLIGHT to Color(0xFFEEF5FF))
+    STEP_FLIGHT to Color(0xFFEEF5FF), STEP_ORDER to ARRIVE)
 private val TAPPABLE = setOf(STEP_WALK, STEP_DRIVE, STEP_BIKE, STEP_TRAIN, STEP_BUS, STEP_SUBWAY, STEP_BOARD,
-    STEP_FLIGHT)
+    STEP_FLIGHT, STEP_ORDER)
+private val DARK_INK = Color(0xFF06243C)
 private val ARROW = Color(0xFF9FD8FF)
 
 // A line's colour from Google ("#0039A6"), or Aero aqua when there's none or it can't be read
 private fun lineColor(text: String): Color {
     val hex = text.removePrefix("#")
     return hex.toLongOrNull(16)?.takeIf { hex.length == 6 }?.let { Color(0xFF000000 or it) } ?: LINE_DEFAULT
+}
+
+// The chip's text colour on a line's colour: dark on light colours (like the LX's lavender), else white
+private fun inkOn(color: Color): Color {
+    return if (0.299 * color.red + 0.587 * color.green + 0.114 * color.blue > 0.6) DARK_INK else Color.White
 }
 
 // Every step of a journey, one row each (tappable ones call onTap)
@@ -62,7 +69,8 @@ fun JourneySteps(journey: Journey, zone: ZoneId = ZoneId.systemDefault(), onTap:
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         // The line's chip, for trains and buses that have one
                         if (step.line.isNotBlank() && step.kind != STEP_ARRIVE) {
-                            Text(step.line, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                            Text(step.line, color = inkOn(lineColor(step.color)), fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(end = 6.dp).clip(RoundedCornerShape(6.dp))
                                     .background(lineColor(step.color)).padding(horizontal = 6.dp, vertical = 1.dp))
                         }

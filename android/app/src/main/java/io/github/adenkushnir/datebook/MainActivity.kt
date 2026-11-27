@@ -188,6 +188,12 @@ import io.github.adenkushnir.datebook.journeys.journeyChoices
 import io.github.adenkushnir.datebook.journeys.planJourney
 import io.github.adenkushnir.datebook.journeys.withFlightSteps
 import io.github.adenkushnir.datebook.journeys.withLiveTrain
+import io.github.adenkushnir.datebook.journeys.STEP_ORDER
+import io.github.adenkushnir.datebook.journeys.ORDER_MINUTES
+import io.github.adenkushnir.datebook.buses.CampusBuses
+import io.github.adenkushnir.datebook.buses.campusChoices
+import io.github.adenkushnir.datebook.buses.withCampusLive
+import io.github.adenkushnir.datebook.places.uberIntent
 import io.github.adenkushnir.datebook.flights.checkInLink
 import io.github.adenkushnir.datebook.flights.flightOfTitle
 import io.github.adenkushnir.datebook.tracking.trackLinkFor
@@ -933,16 +939,20 @@ class MainActivity : ComponentActivity() {
         var early by remember(plan) { mutableStateOf<Int?>(null) }
         var journey by remember(plan) { mutableStateOf<Journey?>(null) }
         var picking by remember(plan) { mutableStateOf(false) }  // the train picker is open
+        var pickBuses by remember(plan) { mutableStateOf(false) }  // it's for a campus bus
         var choices by remember(plan) { mutableStateOf<List<Journey>?>(null) }  // null while they load
         var flightOpen by remember(plan) { mutableStateOf(false) }
         LaunchedEffect(picking) {
             val shown = plan ?: return@LaunchedEffect
             val current = journey ?: return@LaunchedEffect
 
-            // Look for the other trains each time the picker opens
+            // Look for the other trains (or campus buses) each time the picker opens
             if (picking) {
                 choices = null
-                choices = withContext(Dispatchers.IO) { otherTrains(graph, shown, current, early ?: 0) }
+                choices = withContext(Dispatchers.IO) {
+                    if (pickBuses) CampusBuses.timetable(applicationContext)?.let { campusChoices(current, it) }
+                        ?: listOf(current) else otherTrains(graph, shown, current, early ?: 0)
+                }
             }
         }
         LaunchedEffect(plan) {
@@ -976,13 +986,16 @@ class MainActivity : ComponentActivity() {
             onJourneyStep = { step ->
                 val shown = plan ?: return@SuggestionScreen
 
-                // Walks and drives open Maps for that part; rides open the train picker; boarding and the flight
-                // open its details
+                // Walks and drives open Maps for that part; ordering an Uber opens Uber; a campus bus opens the bus
+                // picker and other rides the train picker; boarding and the flight open its details
                 if (step.kind == STEP_WALK || step.kind == STEP_DRIVE || step.kind == STEP_BIKE) {
                     openMapsLeg(step)
+                } else if (step.kind == STEP_ORDER) {
+                    openUber(shown.location)
                 } else if (step.kind == STEP_BOARD || step.kind == STEP_FLIGHT) {
                     flightOpen = isFlight(shown)
                 } else {
+                    pickBuses = step.busTrip.isNotBlank()
                     picking = true
                 }
             },
@@ -1031,7 +1044,7 @@ class MainActivity : ComponentActivity() {
                 journey = picked
                 picking = false
                 trainRefresh += 1
-            }, onDismiss = { picking = false })
+            }, onDismiss = { picking = false }, buses = pickBuses)
         }
 
         // The flight's details, while they're open
@@ -1262,6 +1275,16 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch(Dispatchers.IO) { planLeaveBy(applicationContext) }
     }
 
+    // Open Uber (the app, or its website) with the place as the drop-off; nothing is booked until you confirm there
+    private fun openUber(place: String) {
+        // Open it, or say nothing can
+        try {
+            startActivity(uberIntent(place))
+        } catch (error: ActivityNotFoundException) {  // no Uber app or browser installed
+            Toast.makeText(this, "Couldn't open Uber", Toast.LENGTH_LONG).show()
+        }
+    }
+
     // Open Google Maps for one walk or drive of a trip, from where it starts (or where you are) to where it ends
     private fun openMapsLeg(step: JourneyStep) {
         // Maps' mode for the kind of step
@@ -1280,8 +1303,8 @@ class MainActivity : ComponentActivity() {
     }
 
     // A plan's journey for its card: the kept one, worked out again when it was kept for another mode or (on the plan's
-    // day) over 10 minutes ago, with the picked NJ Transit train's live state; null for plans without a place, changes
-    // and plans already past (call it off the main thread)
+    // day) over 10 minutes ago, with the picked NJ Transit train's live state and campus buses' live times (within the
+    // next 2 hours); null for plans without a place, changes and plans already past (call it off the main thread)
     private fun journeyFor(graph: AppGraph, plan: Suggestion, mode: String?, early: Int): Journey? {
         val begin = planBegin(plan)
         val now = System.currentTimeMillis()
@@ -1305,11 +1328,18 @@ class MainActivity : ComponentActivity() {
         val planned = if (!stale) kept!!.first else planJourney(applicationContext, graph.mapsKeyStore.load(),
             graph.travelSettings.home(), plan.location, plan.location.substringBefore(","), wanted,
             if (picked) kept!!.first.leave else null,
-            if (picked) null else begin - leadMinutes(early, isFlight(plan), flight, boarding) * 60_000L)
+            if (picked) null else begin - leadMinutes(early, isFlight(plan), flight, boarding) * 60_000L,
+            orderMinutes = LeaveByStore(applicationContext).orderMinutes(key) ?: ORDER_MINUTES)
             ?.also { store.save(key, it, now, picked) } ?: kept?.first ?: return null
+        val bus = planned.steps.firstOrNull { it.busTrip.isNotBlank() }
+        val live = if (bus != null && bus.starts > now - 30 * 60_000L && bus.starts < now + 2 * 3600_000L) {
+            withCampusLive(planned, CampusBuses.predictions())
+        } else {
+            planned
+        }
         val gate = listOfNotNull(flight?.terminal?.ifBlank { null }?.let { "Terminal $it" },
             flight?.gate?.ifBlank { null }?.let { "gate $it" }).joinToString(", ")
-        val journey = if (!flying) planned else withFlightSteps(planned, flight?.number ?: plan.flight,
+        val journey = if (!flying) live else withFlightSteps(live, flight?.number ?: plan.flight,
             (flight?.departScheduled ?: flight?.departBest)?.toEpochMilli() ?: begin, boarding, gate,
             (flight?.arriveBest ?: flight?.arriveScheduled)?.toEpochMilli(), flight?.toCity.orEmpty(),
             ZoneId.systemDefault(), source)

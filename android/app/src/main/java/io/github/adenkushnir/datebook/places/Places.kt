@@ -17,6 +17,8 @@ const val TRAVEL_DRIVE = "DRIVE"
 const val TRAVEL_TRANSIT = "TRANSIT"
 const val TRAVEL_WALK = "WALK"
 const val TRAVEL_BIKE = "BICYCLE"
+const val TRAVEL_BUS = "BUS"  // a Rutgers campus bus (Google plans it as transit)
+const val TRAVEL_UBER = "UBER"  // an Uber (Google plans it as a drive)
 private const val SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
 private const val SEARCH_FIELDS = "places.displayName,places.formattedAddress,places.location"
 private const val NEARBY_METERS = 50000.0
@@ -31,11 +33,31 @@ val TRAVEL_MODES = listOf(
     TravelMode(TRAVEL_TRANSIT, "🚌 Transit", "transit", "Transit"),
     TravelMode(TRAVEL_WALK, "🚶 Walk", "walking", "Walk"),
     TravelMode(TRAVEL_BIKE, "🚲 Bike", "bicycling", "Bike"),
+    TravelMode(TRAVEL_BUS, "🚌 Campus bus", "transit", "Bus"),
+    TravelMode(TRAVEL_UBER, "🚕 Uber", "driving", "Uber"),
 )
 
 // Return the travel mode with an id, or driving for anything unknown
 fun travelMode(id: String): TravelMode {
     return TRAVEL_MODES.firstOrNull { it.id == id } ?: TRAVEL_MODES.first()
+}
+
+// The mode Google's Routes API plans a travel mode by: a campus bus as transit, an Uber as a drive
+fun googleMode(id: String): String {
+    // Datebook's own modes become Google's
+    return when (travelMode(id).id) {
+        TRAVEL_BUS -> TRAVEL_TRANSIT
+        TRAVEL_UBER -> TRAVEL_DRIVE
+        else -> travelMode(id).id
+    }
+}
+
+// An Uber link that opens the app (or Uber's website) with the pickup where you are and the place as the drop-off;
+// nothing is booked until you confirm in Uber
+fun uberIntent(place: String): Intent {
+    val dropoff = Uri.encode(place)
+    return Intent(Intent.ACTION_VIEW, Uri.parse("https://m.uber.com/ul/?action=setPickup&pickup=my_location" +
+        "&dropoff[formatted_address]=$dropoff"))
 }
 
 // Remembers the default travel mode and the home address travel times fall back to

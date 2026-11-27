@@ -26,13 +26,22 @@ It's a full Kotlin app, built with Jetpack Compose, in [`android/`](android/); t
 **Knowing your calendar**
 - Warns about clashes, skips plans already on your calendar, and turns "moved to 8" or "cancelled" into a
   **Move Dinner to 8 PM?** prompt that opens the event.
-- **Leave-by alerts** with travel time (drive, transit, walk or bike) and **Open in Maps**. Each plan can have its own
-  travel mode and **Be there early** minutes (on its card, or by telling Deliberate).
+- **Leave-by alerts** with travel time (drive, transit, walk, bike, campus bus or Uber) and **Open in Maps**. Each
+  plan can have its own travel mode and **Be there early** minutes (on its card, or by telling Deliberate).
 - **Flights** filled in from live flight data, with delay and gate alerts, and a leave-by alert for the airport: be
   there 60 minutes early (2 hours abroad) unless you say otherwise. One plan per flight, however many emails mention it.
 - **NJ Transit** trains toward a plan: by transit, the leave-by comes from your train (its time, less the walk or
   drive to the station). If your train is cancelled or too late, Datebook picks another and updates the alert, or
   says no train makes it and gives the drive. **Track** links for UPS, FedEx, USPS, Amazon and DHL packages.
+- **Rutgers campus buses** (Rutgers' own TripShot timetable and live times, fetched weekly, no account): by transit,
+  a walk in your trip becomes a campus bus when the bus lets you leave at least 3 minutes later or get there 3 minutes
+  sooner, with stops up to a 15-minute walk away; it works with NJ Transit too. The **Bus** travel choice (or "I'm
+  taking the bus" in Deliberate) always takes one. The bus step shows its route in Rutgers' colour and "Scheduled",
+  or its live time ("Live · 2 min late") in the 2 hours before; tap it for the other buses.
+- **Uber:** the **Uber** travel choice (or "I'm taking an Uber, remind me to order it 10 minutes before" in
+  Deliberate) times the ride as a drive plus 5 minutes for the car to reach you, and the leave-by alert becomes
+  **Order your Uber**, with an **Open Uber** button, 10 minutes before it should leave (or as many as you said).
+  Nothing is booked for you.
 - Bills and assignments become reminders, not events. Loose plans ("we should get lunch next week") get a nudge to
   pin them down.
 
@@ -139,6 +148,7 @@ accounts added as testers, and signing in lapses about once a week (Datebook rem
   foil go to Nestor on your home Wi-Fi only, never over the internet.
 - Other services only get what they need: place names (Google Maps), flight numbers and dates (AeroDataBox), station
   codes (NJ Transit), and your rough location for the weather ([Open-Meteo](https://open-meteo.com), no account).
+- Rutgers bus timetables and live times are only downloaded (from TripShot); nothing about you is sent.
 
 ## Known limits
 

@@ -34,11 +34,13 @@ fun firstRide(journey: Journey): JourneyStep? {
     return journey.steps.firstOrNull { it.kind == STEP_TRAIN || it.kind == STEP_BUS || it.kind == STEP_SUBWAY }
 }
 
-// The train picker: each way of making the trip by its first ride and when you'd arrive; the current one says Yours,
-// ones arriving after you mean to be there say too late; null choices show a loading line
+// The train picker (or, with buses, the campus bus picker): each way of making the trip by its ride and when you'd
+// arrive; the current one says Yours, ones arriving after you mean to be there say too late; null choices show a
+// loading line
 @Composable
 fun TrainPickerDialog(choices: List<Journey>?, current: Journey, beThere: Long, onPick: (Journey) -> Unit,
-    onDismiss: () -> Unit) {
+    onDismiss: () -> Unit, buses: Boolean = false) {
+    val word = if (buses) "buses" else "trains"
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
@@ -46,23 +48,23 @@ fun TrainPickerDialog(choices: List<Journey>?, current: Journey, beThere: Long, 
                 Text("Close")
             }
         },
-        title = { Text("Other trains") },
+        title = { Text("Other $word") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Muted("Pick one; the leave time and every step after it move with it.")
 
                 // Still asking Google, or nothing else found
                 if (choices == null) {
-                    Muted("Looking for other trains…")
+                    Muted("Looking for other $word…")
                 } else if (choices.size <= 1) {
-                    Muted("No other trains found for this trip.")
+                    Muted("No other $word found for this trip.")
                 }
 
                 // One row per way of making the trip
                 for (choice in choices.orEmpty()) {
-                    val ride = firstRide(choice)
+                    val ride = if (buses) choice.steps.firstOrNull { it.busTrip.isNotBlank() } else firstRide(choice)
                     val late = choice.arrive > beThere
-                    val mine = choice.leave == current.leave
+                    val mine = choice.leave == current.leave && choice.arrive == current.arrive
                     val name = ride?.let { "${clock(it.starts)} · ${it.title.substringBefore(" toward")}" }
                         ?: "Leave ${clock(choice.leave)}"
                     PlainButton(onClick = { onPick(choice) }, modifier = Modifier.fillMaxWidth()) {

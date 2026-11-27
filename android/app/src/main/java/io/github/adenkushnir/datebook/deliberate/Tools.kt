@@ -42,7 +42,8 @@ const val TARGET_PLAN = "plan"
 const val TARGET_ITEM = "item"
 const val TARGET_EVENT = "event"
 const val MAX_EARLY_MINUTES = 180
-val TRAVEL_CHOICES = listOf("", "DRIVE", "TRANSIT", "WALK", "BICYCLE")
+val TRAVEL_CHOICES = listOf("", "DRIVE", "TRANSIT", "WALK", "BICYCLE", "BUS", "UBER")
+const val MAX_ORDER_MINUTES = 60  // the earliest an Uber reminder can be, before it leaves
 const val SET_SUMMARY_TIME = "summary_time"
 const val SET_SUMMARY_ON = "summary_on"
 const val SET_HOME = "home_address"
@@ -106,8 +107,11 @@ private val CHANGE = objectOf(mapOf(
     "to" to text("For new_plan with a flight: where the leg the user means lands, as its airport code (like BOS), " +
         "when the number flies more than one leg that day"),
     "travel" to mapOf("type" to "string", "enum" to TRAVEL_CHOICES, "description" to "For new_plan and " +
-        "set_plan_travel: how the user gets there, for this plan only (TRANSIT means NJ Transit trains); empty to " +
-        "leave it"),
+        "set_plan_travel: how the user gets there, for this plan only (TRANSIT means NJ Transit trains, with Rutgers " +
+        "buses when they help; BUS means a Rutgers campus bus; UBER means an Uber, and Datebook reminds them to order " +
+        "it); empty to leave it"),
+    "order" to mapOf("type" to "integer", "description" to "For travel UBER (new_plan or set_plan_travel): minutes " +
+        "before the Uber should leave to remind the user to order it (1 to $MAX_ORDER_MINUTES); leave it out for 10"),
     "early" to mapOf("type" to "integer", "description" to "For new_plan and set_plan_travel: minutes early to be " +
         "there, for this plan only (0 to $MAX_EARLY_MINUTES); leave it out to keep the default"),
     "station" to text("For new_plan and set_plan_travel: the NJ Transit station to leave from, for this plan only"),
@@ -205,8 +209,9 @@ How to work:
 - "My boarding time is 3:38": set boarding (15:38) on set_plan_travel for that flight's plan (or on new_plan /
   edit_event); it replaces the usual guess of 35 minutes before departure.
 - "I'm taking the train", "drive me", "be there 30 minutes early" for one plan: put travel, early and station on the
-  new_plan, or use set_plan_travel for a plan or calendar event that exists. Use rules only when the user means
-  every plan like it.
+  new_plan, or use set_plan_travel for a plan or calendar event that exists. "I'm taking the bus" (on campus) is
+  travel BUS; "I'm taking an Uber, remind me to order it 10 minutes before" is travel UBER with order 10.
+  Use rules only when the user means every plan like it.
 - For anything outside Datebook's data (any fencing tournament, past or future, its results or stream, a venue,
   opening hours, news), search the web with web_search and read pages with web_fetch. Give the useful link in
   your answer.

@@ -32,12 +32,12 @@ fun routeBody(from: Pair<Double, Double>?, home: String, to: String, mode: Strin
     }
     val destination = if (toSpot != null) mapOf("location" to mapOf("latLng" to mapOf("latitude" to toSpot.first,
         "longitude" to toSpot.second))) else mapOf("address" to to)
-    val body = mutableMapOf("origin" to origin, "destination" to destination, "travelMode" to travelMode(mode).id)
+    val body = mutableMapOf("origin" to origin, "destination" to destination, "travelMode" to googleMode(mode))
 
     // Add what each mode allows: live traffic for driving, an arrival time for transit
-    if (travelMode(mode).id == TRAVEL_DRIVE) {
+    if (googleMode(mode) == TRAVEL_DRIVE) {
         body["routingPreference"] = "TRAFFIC_AWARE"
-    } else if (travelMode(mode).id == TRAVEL_TRANSIT) {
+    } else if (googleMode(mode) == TRAVEL_TRANSIT) {
         body["arrivalTime"] = arriveAt.toString()
     }
     return body

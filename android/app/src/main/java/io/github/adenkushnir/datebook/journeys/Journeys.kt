@@ -7,11 +7,17 @@ import android.util.Log
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
+import io.github.adenkushnir.datebook.buses.CampusBuses
+import io.github.adenkushnir.datebook.buses.markCampusBus
+import io.github.adenkushnir.datebook.buses.withCampusBuses
 import io.github.adenkushnir.datebook.places.TRAVEL_BIKE
+import io.github.adenkushnir.datebook.places.TRAVEL_BUS
 import io.github.adenkushnir.datebook.places.TRAVEL_DRIVE
 import io.github.adenkushnir.datebook.places.TRAVEL_TRANSIT
+import io.github.adenkushnir.datebook.places.TRAVEL_UBER
 import io.github.adenkushnir.datebook.places.TRAVEL_WALK
 import io.github.adenkushnir.datebook.places.currentLocation
+import io.github.adenkushnir.datebook.places.googleMode
 import io.github.adenkushnir.datebook.places.postJson
 import io.github.adenkushnir.datebook.places.routeBody
 import java.time.Instant
@@ -27,16 +33,20 @@ const val STEP_BIKE = "bike"
 const val STEP_ARRIVE = "arrive"
 const val STEP_BOARD = "board"  // a flight's boarding
 const val STEP_FLIGHT = "flight"  // a flight leaving
+const val STEP_ORDER = "order"  // the reminder to order an Uber
+const val ORDER_MINUTES = 10  // an Uber is ordered this long before it leaves, unless you say otherwise
+const val PICKUP_MINUTES = 5  // the time for an Uber to reach you
 private const val CHOICE_GAP_MINUTES = 30L  // the other trains are looked for this much earlier and just after
 private const val ROUTES_URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
 private const val JOURNEY_FIELDS = "routes.duration,routes.legs.steps.travelMode,routes.legs.steps.staticDuration," +
-    "routes.legs.steps.transitDetails"
+    "routes.legs.steps.transitDetails,routes.legs.steps.startLocation,routes.legs.steps.endLocation"
 private val MAPPER = jacksonObjectMapper()
 private val CLOCK = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
 
 // One step of a journey: its kind (walk, train, bus, subway, drive, arrive, board or flight), what it is, a line under
 // it, the line's short name and colour (for transit), the train's number when known, when it starts and ends
-// (milliseconds), and where it starts and ends (empty for home), for Maps
+// (milliseconds), where it starts and ends (names for Maps, empty for home, and the spots when Google gave them), and
+// for a Rutgers bus its run, the stops you get on and off at and when it's scheduled to leave
 data class JourneyStep(
     val kind: String = STEP_WALK,
     val title: String = "",
@@ -48,6 +58,14 @@ data class JourneyStep(
     val ends: Long = 0,
     val fromName: String = "",
     val toName: String = "",
+    val fromLat: Double = 0.0,
+    val fromLon: Double = 0.0,
+    val toLat: Double = 0.0,
+    val toLon: Double = 0.0,
+    val busTrip: String = "",
+    val boardStop: String = "",
+    val alightStop: String = "",
+    val scheduled: Long = 0,
 )
 
 // A journey: its steps (ending with arriving), when you leave and arrive, how long it takes, and the travel mode
@@ -80,9 +98,16 @@ private fun vehicleKind(type: String): String {
     }
 }
 
+// A spot from Google ({"latLng": {"latitude": .., "longitude": ..}}), or (0, 0) when missing
+private fun spotOf(node: JsonNode): Pair<Double, Double> {
+    val latLng = node.path("latLng")
+    return Pair(latLng.path("latitude").asDouble(0.0), latLng.path("longitude").asDouble(0.0))
+}
+
 // One piece of Google's route before times are filled in: a walk or drive of some seconds, or a transit ride with
-// its own times
-private data class Piece(val mode: String, val seconds: Long, val ride: JsonNode? = null)
+// its own times; with where it starts and ends
+private data class Piece(val mode: String, val seconds: Long, val ride: JsonNode? = null,
+    val from: Pair<Double, Double> = Pair(0.0, 0.0), val to: Pair<Double, Double> = Pair(0.0, 0.0))
 
 // Read Google's route into a journey to a place: walking steps are joined, each ride keeps its line, headsign, stops
 // and times, walks before and between rides end when the next ride leaves, and a drive or walk with no rides is
@@ -101,14 +126,16 @@ fun parseJourney(json: String, placeName: String, mode: String, leaveAt: Long?, 
     for (step in route.path("legs").flatMap { it.path("steps") }) {
         val stepMode = step.path("travelMode").asText("")
         val length = seconds(step.path("staticDuration").asText(""))
+        val from = spotOf(step.path("startLocation"))
+        val to = spotOf(step.path("endLocation"))
 
         // A ride stands alone; a walk or drive joins the one before it
         if (stepMode == "TRANSIT") {
-            pieces.add(Piece(stepMode, length, step.path("transitDetails")))
+            pieces.add(Piece(stepMode, length, step.path("transitDetails"), from, to))
         } else if (pieces.lastOrNull()?.mode == stepMode) {
-            pieces[pieces.size - 1] = pieces.last().copy(seconds = pieces.last().seconds + length)
+            pieces[pieces.size - 1] = pieces.last().copy(seconds = pieces.last().seconds + length, to = to)
         } else {
-            pieces.add(Piece(stepMode, length))
+            pieces.add(Piece(stepMode, length, from = from, to = to))
         }
     }
     val total = seconds(route.path("duration").asText(""))
@@ -131,8 +158,11 @@ fun parseJourney(json: String, placeName: String, mode: String, leaveAt: Long?, 
             STEP_BIKE -> "bike ride"
             else -> "walk"
         }
+        val from = pieces.firstOrNull()?.from ?: Pair(0.0, 0.0)
+        val to = pieces.lastOrNull()?.to ?: Pair(0.0, 0.0)
         return Journey(listOf(JourneyStep(kind, "Leave · $minutes min $word", "to $placeName", starts = leave,
-            ends = arrive, toName = placeName), JourneyStep(STEP_ARRIVE, "Arrive · $placeName", starts = arrive,
+            ends = arrive, toName = placeName, fromLat = from.first, fromLon = from.second, toLat = to.first,
+            toLon = to.second), JourneyStep(STEP_ARRIVE, "Arrive · $placeName", starts = arrive,
             ends = arrive)), leave, arrive, minutes, mode)
     }
     val steps = mutableListOf<JourneyStep>()
@@ -155,7 +185,8 @@ fun parseJourney(json: String, placeName: String, mode: String, leaveAt: Long?, 
             val from = pieces.take(index).lastOrNull { it.ride != null }?.ride?.path("stopDetails")
                 ?.path("arrivalStop")?.path("name")?.asText("").orEmpty()
             steps.add(JourneyStep(STEP_WALK, title, "to $toward", starts = starts, ends = ends, fromName = from,
-                toName = toward))
+                toName = toward, fromLat = piece.from.first, fromLon = piece.from.second, toLat = piece.to.first,
+                toLon = piece.to.second))
             at = maxOf(at, ends)
         } else {
             val stops = ride.path("stopDetails")
@@ -178,8 +209,11 @@ fun parseJourney(json: String, placeName: String, mode: String, leaveAt: Long?, 
             val under = listOfNotNull("$rideMinutes min", if (count > 0) "$count stops" else null,
                 "from ${stops.path("departureStop").path("name").asText("")}",
                 "off at ${stops.path("arrivalStop").path("name").asText("")}").joinToString(" · ")
+            val boards = spotOf(stops.path("departureStop").path("location"))
+            val alights = spotOf(stops.path("arrivalStop").path("location"))
             steps.add(JourneyStep(kind, title, under, short, line.path("color").asText(""), number, departs, arrives,
-                stops.path("departureStop").path("name").asText(""), stops.path("arrivalStop").path("name").asText("")))
+                stops.path("departureStop").path("name").asText(""), stops.path("arrivalStop").path("name").asText(""),
+                boards.first, boards.second, alights.first, alights.second))
             at = arrives
         }
     }
@@ -197,7 +231,7 @@ fun journeyBody(from: Pair<Double, Double>?, home: String, place: String, mode: 
         ?: return null
 
     // Transit plans to a time: arriving by it, or leaving at it; it can be limited to trains or buses
-    if (mode == TRAVEL_TRANSIT) {
+    if (googleMode(mode) == TRAVEL_TRANSIT) {
         body.remove("arrivalTime")
 
         // Arriving by a time, leaving at one, or leaving now
@@ -214,15 +248,41 @@ fun journeyBody(from: Pair<Double, Double>?, home: String, place: String, mode: 
     return body
 }
 
-// The mode a journey is planned by: transit, driving, cycling, else walking
+// The mode a journey is planned by: transit, campus bus, driving, Uber, cycling, else walking
 fun journeyMode(mode: String): String {
-    return if (mode in setOf(TRAVEL_TRANSIT, TRAVEL_DRIVE, TRAVEL_BIKE)) mode else TRAVEL_WALK
+    return if (mode in setOf(TRAVEL_TRANSIT, TRAVEL_BUS, TRAVEL_DRIVE, TRAVEL_UBER, TRAVEL_BIKE)) mode else TRAVEL_WALK
 }
 
-// Ask Google for the journey to a place by a mode, from where the phone is (or home); null without a key, a route or
-// on any failure; this waits on the network, so call it off the main thread
+// A drive as an Uber trip: "Order your Uber" some minutes before it leaves (10 unless you said), then the ride with 5
+// minutes for the car to reach you, so it leaves 5 minutes before the drive would; the journey leaves when the ride
+// does
+fun asUber(journey: Journey, placeName: String, orderMinutes: Int = ORDER_MINUTES): Journey {
+    val drive = journey.steps.firstOrNull() ?: return journey
+    val leave = drive.starts - PICKUP_MINUTES * 60_000L
+    val driveMinutes = ((drive.ends - drive.starts) / 60_000).toInt()
+    val order = JourneyStep(STEP_ORDER, "Order your Uber", "Reminder $orderMinutes min before it leaves",
+        starts = leave - orderMinutes * 60_000L, ends = leave, toName = drive.toName, toLat = drive.toLat,
+        toLon = drive.toLon)
+    val ride = drive.copy(title = "Uber · ${driveMinutes + PICKUP_MINUTES} min", under = "to $placeName · " +
+        "$PICKUP_MINUTES min for the car, then $driveMinutes min", starts = leave)
+    return journey.copy(steps = listOf(order, ride) + journey.steps.drop(1), leave = leave,
+        minutes = journey.minutes + PICKUP_MINUTES, mode = TRAVEL_UBER)
+}
+
+// A Transit or Bus journey with Rutgers buses: Google's own buses on Rutgers routes are marked as campus buses, then a
+// walk is swapped for a campus bus when one helps (always for Bus); unchanged when the timetable can't be had
+fun withRutgers(context: Context, journey: Journey): Journey {
+    val table = CampusBuses.timetable(context) ?: return journey
+    val marked = journey.copy(steps = journey.steps.map { markCampusBus(it, table) })
+    return withCampusBuses(marked, table, forced = journey.mode == TRAVEL_BUS)
+}
+
+// Ask Google for the journey to a place by a mode, from where the phone is (or home), with Rutgers buses for Transit
+// and Bus and the order step for Uber (ordered orderMinutes before); null without a key, a route or on any failure;
+// this waits on the network, so call it off the main thread
 fun planJourney(context: Context, key: String?, home: String, place: String, placeName: String, mode: String,
-    leaveAt: Long?, arriveBy: Long?, allowed: List<String> = emptyList()): Journey? {
+    leaveAt: Long?, arriveBy: Long?, allowed: List<String> = emptyList(), orderMinutes: Int = ORDER_MINUTES):
+    Journey? {
     // Nothing to ask without a key or a place
     if (key.isNullOrBlank() || place.isBlank()) {
         return null
@@ -232,8 +292,14 @@ fun planJourney(context: Context, key: String?, home: String, place: String, pla
 
     // Any network or reply problem means no journey
     return try {
-        parseJourney(postJson(context, ROUTES_URL, key, JOURNEY_FIELDS, body), placeName, routeMode, leaveAt, arriveBy,
-            ZoneId.systemDefault())
+        val planned = parseJourney(postJson(context, ROUTES_URL, key, JOURNEY_FIELDS, body), placeName,
+            googleMode(routeMode), leaveAt, arriveBy, ZoneId.systemDefault())?.copy(mode = routeMode)
+        // Add what the mode brings: campus buses, or ordering the Uber
+        when (routeMode) {
+            TRAVEL_TRANSIT, TRAVEL_BUS -> planned?.let { withRutgers(context, it) }
+            TRAVEL_UBER -> planned?.let { asUber(it, placeName, orderMinutes) }
+            else -> planned
+        }
     } catch (error: Exception) {  // no internet, a rejected key, or an unreadable reply
         Log.w("Datebook", "journey failed: ${error.message}")
         null
